@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── UTILISATEURS ────────────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String
+  nom             String
+  prenom          String
+  telephone       String?  // Format: +212XXXXXXXXX
+  whatsappNumero  String?  // Peut différer du téléphone
+  whatsappVerifie Boolean  @default(false)
+  role            UserRole @default(AVOCAT)
+
+  cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
+  cabinetId String?
+
+  abonnement Abonnement?
+  dossiers   Dossier[]
+  alertes    Alerte[]
+  sessions   Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([cabinetId])
+}
+
+enum UserRole {
+  AVOCAT
+  SECRETAIRE
+  ASSOCIE_GERANT
+  ADMIN
+}
+
+model Cabinet {
+  id      String  @id @default(cuid())
+  nom     String
+  adresse String?
+  ville   String?
+
+  membres    User[]
+  dossiers   Dossier[]
+  abonnement Abonnement?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ─── DOSSIERS ────────────────────────────────────────────────────────────────
+
+model Dossier {
+  id            String        @id @default(cuid())
+  numeroDossier String        // Numéro sur mahakim.ma
+  tribunal      String        // Code tribunal (ex: "TPI_CASA_ANFA")
+  typeProcedure TypeProcedure @default(CIVILE)
+  titreAffaire  String?
+  partieAdverse String?
+
+  // Suivi
+  estActif       Boolean   @default(true)
+  derniereVerif  DateTime?
+  prochaineVerif DateTime?
+
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  cabinetId String?
+  cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
+
+  evenements Evenement[]
+  echeances  Echeance[]
+  alertes    Alerte[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([numeroDossier, tribunal, userId])
+  @@index([userId])
+  @@index([numeroDossier])
+}
+
+enum TypeProcedure {
+  CIVILE
+  PENALE
+  COMMERCIALE
+  ADMINISTRATIVE
+  TRAVAIL
+  FAMILLE
+  REFERE
+}
+
+// ─── ÉVÉNEMENTS PROCÉDURAUX ───────────────────────────────────────────────────
+
+model Evenement {
+  id        String  @id @default(cuid())
+  dossierId String
+  dossier   Dossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  // Données brutes de mahakim.ma
+  texteArabe            String    // Texte original du greffe en arabe
+  dateAudience          DateTime? // Date de l'audience mentionnée
+  datePublicationGreffe DateTime  // Date à laquelle le greffe a publié
+
+  // Après classification NLP
+  typeEvenement TypeEvenement?
+  sousType      String?
+  confiance     Float?          // Score de confiance du classifieur (0-1)
+
+  // Métadonnées
+  estNouvel Boolean @default(true)
+  estTraite Boolean @default(false)
+  raw       Json?   // Données brutes de scraping
+
+  echeancesGenerees Echeance[]
+  alertes           Alerte[]
+
+  createdAt DateTime @default(now())
+
+  @@index([dossierId])
+  @@index([typeEvenement])
+  @@index([estTraite])
+}
+
+enum TypeEvenement {
+  // Renvois & Reports
+  RENVOI_SIMPLE       // تأخير
+  RENVOI_EXPERT       // إحالة للخبرة
+  RENVOI_NOTIFICATION // تأجيل للتبليغ
+
+  // Décisions
+  JUGEMENT_RENDU    // صدور الحكم
+  MISE_EN_DELIBERE  // حجز للمداولة
+  ORDONNANCE_RENDUE
+
+  // Notifications
+  NOTIFICATION_PARTIE // تبليغ
+  SIGNIFICATION
+
+  // Inscriptions & Procédures
+  INSCRIPTION_ROLE
+  MISE_EN_ETAT
+  EXPERTISE_ORDONNEE
+  EXPERTISE_DEPOSEE
+
+  // Appels & Recours
+  APPEL_INTERJET    // طعن بالاستئناف
+  POURVOI_CASSATION // طعن بالنقض
+
+  // Clôture
+  RADIATION
+  PEREMPTION
+  DESISTEMENT
+
+  // Inconnu
+  AUTRE
+}
+
+// ─── ÉCHÉANCES & DÉLAIS ───────────────────────────────────────────────────────
+
+model Echeance {
+  id          String    @id @default(cuid())
+  dossierId   String
+  dossier     Dossier   @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+  evenementId String?
+  evenement   Evenement? @relation(fields: [evenementId], references: [id])
+
+  typeDelai    TypeDelai
+  description  String    // Ex: "Délai d'appel - 30 jours"
+  descriptionAr String?  // En arabe
+
+  dateDepart  DateTime  // Point de départ du délai
+  dateLimite  DateTime  // Date d'expiration calculée
+
+  estCritique Boolean @default(false) // < 7 jours
+  estExpire   Boolean @default(false)
+  estComplete Boolean @default(false) // Avocat a coché "fait"
+
+  alertesEnvoyees Alerte[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dossierId])
+  @@index([dateLimite])
+  @@index([estCritique])
+}
+
+enum TypeDelai {
+  APPEL                 // 30 jours (15 en référé)
+  OPPOSITION            // 10 jours
+  CASSATION             // 30 jours
+  TIERCE_OPPOSITION     // 30 jours
+  REQUETE_CIVILE        // 3 mois
+  NOTIFICATION_JUGEMENT // délai variable
+  EXECUTION_JUGEMENT    // 30 jours
+  EXPERTISE             // délai fixé par le juge
+  AUTRE
+}
+
+// ─── ALERTES ─────────────────────────────────────────────────────────────────
+
+model Alerte {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id])
+  dossierId   String?
+  dossier     Dossier?   @relation(fields: [dossierId], references: [id])
+  evenementId String?
+  evenement   Evenement? @relation(fields: [evenementId], references: [id])
+  echeanceId  String?
+  echeance    Echeance?  @relation(fields: [echeanceId], references: [id])
+
+  canal      CanalAlerte
+  typeAlerte TypeAlerte
+  message    String
+  messageAr  String?
+
+  statut     StatutAlerte @default(EN_ATTENTE)
+  tentatives Int          @default(0)
+  erreur     String?
+
+  envoyeAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([statut])
+  @@index([canal])
+}
+
+enum CanalAlerte {
+  WHATSAPP
+  EMAIL
+  IN_APP
+}
+
+enum TypeAlerte {
+  NOUVEL_EVENEMENT  // Événement détecté sur mahakim
+  DELAI_APPROCHE_7J // Délai dans 7 jours
+  DELAI_APPROCHE_3J // Délai dans 3 jours
+  DELAI_APPROCHE_1J // Délai demain
+  DELAI_EXPIRE      // Délai expiré
+  DIGEST_QUOTIDIEN  // Résumé matinal
+  RENVOI_DETECTE    // Audience renvoyée (évite déplacement)
+}
+
+enum StatutAlerte {
+  EN_ATTENTE
+  ENVOYEE
+  ECHEC
+  IGNOREE
+}
+
+// ─── ABONNEMENTS ─────────────────────────────────────────────────────────────
+
+model Abonnement {
+  id        String  @id @default(cuid())
+  userId    String? @unique
+  user      User?   @relation(fields: [userId], references: [id])
+  cabinetId String? @unique
+  cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
+
+  plan   PlanAbonnement
+  statut StatutAbonnement @default(ACTIF)
+
+  maxDossiers Int // -1 = illimité
+
+  dateDebut          DateTime  @default(now())
+  dateFin            DateTime?
+  dateRenouvellement DateTime?
+
+  paiements Paiement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PlanAbonnement {
+  GRATUIT // 10 dossiers, sans alertes WhatsApp
+  SOLO    // 190 DH/mois, 100 dossiers
+  PRO     // 390 DH/mois, illimité + délais
+  CABINET // 790 DH/mois, multi-users
+}
+
+enum StatutAbonnement {
+  ACTIF
+  SUSPENDU
+  ANNULE
+  EXPIRE
+}
+
+model Paiement {
+  id           String     @id @default(cuid())
+  abonnementId String
+  abonnement   Abonnement @relation(fields: [abonnementId], references: [id])
+
+  montant          Float
+  devise           String @default("MAD")
+  methode          String // "CMI", "PAYPAL", "VIREMENT"
+  referenceExterne String? // ID de la transaction chez le prestataire
+
+  statut String // "REUSSI", "ECHEC", "EN_ATTENTE"
+
+  createdAt DateTime @default(now())
+}
+
+// ─── RÉFÉRENTIEL TRIBUNAUX ────────────────────────────────────────────────────
+
+model Tribunal {
+  id         String  @id @default(cuid())
+  code       String  @unique // Ex: "TPI_CASA_ANFA"
+  nom        String  // En français
+  nomAr      String  // En arabe
+  ville      String
+  type       String  // "TPI", "CA", "TCS", "TC", "TA"
+  urlMahakim String? // URL spécifique sur le portail
+
+  @@index([ville])
+  @@index([type])
+}
