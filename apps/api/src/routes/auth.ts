@@ -112,7 +112,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
     select: {
       id: true, email: true, nom: true, prenom: true, telephone: true,
       whatsappNumero: true, whatsappVerifie: true, role: true,
-      abonnements: { where: { statut: 'ACTIF' }, take: 1 },
+      abonnements: { where: { statut: 'ACTIF' as const }, take: 1 },
     },
   })
   res.json(user)

@@ -62,7 +62,7 @@ export class AlertService {
         if (ok) {
           await prisma.alerte.update({
             where: { id: alerte.id },
-            data: { statut: StatutAlerte.ENVOYE, envoyeAt: new Date(), tentatives: { increment: 1 } },
+            data: { statut: StatutAlerte.ENVOYEE, envoyeAt: new Date(), tentatives: { increment: 1 } },
           })
         } else {
           await this.marquerEchec(alerte.id, 'Envoi retourné false')
@@ -90,7 +90,7 @@ export class AlertService {
 
   async creerAlerteDelai(dossierId: string, echeanceId: string, userId: string): Promise<void> {
     const existing = await prisma.alerte.findFirst({
-      where: { echeanceId, typeAlerte: TypeAlerte.DELAI_CRITIQUE, statut: StatutAlerte.ENVOYE },
+      where: { echeanceId, typeAlerte: TypeAlerte.DELAI_CRITIQUE, statut: StatutAlerte.ENVOYEE },
     })
     if (existing) return
 

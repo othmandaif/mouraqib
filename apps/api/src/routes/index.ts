@@ -4,6 +4,8 @@ import dossiersRouter from './dossiers'
 import echeancesRouter from './echeances'
 import alertesRouter from './alertes'
 import abonnementsRouter from './abonnements'
+import dashboardRouter from './dashboard'
+import webhooksRouter from './webhooks'
 
 const router = Router()
 
@@ -12,5 +14,7 @@ router.use('/dossiers', dossiersRouter)
 router.use('/echeances', echeancesRouter)
 router.use('/alertes', alertesRouter)
 router.use('/abonnements', abonnementsRouter)
+router.use('/dashboard', dashboardRouter)
+router.use('/webhooks', webhooksRouter)
 
 export default router
