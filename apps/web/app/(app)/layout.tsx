@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import { ToastProvider } from '@/components/Toast'
 
 const NAV = [
   { href: '/dashboard', label: 'Tableau de bord', icon: '📊' },
@@ -33,6 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null
 
   return (
+    <ToastProvider>
     <div className="min-h-screen flex bg-slate-50">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
@@ -86,5 +88,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </main>
     </div>
+    </ToastProvider>
   )
 }

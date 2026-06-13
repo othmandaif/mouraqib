@@ -74,6 +74,48 @@ export class AlertService {
     }
   }
 
+  async traiterNouveauxEvenements(): Promise<void> {
+    const evenements = await prisma.evenement.findMany({
+      where: { estNouvel: true, estTraite: true },
+      include: {
+        dossier: { include: { user: true } },
+      },
+    })
+
+    logger.info(`${evenements.length} nouveaux événements à notifier`)
+
+    for (const ev of evenements) {
+      const user = ev.dossier.user
+      if (!user.whatsappNumero || !user.whatsappVerifie) {
+        await prisma.evenement.update({ where: { id: ev.id }, data: { estNouvel: false } })
+        continue
+      }
+
+      const ok = await whatsapp.envoyerAlerteEvenement({
+        telephone: user.whatsappNumero,
+        numeroDossier: ev.dossier.numeroDossier,
+        tribunal: ev.dossier.tribunal,
+        texteEvenement: ev.texteArabe,
+        typeEvenement: ev.typeEvenement ?? 'AUTRE',
+      })
+
+      await prisma.alerte.create({
+        data: {
+          userId: user.id,
+          dossierId: ev.dossierId,
+          evenementId: ev.id,
+          canal: CanalAlerte.WHATSAPP,
+          typeAlerte: TypeAlerte.NOUVEL_EVENEMENT,
+          message: ev.texteArabe.substring(0, 200),
+          statut: ok ? StatutAlerte.ENVOYEE : StatutAlerte.ECHEC,
+          envoyeAt: ok ? new Date() : undefined,
+        },
+      })
+
+      await prisma.evenement.update({ where: { id: ev.id }, data: { estNouvel: false } })
+    }
+  }
+
   async creerAlerteEvenement(dossierId: string, evenementId: string, userId: string): Promise<void> {
     await prisma.alerte.create({
       data: {
