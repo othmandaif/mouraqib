@@ -14,6 +14,8 @@ export const alertWorker = new Worker(
       await alertService.envoyerAlertesEnAttente()
     } else if (job.name === 'digest-quotidien') {
       await alertService.envoyerDigestQuotidien()
+    } else if (job.name === 'nouveaux-evenements') {
+      await alertService.traiterNouveauxEvenements()
     }
   },
   { connection: redisConnection, concurrency: 1 }

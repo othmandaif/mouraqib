@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq'
-import { redisConnection, deadlineQueue } from '../queues'
+import { redisConnection, deadlineQueue, alertQueue } from '../queues'
 import { NLPService } from '../../services/nlp/nlpService'
 import { logger } from '../../utils/logger'
 
@@ -10,6 +10,7 @@ export const nlpWorker = new Worker(
   async () => {
     await nlpService.traiterEvenementsEnAttente()
     await deadlineQueue.add('generate-deadlines', {}, { delay: 1000 })
+    await alertQueue.add('nouveaux-evenements', {}, { delay: 2000 })
   },
   { connection: redisConnection, concurrency: 1 }
 )

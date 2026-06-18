@@ -1,0 +1,25 @@
+[build]
+builder = "DOCKERFILE"
+
+[[services]]
+name = "api"
+source = "apps/api"
+
+[services.build]
+dockerfilePath = "Dockerfile"
+
+[services.deploy]
+startCommand = "node dist/server.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+
+[[services]]
+name = "web"
+source = "apps/web"
+
+[services.build]
+dockerfilePath = "Dockerfile"
+
+[services.deploy]
+startCommand = "node server.js"
+healthcheckPath = "/"

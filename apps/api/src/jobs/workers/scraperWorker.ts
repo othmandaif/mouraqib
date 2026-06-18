@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq'
 import { redisConnection, nlpQueue } from '../queues'
-import { MahakimScraper } from '../../services/scraper/mahakimScraper'
+import { MahakimScraper, resolveTribunalNames } from '../../services/scraper/mahakimScraper'
 import { logger } from '../../utils/logger'
 
 const scraper = new MahakimScraper()
@@ -24,7 +24,8 @@ export const scraperWorker = new Worker(
       const dossier = await prisma.dossier.findUnique({ where: { id: dossierId } })
       if (!dossier) return
 
-      const data = await scraper.scrapeDossier(dossier.numeroDossier, dossier.tribunal)
+      const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
+      const data = await scraper.scrapeDossier(dossier.numeroDossier, courAppel, tribunalPrimaire)
       if (data) {
         logger.info(`Scraping OK: ${dossier.numeroDossier} — ${data.evenements.length} événements`)
       }

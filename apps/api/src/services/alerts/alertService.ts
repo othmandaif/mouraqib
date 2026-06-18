@@ -62,7 +62,7 @@ export class AlertService {
         if (ok) {
           await prisma.alerte.update({
             where: { id: alerte.id },
-            data: { statut: StatutAlerte.ENVOYE, envoyeAt: new Date(), tentatives: { increment: 1 } },
+            data: { statut: StatutAlerte.ENVOYEE, envoyeAt: new Date(), tentatives: { increment: 1 } },
           })
         } else {
           await this.marquerEchec(alerte.id, 'Envoi retourné false')
@@ -71,6 +71,48 @@ export class AlertService {
         logger.error(`Erreur envoi alerte ${alerte.id}:`, error)
         await this.marquerEchec(alerte.id, error.message)
       }
+    }
+  }
+
+  async traiterNouveauxEvenements(): Promise<void> {
+    const evenements = await prisma.evenement.findMany({
+      where: { estNouvel: true, estTraite: true },
+      include: {
+        dossier: { include: { user: true } },
+      },
+    })
+
+    logger.info(`${evenements.length} nouveaux événements à notifier`)
+
+    for (const ev of evenements) {
+      const user = ev.dossier.user
+      if (!user.whatsappNumero || !user.whatsappVerifie) {
+        await prisma.evenement.update({ where: { id: ev.id }, data: { estNouvel: false } })
+        continue
+      }
+
+      const ok = await whatsapp.envoyerAlerteEvenement({
+        telephone: user.whatsappNumero,
+        numeroDossier: ev.dossier.numeroDossier,
+        tribunal: ev.dossier.tribunal,
+        texteEvenement: ev.texteArabe,
+        typeEvenement: ev.typeEvenement ?? 'AUTRE',
+      })
+
+      await prisma.alerte.create({
+        data: {
+          userId: user.id,
+          dossierId: ev.dossierId,
+          evenementId: ev.id,
+          canal: CanalAlerte.WHATSAPP,
+          typeAlerte: TypeAlerte.NOUVEL_EVENEMENT,
+          message: ev.texteArabe.substring(0, 200),
+          statut: ok ? StatutAlerte.ENVOYEE : StatutAlerte.ECHEC,
+          envoyeAt: ok ? new Date() : undefined,
+        },
+      })
+
+      await prisma.evenement.update({ where: { id: ev.id }, data: { estNouvel: false } })
     }
   }
 
@@ -90,7 +132,7 @@ export class AlertService {
 
   async creerAlerteDelai(dossierId: string, echeanceId: string, userId: string): Promise<void> {
     const existing = await prisma.alerte.findFirst({
-      where: { echeanceId, typeAlerte: TypeAlerte.DELAI_CRITIQUE, statut: StatutAlerte.ENVOYE },
+      where: { echeanceId, typeAlerte: TypeAlerte.DELAI_CRITIQUE, statut: StatutAlerte.ENVOYEE },
     })
     if (existing) return
 

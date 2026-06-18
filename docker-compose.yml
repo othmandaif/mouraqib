@@ -46,5 +46,16 @@ services:
     volumes:
       - ./apps/api/src:/app/src
 
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:3001
+    depends_on:
+      - api
+
 volumes:
   postgres_data:

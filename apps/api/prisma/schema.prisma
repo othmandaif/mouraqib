@@ -23,10 +23,10 @@ model User {
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
   cabinetId String?
 
-  abonnement Abonnement?
-  dossiers   Dossier[]
-  alertes    Alerte[]
-  sessions   Session[]
+  abonnements Abonnement[]
+  dossiers    Dossier[]
+  alertes     Alerte[]
+  sessions    Session[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -62,6 +62,8 @@ model Session {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
+  ipAddress String?
+  userAgent String?
   createdAt DateTime @default(now())
 
   @@index([token])
@@ -72,8 +74,11 @@ model Session {
 
 model Dossier {
   id            String        @id @default(cuid())
-  numeroDossier String        // Numéro sur mahakim.ma
+  numeroDossier String        // Concaténation "anneeDossier/codeRole/numeroDossier" ou format libre
+  anneeDossier  String        // Année (ex: "2024")
+  codeRole      String        // Code rôle (ex: "8101")
   tribunal      String        // Code tribunal (ex: "TPI_CASA_ANFA")
+  estCourAppel  Boolean       @default(false) // true = Cour d'Appel, false = TPI/TC
   typeProcedure TypeProcedure @default(CIVILE)
   titreAffaire  String?
   partieAdverse String?
@@ -93,10 +98,13 @@ model Dossier {
   echeances  Echeance[]
   alertes    Alerte[]
 
+  // Données brutes du scraping mahakim.ma
+  rawData Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([numeroDossier, tribunal, userId])
+  @@unique([anneeDossier, codeRole, numeroDossier, tribunal, userId])
   @@index([userId])
   @@index([numeroDossier])
 }
@@ -257,6 +265,7 @@ enum CanalAlerte {
 
 enum TypeAlerte {
   NOUVEL_EVENEMENT  // Événement détecté sur mahakim
+  DELAI_CRITIQUE    // Délai critique (< 7 jours)
   DELAI_APPROCHE_7J // Délai dans 7 jours
   DELAI_APPROCHE_3J // Délai dans 3 jours
   DELAI_APPROCHE_1J // Délai demain
@@ -276,7 +285,7 @@ enum StatutAlerte {
 
 model Abonnement {
   id        String  @id @default(cuid())
-  userId    String? @unique
+  userId    String?
   user      User?   @relation(fields: [userId], references: [id])
   cabinetId String? @unique
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
