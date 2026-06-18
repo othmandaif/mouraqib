@@ -5,7 +5,10 @@ export type TypeDelai = 'APPEL' | 'OPPOSITION' | 'CASSATION' | 'TIERCE_OPPOSITIO
 export interface DossierSummary {
   id: string
   numeroDossier: string
+  anneeDossier: string
+  codeRole: string
   tribunal: string
+  estCourAppel: boolean
   typeProcedure: TypeProcedure
   titreAffaire?: string
   estActif: boolean

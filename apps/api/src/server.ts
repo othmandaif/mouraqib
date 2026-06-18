@@ -24,10 +24,21 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'mouraqib-api', timestamp: new Date().toISOString() })
 })
 
+// Log toutes les requêtes vers Express (diagnostic)
+app.use((req, _res, next) => {
+  logger.debug(`→ ${req.method} ${req.path}`)
+  next()
+})
+
 app.use('/api/v1', routes)
 
-app.use((req, res) => {
+app.use((req, res, _next) => {
   res.status(404).json({ error: 'Route non trouvée' })
+})
+
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  logger.error('Erreur non gérée:', err)
+  res.status(500).json({ error: 'Erreur interne du serveur', message: err?.message })
 })
 
 app.listen(PORT, async () => {

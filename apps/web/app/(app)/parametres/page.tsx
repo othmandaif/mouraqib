@@ -1,82 +1,99 @@
 'use client'
 
 import Link from 'next/link'
+import { Settings, CreditCard, Smartphone } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useApi } from '@/hooks/useApi'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Separator } from '@/components/ui/Separator'
 
 export default function ParametresPage() {
   const { user } = useAuth()
   const { data: abonnement } = useApi<{ abonnement: { plan: string; dateFin: string }; dossierCount: number }>('/abonnements/current')
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Paramètres</h1>
-      </div>
+    <div className="space-y-6 max-w-2xl">
+      <PageHeader title="Paramètres" />
 
-      {/* Profil */}
-      <section className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">Mon profil</h2>
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Nom</span>
-            <span className="font-medium">Maître {user?.prenom} {user?.nom}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Email</span>
-            <span className="font-medium">{user?.email}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">WhatsApp</span>
-            <span className="font-medium">
+      <Card padding="md">
+        <div className="flex items-center gap-3 mb-5">
+          <Settings className="h-5 w-5 text-accent" />
+          <h2 className="font-display text-xl font-semibold text-primary">Mon profil</h2>
+        </div>
+        <div className="space-y-3">
+          <Row label="Nom" value={`Maître ${user?.prenom} ${user?.nom}`} />
+          <Separator />
+          <Row label="Email" value={user?.email ?? '—'} />
+          <Separator />
+          <div className="flex items-center justify-between py-1">
+            <span className="text-sm font-sans text-text-muted">WhatsApp</span>
+            <span className="text-sm font-sans">
               {user?.whatsappVerifie ? (
-                <span className="text-green-600">✓ Vérifié</span>
+                <Badge variant="success">Vérifié</Badge>
               ) : (
-                <Link href="/parametres/whatsapp" className="text-orange-600 hover:underline">
-                  ⚠️ Non vérifié — Configurer →
+                <Link href="/parametres/whatsapp" className="text-warning hover:text-warning/80 font-medium transition-colors">
+                  Non vérifié — Configurer
                 </Link>
               )}
             </span>
           </div>
         </div>
-      </section>
+      </Card>
 
-      {/* Abonnement */}
-      <section className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">Abonnement</h2>
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Plan actuel</span>
-            <span className="font-semibold text-blue-700">{abonnement?.abonnement?.plan ?? 'GRATUIT'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Dossiers utilisés</span>
-            <span className="font-medium">{abonnement?.dossierCount ?? 0}</span>
-          </div>
+      <Card padding="md">
+        <div className="flex items-center gap-3 mb-5">
+          <CreditCard className="h-5 w-5 text-accent" />
+          <h2 className="font-display text-xl font-semibold text-primary">Abonnement</h2>
+        </div>
+        <div className="space-y-3 mb-4">
+          <Row
+            label="Plan actuel"
+            value={abonnement?.abonnement?.plan ?? 'GRATUIT'}
+          />
+          <Separator />
+          <Row
+            label="Dossiers utilisés"
+            value={`${abonnement?.dossierCount ?? 0}`}
+          />
           {abonnement?.abonnement?.dateFin && (
-            <div className="flex justify-between">
-              <span className="text-slate-500">Renouvellement</span>
-              <span className="font-medium">{new Date(abonnement.abonnement.dateFin).toLocaleDateString('fr-MA')}</span>
-            </div>
+            <>
+              <Separator />
+              <Row
+                label="Renouvellement"
+                value={new Date(abonnement.abonnement.dateFin).toLocaleDateString('fr-MA')}
+              />
+            </>
           )}
         </div>
-        <Link href="/abonnement"
-          className="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg font-medium transition-colors">
-          Changer de plan
+        <Link href="/abonnement">
+          <Button variant="secondary" size="sm">Changer de plan</Button>
         </Link>
-      </section>
+      </Card>
 
-      {/* WhatsApp */}
-      <section className="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-2">Alertes WhatsApp</h2>
-        <p className="text-sm text-slate-500 mb-4">
+      <Card padding="md">
+        <div className="flex items-center gap-3 mb-3">
+          <Smartphone className="h-5 w-5 text-accent" />
+          <h2 className="font-display text-xl font-semibold text-primary">Alertes WhatsApp</h2>
+        </div>
+        <p className="text-sm text-text-muted font-sans mb-4">
           Vérifiez votre numéro WhatsApp pour recevoir les alertes judiciaires.
         </p>
-        <Link href="/parametres/whatsapp"
-          className="inline-block border border-slate-300 hover:border-slate-400 text-slate-700 text-sm px-5 py-2 rounded-lg font-medium transition-colors">
-          Configurer WhatsApp →
+        <Link href="/parametres/whatsapp">
+          <Button variant="secondary" size="sm">Configurer WhatsApp</Button>
         </Link>
-      </section>
+      </Card>
+    </div>
+  )
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-sm font-sans text-text-muted">{label}</span>
+      <span className="text-sm font-sans font-medium text-text-primary">{value}</span>
     </div>
   )
 }

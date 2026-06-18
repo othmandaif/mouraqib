@@ -1,8 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { motion } from 'framer-motion'
+import { FolderOpen, AlertTriangle, Scale, Activity, ArrowRight, Clock } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
-import { apiFetch } from '@/lib/api'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { Separator } from '@/components/ui/Separator'
 
 interface Echeance {
   id: string
@@ -22,134 +29,249 @@ interface Dossier {
   updatedAt: string
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06 },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0 },
+}
+
 export default function DashboardPage() {
   const { data: echeances, loading: loadE } = useApi<Echeance[]>('/echeances/critiques')
   const { data: dossiers, loading: loadD } = useApi<Dossier[]>('/dossiers')
-  const { data: abonnement } = useApi<{ abonnement: { plan: string; maxDossiers: number }; dossierCount: number }>('/abonnements/current')
 
   const loading = loadE || loadD
+  const critiquesCount = echeances?.length ?? 0
+  const dossiersCount = dossiers?.length ?? 0
 
   const joursRestants = (dateLimite: string) =>
     Math.ceil((new Date(dateLimite).getTime() - Date.now()) / 86_400_000)
 
-  const urgencyColor = (j: number) =>
-    j <= 1 ? 'text-red-600 bg-red-50' : j <= 3 ? 'text-orange-600 bg-orange-50' : 'text-yellow-700 bg-yellow-50'
-
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 bg-slate-200 rounded w-64" />
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-28 bg-slate-200 rounded-xl" />)}
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-4 w-64" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} padding="md">
+              <Skeleton className="h-8 w-16 mb-2" />
+              <Skeleton className="h-4 w-24" />
+            </Card>
+          ))}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Tableau de bord</h1>
-        <p className="text-slate-500 mt-1">Vue d'ensemble de votre activité judiciaire</p>
-      </div>
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-6"
+    >
+      <PageHeader
+        title="Tableau de bord"
+        subtitle="Vue d'ensemble de votre activité judiciaire"
+      />
 
-      {/* Alerte délais critiques */}
-      {(echeances?.length ?? 0) > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
-          <span className="text-2xl">🚨</span>
-          <div>
-            <p className="font-semibold text-red-800">
-              {echeances!.length} délai{echeances!.length > 1 ? 's' : ''} critique{echeances!.length > 1 ? 's' : ''}
-            </p>
-            <p className="text-sm text-red-600">Vérifiez vos échéances immédiatement</p>
-          </div>
-          <Link href="/echeances" className="ml-auto text-sm font-medium text-red-700 hover:underline">
-            Voir →
-          </Link>
-        </div>
+      {/* Alerte urgente */}
+      {critiquesCount > 0 && (
+        <motion.div variants={itemVariants}>
+          <Card padding="md" className="border-danger/30 bg-danger-bg">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-6 w-6 text-danger shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-danger font-sans">
+                  {critiquesCount} délai{critiquesCount > 1 ? 's' : ''} critique{critiquesCount > 1 ? 's' : ''}
+                </p>
+                <p className="text-sm text-danger font-sans">Vérifiez vos échéances immédiatement</p>
+              </div>
+              <Link
+                href="/echeances"
+                className="shrink-0 text-sm font-medium text-danger hover:text-danger/80 font-sans inline-flex items-center gap-1"
+              >
+                Voir <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </Card>
+        </motion.div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPI Cards */}
+      <motion.div
+        variants={containerVariants}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+      >
         {[
-          { label: 'Dossiers actifs', value: dossiers?.length ?? 0, icon: '📁', limit: abonnement ? `/ ${abonnement.abonnement?.maxDossiers ?? 3}` : '' },
-          { label: 'Délais critiques', value: echeances?.length ?? 0, icon: '⚠️', critical: (echeances?.length ?? 0) > 0 },
-          { label: 'Plan', value: abonnement?.abonnement?.plan ?? 'GRATUIT', icon: '💼' },
-          { label: 'Dossiers surveillés', value: dossiers?.length ?? 0, icon: '🔍' },
+          {
+            icon: FolderOpen,
+            label: 'Dossiers actifs',
+            value: dossiersCount,
+            variant: 'default' as const,
+          },
+          {
+            icon: AlertTriangle,
+            label: 'Délais critiques',
+            value: critiquesCount,
+            variant: critiquesCount > 0 ? 'danger' as const : 'default' as const,
+          },
+          {
+            icon: Activity,
+            label: 'Événements récents',
+            value: dossiers?.reduce((sum, d) => sum + d._count.evenements, 0) ?? 0,
+            variant: 'default' as const,
+          },
+          {
+            icon: Clock,
+            label: 'Dernière mise à jour',
+            value: 'Aujourd\'hui',
+            variant: 'default' as const,
+          },
         ].map((kpi) => (
-          <div key={kpi.label} className={`rounded-xl p-5 border ${kpi.critical ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-            <div className="text-2xl mb-2">{kpi.icon}</div>
-            <div className={`text-2xl font-bold ${kpi.critical ? 'text-red-700' : 'text-slate-900'}`}>
-              {kpi.value} {kpi.limit}
-            </div>
-            <div className="text-sm text-slate-500 mt-1">{kpi.label}</div>
-          </div>
+          <motion.div key={kpi.label} variants={itemVariants}>
+            <Card padding="md" className={kpi.variant === 'danger' ? 'border-danger/30 bg-danger-bg' : ''}>
+              <div className="space-y-2">
+                <kpi.icon
+                  className={`h-5 w-5 ${
+                    kpi.variant === 'danger' ? 'text-danger' : 'text-accent'
+                  }`}
+                />
+                <p
+                  className={`font-display text-2xl font-bold ${
+                    kpi.variant === 'danger' ? 'text-danger' : 'text-primary'
+                  }`}
+                >
+                  {kpi.value}
+                </p>
+                <p className="text-xs font-sans text-text-muted tracking-wide uppercase">
+                  {kpi.label}
+                </p>
+              </div>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {/* Délais critiques */}
-      {(echeances?.length ?? 0) > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">⏰ Délais imminents</h2>
+      {/* Délais imminents */}
+      {critiquesCount > 0 && (
+        <motion.section variants={itemVariants}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl font-semibold text-primary flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-danger" />
+              Délais imminents
+            </h2>
+            <Link href="/echeances" className="text-sm text-accent hover:text-accent-light font-sans transition-colors">
+              Voir tous →
+            </Link>
+          </div>
           <div className="space-y-2">
             {echeances!.map((e) => {
               const j = joursRestants(e.dateLimite)
               return (
-                <div key={e.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4">
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${urgencyColor(j)}`}>
-                    J-{j}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-900">{e.description}</p>
-                    <p className="text-sm text-slate-500">
-                      {e.dossier.numeroDossier} — {e.dossier.tribunal}
-                    </p>
+                <Card key={e.id} padding="md" className={j <= 1 ? 'border-danger/30 bg-danger-bg' : 'border-border'}>
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`
+                        shrink-0 h-10 w-10 rounded-sm flex items-center justify-center text-xs font-bold font-sans
+                        ${j <= 1 ? 'bg-danger text-white' : j <= 3 ? 'bg-warning text-white' : 'bg-accent-subtle text-accent'}
+                      `}
+                    >
+                      J-{j}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium font-sans text-text-primary">{e.description}</p>
+                      <p className="text-xs text-text-muted font-sans mt-0.5">
+                        {e.dossier.numeroDossier} — {e.dossier.tribunal}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs font-sans text-text-secondary">
+                        {new Date(e.dateLimite).toLocaleDateString('fr-MA')}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm text-slate-400">
-                    {new Date(e.dateLimite).toLocaleDateString('fr-MA')}
-                  </p>
-                </div>
+                </Card>
               )
             })}
           </div>
-        </section>
+        </motion.section>
       )}
 
       {/* Dossiers récents */}
-      <section>
+      <motion.section variants={itemVariants}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">📁 Mes dossiers</h2>
-          <Link href="/dossiers" className="text-sm text-blue-600 hover:underline">Voir tous →</Link>
-        </div>
-        {(dossiers?.length ?? 0) === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
-            <p className="text-slate-500 mb-4">Aucun dossier surveillé</p>
-            <Link href="/dossiers"
-              className="inline-block bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-              + Ajouter un dossier
+          <h2 className="font-display text-xl font-semibold text-primary flex items-center gap-2">
+            <FolderOpen className="h-5 w-5 text-accent" />
+            Mes dossiers
+          </h2>
+          {dossiersCount > 0 && (
+            <Link href="/dossiers" className="text-sm text-accent hover:text-accent-light font-sans transition-colors">
+              Voir tous →
             </Link>
-          </div>
+          )}
+        </div>
+
+        {dossiersCount === 0 ? (
+          <Card padding="lg" className="text-center">
+            <div className="py-10">
+              <Scale className="h-12 w-12 text-border mx-auto mb-4" />
+              <p className="font-display text-xl text-text-muted mb-1">Aucun dossier surveillé</p>
+              <p className="text-sm text-text-muted font-sans mb-6">
+                Ajoutez votre premier dossier pour commencer
+              </p>
+              <Link href="/dossiers">
+                <Button>
+                  <FolderOpen className="h-4 w-4" />
+                  Ajouter un dossier
+                </Button>
+              </Link>
+            </div>
+          </Card>
         ) : (
           <div className="grid md:grid-cols-2 gap-4">
-            {dossiers!.slice(0, 4).map((d) => (
-              <Link key={d.id} href={`/dossiers/${d.id}`}
-                className="bg-white rounded-xl border border-slate-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all">
-                <div className="flex items-start justify-between mb-2">
-                  <p className="font-semibold text-slate-900">{d.numeroDossier}</p>
-                  {d.echeances.length > 0 && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                      {d.echeances.length} délai{d.echeances.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-slate-500">{d.tribunal}</p>
-                {d.titreAffaire && <p className="text-xs text-slate-400 mt-1 truncate">{d.titreAffaire}</p>}
-                <p className="text-xs text-slate-400 mt-2">{d._count.evenements} événement{d._count.evenements > 1 ? 's' : ''}</p>
-              </Link>
+            {dossiers!.slice(0, 4).map((d, i) => (
+              <motion.div
+                key={d.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <Link href={`/dossiers/${d.id}`}>
+                  <Card hover padding="md">
+                    <div className="flex items-start justify-between mb-2">
+                      <p className="font-display text-lg font-semibold text-primary">
+                        {d.numeroDossier}
+                      </p>
+                      {d.echeances.length > 0 && (
+                        <Badge variant="danger">
+                          {d.echeances.length} délai{d.echeances.length > 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm font-sans text-text-secondary">{d.tribunal}</p>
+                    {d.titreAffaire && (
+                      <p className="text-xs text-text-muted font-sans mt-1 truncate">{d.titreAffaire}</p>
+                    )}
+                    <Separator className="my-2" />
+                    <div className="flex items-center justify-between text-xs text-text-muted font-sans">
+                      <span>{d._count.evenements} événement{d._count.evenements > 1 ? 's' : ''}</span>
+                      <span>{new Date(d.updatedAt).toLocaleDateString('fr-MA')}</span>
+                    </div>
+                  </Card>
+                </Link>
+              </motion.div>
             ))}
           </div>
         )}
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

@@ -1,8 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { Smartphone, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 export default function WhatsAppVerificationPage() {
   const { user } = useAuth()
@@ -15,12 +20,14 @@ export default function WhatsAppVerificationPage() {
   if (user?.whatsappVerifie) {
     return (
       <div className="max-w-md space-y-6">
-        <h1 className="text-2xl font-bold text-slate-900">WhatsApp</h1>
-        <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-          <p className="text-4xl mb-3">✅</p>
-          <p className="font-semibold text-green-800">WhatsApp vérifié</p>
-          <p className="text-sm text-green-600 mt-1">Vous recevrez vos alertes judiciaires sur ce numéro</p>
-        </div>
+        <PageHeader title="WhatsApp" />
+        <Card padding="lg" className="text-center border-success/30 bg-success-bg">
+          <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4" />
+          <p className="font-display text-xl font-semibold text-success">WhatsApp vérifié</p>
+          <p className="text-sm font-sans text-success mt-1">
+            Vous recevrez vos alertes judiciaires sur ce numéro
+          </p>
+        </Card>
       </div>
     )
   }
@@ -55,69 +62,89 @@ export default function WhatsAppVerificationPage() {
 
   return (
     <div className="max-w-md space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Vérification WhatsApp</h1>
-        <p className="text-slate-500 mt-1">Recevez vos alertes judiciaires directement sur WhatsApp</p>
-      </div>
+      <PageHeader
+        title="Vérification WhatsApp"
+        subtitle="Recevez vos alertes judiciaires directement sur WhatsApp"
+      />
 
       {step === 'done' ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-          <p className="text-4xl mb-3">✅</p>
-          <p className="font-semibold text-green-800">WhatsApp vérifié avec succès !</p>
-          <p className="text-sm text-green-600 mt-1">Vous allez recevoir vos alertes judiciaires</p>
-        </div>
+        <Card padding="lg" className="text-center border-success/30 bg-success-bg">
+          <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4" />
+          <p className="font-display text-xl font-semibold text-success">WhatsApp vérifié avec succès !</p>
+          <p className="text-sm font-sans text-success mt-1">
+            Vous allez recevoir vos alertes judiciaires
+          </p>
+        </Card>
       ) : step === 'phone' ? (
-        <form onSubmit={sendCode} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+        <form onSubmit={sendCode}>
+          <Card padding="md" className="space-y-4">
+            {error && (
+              <div className="bg-danger-bg border border-danger/30 text-danger text-sm font-sans px-4 py-3 rounded-sm">
+                {error}
+              </div>
+            )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Numéro WhatsApp</label>
-            <input
+            <Input
+              label="Numéro WhatsApp"
               type="tel"
               value={telephone}
               onChange={(e) => setTelephone(e.target.value)}
               required
               placeholder="+212 6XX XXX XXX"
-              className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <p className="text-xs text-slate-400 mt-1">Assurez-vous que ce numéro utilise WhatsApp</p>
-          </div>
+            <p className="text-xs text-text-muted font-sans -mt-2">
+              Assurez-vous que ce numéro utilise WhatsApp
+            </p>
 
-          <button type="submit" disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors">
-            {loading ? 'Envoi en cours...' : '📱 Envoyer le code WhatsApp'}
-          </button>
+            <Button type="submit" loading={loading} className="w-full">
+              <Smartphone className="h-4 w-4" />
+              Envoyer le code WhatsApp
+            </Button>
+          </Card>
         </form>
       ) : (
-        <form onSubmit={verifyCode} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-            Un code à 6 chiffres a été envoyé sur <strong>{telephone}</strong> via WhatsApp
-          </div>
+        <form onSubmit={verifyCode}>
+          <Card padding="md" className="space-y-4">
+            <div className="bg-accent-subtle border border-accent/30 rounded-sm px-4 py-3 text-sm font-sans text-accent">
+              Un code à 6 chiffres a été envoyé sur <strong>{telephone}</strong> via WhatsApp
+            </div>
 
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+            {error && (
+              <div className="bg-danger-bg border border-danger/30 text-danger text-sm font-sans px-4 py-3 rounded-sm">
+                {error}
+              </div>
+            )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Code de vérification</label>
-            <input
+            <Input
+              label="Code de vérification"
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
               maxLength={6}
               placeholder="123456"
-              className="w-full border border-slate-300 rounded-lg px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-center text-2xl tracking-widest"
             />
-          </div>
 
-          <button type="submit" disabled={loading || code.length !== 6}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors">
-            {loading ? 'Vérification...' : 'Vérifier le code'}
-          </button>
+            <Button
+              type="submit"
+              loading={loading}
+              disabled={code.length !== 6}
+              className="w-full"
+            >
+              Vérifier le code
+            </Button>
 
-          <button type="button" onClick={() => setStep('phone')}
-            className="w-full text-slate-500 hover:text-slate-700 py-2 text-sm">
-            ← Changer de numéro
-          </button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setStep('phone')}
+              className="w-full"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Changer de numéro
+            </Button>
+          </Card>
         </form>
       )}
     </div>

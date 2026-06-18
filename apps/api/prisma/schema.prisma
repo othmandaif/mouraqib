@@ -74,8 +74,11 @@ model Session {
 
 model Dossier {
   id            String        @id @default(cuid())
-  numeroDossier String        // Numéro sur mahakim.ma
+  numeroDossier String        // Concaténation "anneeDossier/codeRole/numeroDossier" ou format libre
+  anneeDossier  String        // Année (ex: "2024")
+  codeRole      String        // Code rôle (ex: "8101")
   tribunal      String        // Code tribunal (ex: "TPI_CASA_ANFA")
+  estCourAppel  Boolean       @default(false) // true = Cour d'Appel, false = TPI/TC
   typeProcedure TypeProcedure @default(CIVILE)
   titreAffaire  String?
   partieAdverse String?
@@ -95,10 +98,13 @@ model Dossier {
   echeances  Echeance[]
   alertes    Alerte[]
 
+  // Données brutes du scraping mahakim.ma
+  rawData Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([numeroDossier, tribunal, userId])
+  @@unique([anneeDossier, codeRole, numeroDossier, tribunal, userId])
   @@index([userId])
   @@index([numeroDossier])
 }
