@@ -3,9 +3,9 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, RotateCw, Trash2, X, Loader2 } from 'lucide-react'
+import { Plus, Search, RotateCw, Trash2, X, Loader2, CheckCircle2, Lock, ArrowRight } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, rechercherDossier } from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -238,49 +238,94 @@ export default function DossiersPage() {
   const [formError, setFormError] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'tous' | 'actifs' | 'delais' | 'appel'>('tous')
   const [deleting, setDeleting] = useState<string | null>(null)
 
+  // Compteurs pour les filtres rapides
+  const counts = useMemo(() => {
+    const list = dossiers ?? []
+    return {
+      tous: list.length,
+      actifs: list.filter((d) => d._count.evenements > 0).length,
+      delais: list.filter((d) => d.echeances.length > 0).length,
+      appel: list.filter((d) => d.estCourAppel).length,
+    }
+  }, [dossiers])
+
   const filteredDossiers = useMemo(() => {
-    if (!dossiers) return []
-    if (!filterQuery.trim()) return dossiers
-    const q = filterQuery.toLowerCase()
-    return dossiers.filter((d) =>
-      d.numeroDossier.toLowerCase().includes(q) ||
-      d.tribunal.toLowerCase().includes(q) ||
-      (d.titreAffaire?.toLowerCase() ?? '').includes(q)
-    )
-  }, [dossiers, filterQuery])
+    let list = dossiers ?? []
+    // Filtre rapide par catégorie
+    if (statusFilter === 'actifs') list = list.filter((d) => d._count.evenements > 0)
+    else if (statusFilter === 'delais') list = list.filter((d) => d.echeances.length > 0)
+    else if (statusFilter === 'appel') list = list.filter((d) => d.estCourAppel)
+    // Recherche texte
+    if (filterQuery.trim()) {
+      const q = filterQuery.toLowerCase()
+      list = list.filter((d) =>
+        d.numeroDossier.toLowerCase().includes(q) ||
+        d.tribunal.toLowerCase().includes(q) ||
+        (d.titreAffaire?.toLowerCase() ?? '').includes(q),
+      )
+    }
+    return list
+  }, [dossiers, filterQuery, statusFilter])
 
   const caCourant = useMemo(
     () => COURS_APPEL.find((ca) => ca.nomAr === courAppel),
     [courAppel],
   )
 
+  // UX : le numéro est-il complètement saisi ? (gate la prévisualisation + le bouton)
+  const numeroComplet = annee.length === 4 && codeRole.length > 0 && numero.length > 0
+  const peutRechercher = numeroComplet && !!courAppel && (!recherchePrimaire || !!tribunalPrimaire)
+  const estCA = !recherchePrimaire
+
+  // Champ unique "السنة / الرمز / العدد".
+  // Année = 4 chiffres, Code (الرمز) = 4 chiffres, Numéro = le reste.
+  // Comme les deux premiers segments ont une longueur fixe, on peut insérer les
+  // DEUX "/" automatiquement : l'utilisateur tape uniquement des chiffres.
+  // On garde annee/codeRole/numero séparés en interne (attendu par le backend).
+  const numeroAffiche = (() => {
+    let out = annee
+    if (annee.length === 4 && (codeRole !== '' || numero !== '')) out += '/' + codeRole
+    if (codeRole.length === 4 && numero !== '') out += '/' + numero
+    return out
+  })()
+
+  const handleNumeroChange = (raw: string) => {
+    const d = raw.replace(/\D/g, '') // on ignore les "/" : seuls les chiffres comptent
+    setAnnee(d.slice(0, 4))
+    setCodeRole(d.slice(4, 8))
+    setNumero(d.slice(8))
+  }
+
   const handleSearch = async () => {
     if (!annee || !codeRole || !numero || !courAppel) {
-      setFormError('Veuillez remplir tous les champs obligatoires')
+      setFormError('يرجى ملء جميع الحقول المطلوبة')
       return
     }
     setFormError('')
     setSearching(true)
     setSearchResult(null)
     try {
-      const res = await apiFetch<SearchResult>('/dossiers/rechercher', {
-        method: 'POST',
-        body: JSON.stringify({
+      // Recherche asynchrone : lance un job côté serveur puis interroge jusqu'au résultat.
+      // Aucun timeout de requête unique → plus d'erreur 500/504 si mahakim.ma est lent.
+      const res = await rechercherDossier(
+        {
           anneeDossier: annee,
           codeRole,
           numeroDossier: numero,
           courAppel,
           tribunalPrimaire: recherchePrimaire ? tribunalPrimaire : undefined,
-        }),
-      })
+        },
+        { intervalMs: 2000, timeoutMs: 120000 },
+      )
       setSearchResult(res)
       if (res.trouve && res.titreAffaire && !titreAffaire) {
         setTitreAffaire(res.titreAffaire)
       }
     } catch (err: any) {
-      setFormError(err?.message || 'Erreur lors de la recherche sur mahakim.ma')
+      setFormError(err?.message || 'حدث خطأ أثناء البحث في mahakim.ma')
     } finally {
       setSearching(false)
     }
@@ -319,10 +364,21 @@ export default function DossiersPage() {
     }
   }
 
-  const handleCancel = () => {
-    setShowForm(false)
+  const resetForm = () => {
+    setAnnee('')
+    setCodeRole('')
+    setNumero('')
+    setCourAppel('')
+    setRecherchePrimaire(false)
+    setTribunalPrimaire('')
+    setTitreAffaire('')
     setSearchResult(null)
     setFormError('')
+  }
+
+  const handleCancel = () => {
+    setShowForm(false)
+    resetForm()
   }
 
   const handleScrape = async (id: string) => {
@@ -330,13 +386,13 @@ export default function DossiersPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer ce dossier et toutes ses données ?')) return
+    if (!confirm('هل تريد حذف هذا الملف وجميع بياناته؟')) return
     setDeleting(id)
     try {
       await apiFetch(`/dossiers/${id}`, { method: 'DELETE' })
       refetch()
     } catch {
-      alert('Erreur lors de la suppression')
+      alert('حدث خطأ أثناء الحذف')
     } finally {
       setDeleting(null)
     }
@@ -358,28 +414,59 @@ export default function DossiersPage() {
       ? new Date(ev.dateAudience).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' })
       : undefined,
     titreAr: ev.texteArabe,
-    titreFr: ev.dateAudience ? `Audience: ${new Date(ev.dateAudience).toLocaleDateString('fr-MA')}` : undefined,
+    titreFr: ev.dateAudience ? `الجلسة: ${new Date(ev.dateAudience).toLocaleDateString('ar-MA')}` : undefined,
   })) ?? []
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Mes dossiers"
-        subtitle={`${dossiers?.length ?? 0} dossier${(dossiers?.length ?? 0) > 1 ? 's' : ''} surveillé${(dossiers?.length ?? 0) > 1 ? 's' : ''}`}
+        title="ملفاتي"
+        subtitle={`${dossiers?.length ?? 0} ملف قيد المراقبة`}
       >
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="h-4 w-4" />
-          Ajouter un dossier
+        <Button onClick={() => { showForm ? handleCancel() : setShowForm(true) }}>
+          {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {showForm ? 'إغلاق' : 'إضافة ملف'}
         </Button>
       </PageHeader>
 
-      <div>
-        <Input
-          value={filterQuery}
-          onChange={(e) => setFilterQuery(e.target.value)}
-          placeholder="Rechercher par numéro de dossier, tribunal ou titre..."
-          icon={<Search className="h-4 w-4" />}
-        />
+      {/* Barre de filtres : recherche + filtres rapides */}
+      <div dir="rtl" className="space-y-3">
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" />
+          <input
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder="ابحث برقم الملف أو المحكمة أو الموضوع..."
+            className="w-full rounded-[10px] border border-border bg-white pr-10 pl-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {([
+            { key: 'tous', label: 'الكل' },
+            { key: 'actifs', label: 'نشطة' },
+            { key: 'delais', label: 'بآجال' },
+            { key: 'appel', label: 'استئناف' },
+          ] as const).map((chip) => {
+            const active = statusFilter === chip.key
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setStatusFilter(chip.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors border ${
+                  active
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white text-text-secondary border-border hover:border-primary/40'
+                }`}
+              >
+                {chip.label}
+                <span className={`tabular-nums ${active ? 'text-white/80' : 'text-text-muted'}`} dir="ltr">
+                  {counts[chip.key]}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <AnimatePresence>
@@ -391,9 +478,19 @@ export default function DossiersPage() {
           >
             <form onSubmit={handleAdd} className="space-y-5">
               <Card padding="lg">
-                <h2 className="font-display text-2xl font-semibold text-primary mb-6 text-center" dir="rtl">
-                  أدخل رقم الملف للبحث في محاكم المغرب
-                </h2>
+                {/* En-tête — façon maquette : titre + sous-titre + gage de sécurité */}
+                <div className="text-center mb-6">
+                  <h2 className="font-display text-2xl font-semibold text-primary mb-2" dir="rtl">
+                    تتبع ملفات المحاكم المغربية برقم الملف
+                  </h2>
+                  <p className="text-sm font-sans text-text-muted mb-3" dir="rtl">
+                    أدخل رقم الملف للبحث في بيانات المحاكم المتاحة عبر mahakim.ma
+                  </p>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-sans text-accent">
+                    <Lock className="h-3.5 w-3.5" />
+                    بحث آمن ومشفر
+                  </span>
+                </div>
 
                 {formError && (
                   <div className="bg-danger-bg border border-danger/30 text-danger text-sm font-sans px-4 py-3 rounded-sm mb-4">
@@ -401,135 +498,202 @@ export default function DossiersPage() {
                   </div>
                 )}
 
-                <div className="space-y-5">
-                  <div>
-                    <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted mb-2">
-                      رقم الملف *
-                    </p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <Input
-                        value={annee}
-                        onChange={(e) => setAnnee(e.target.value)}
-                        placeholder="السنة"
-                        className="text-center"
-                      />
-                      <Input
-                        value={codeRole}
-                        onChange={(e) => setCodeRole(e.target.value)}
-                        placeholder="رمز الملف"
-                        className="text-center"
-                      />
-                      <Input
-                        value={numero}
-                        onChange={(e) => setNumero(e.target.value)}
-                        placeholder="رقم الملف"
-                        className="text-center"
-                      />
-                    </div>
-                    {numComplet.includes('/') && (
-                      <p className="text-xs text-text-muted font-sans mt-2">
-                        Format : {numComplet}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted">
-                      محكمة الاستئناف *
-                    </p>
-                    <select
-                      value={courAppel}
-                      onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire(''); setRecherchePrimaire(false) }}
-                      required
-                      className="w-full rounded-sm border border-border bg-white px-3 py-2 text-sm font-sans text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
-                      dir="rtl"
-                    >
-                      <option value="">-- اختر محكمة الاستئناف --</option>
-                      {COURS_APPEL.map((ca) => (
-                        <option key={ca.nomAr} value={ca.nomAr}>{ca.nomAr}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {courAppel && caCourant && caCourant.tribunauxPrimaires.length > 0 && (
+                {/* Le formulaire de saisie disparaît pendant la recherche et quand un résultat est trouvé */}
+                {!searching && !(searchResult && searchResult.trouve) && (
+                  <div className="space-y-5">
                     <div>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={recherchePrimaire}
-                          onChange={(e) => { setRecherchePrimaire(e.target.checked); setTribunalPrimaire('') }}
-                          className="h-4 w-4 rounded border-border text-accent focus:ring-accent/30"
-                        />
-                        <span className="text-sm font-sans font-medium text-text-secondary">
-                          هل تريد البحث بالمحاكم الابتدائية؟
-                        </span>
-                      </label>
-                    </div>
-                  )}
+                      <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted mb-2">
+                        رقم الملف *
+                      </p>
+                      <Input
+                        value={numeroAffiche}
+                        onChange={(e) => handleNumeroChange(e.target.value)}
+                        placeholder="2024 / 8101 / 1234"
+                        inputMode="numeric"
+                        dir="ltr"
+                        className="text-center tabular-nums text-lg tracking-wide"
+                      />
+                      <p className="text-[11px] text-text-muted font-sans mt-1 text-center">
+                        أدخل الأرقام فقط، تُضاف العلامات «/» تلقائياً
+                      </p>
 
-                  {recherchePrimaire && caCourant && (
+                      {/* Aperçu "قرأنا الرقم هكذا" — confirme la lecture du numéro saisi */}
+                      <AnimatePresence>
+                        {numeroComplet && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="mt-3 rounded-md border border-accent/30 bg-accent-subtle p-3" dir="rtl">
+                              <div className="flex items-center gap-2 mb-3">
+                                <CheckCircle2 className="h-4 w-4 text-accent shrink-0" />
+                                <span className="text-sm font-sans font-medium text-text-secondary">
+                                  قرأنا الرقم هكذا
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {[
+                                  { label: 'السنة', value: annee },
+                                  { label: 'الرمز', value: codeRole },
+                                  { label: 'العدد', value: numero },
+                                  { label: 'نوع المحكمة', value: estCA ? 'استئنافي' : 'ابتدائي' },
+                                ].map((item) => (
+                                  <div key={item.label} className="rounded-sm bg-white border border-border px-3 py-2 text-center">
+                                    <p className="text-[10px] font-sans text-text-muted mb-0.5">{item.label}</p>
+                                    <p className="text-sm font-semibold text-text-primary tabular-nums">{item.value}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <p className="text-xs text-text-muted font-sans mt-2 text-center" dir="rtl">
+                        مثال : <span className="font-semibold tabular-nums">2024 / 8101/ 1234</span>
+                      </p>
+                    </div>
+
                     <div className="space-y-1">
                       <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted">
-                        المحكمة الابتدائية *
+                        محكمة الاستئناف *
                       </p>
                       <select
-                        value={tribunalPrimaire}
-                        onChange={(e) => setTribunalPrimaire(e.target.value)}
+                        value={courAppel}
+                        onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire(''); setRecherchePrimaire(false) }}
                         required
                         className="w-full rounded-sm border border-border bg-white px-3 py-2 text-sm font-sans text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
                         dir="rtl"
                       >
-                        <option value="">-- اختر المحكمة الابتدائية --</option>
-                        {caCourant.tribunauxPrimaires.map((tp) => (
-                          <option key={tp} value={tp}>{tp}</option>
+                        <option value="">-- اختر محكمة الاستئناف --</option>
+                        {COURS_APPEL.map((ca) => (
+                          <option key={ca.nomAr} value={ca.nomAr}>{ca.nomAr}</option>
                         ))}
                       </select>
                     </div>
-                  )}
-                </div>
 
-                <Separator className="my-5" />
+                    {courAppel && caCourant && caCourant.tribunauxPrimaires.length > 0 && (
+                      <div>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={recherchePrimaire}
+                            onChange={(e) => { setRecherchePrimaire(e.target.checked); setTribunalPrimaire('') }}
+                            className="h-4 w-4 rounded border-border text-accent focus:ring-accent/30"
+                          />
+                          <span className="text-sm font-sans font-medium text-text-secondary">
+                            هل تريد البحث بالمحاكم الابتدائية؟
+                          </span>
+                        </label>
+                      </div>
+                    )}
 
+                    <AnimatePresence>
+                      {recherchePrimaire && caCourant && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="space-y-1 overflow-hidden"
+                        >
+                          <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted pt-1">
+                            المحكمة الابتدائية *
+                          </p>
+                          <select
+                            value={tribunalPrimaire}
+                            onChange={(e) => setTribunalPrimaire(e.target.value)}
+                            required
+                            className="w-full rounded-sm border border-border bg-white px-3 py-2 text-sm font-sans text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
+                            dir="rtl"
+                          >
+                            <option value="">-- اختر المحكمة الابتدائية --</option>
+                            {caCourant.tribunauxPrimaires.map((tp) => (
+                              <option key={tp} value={tp}>{tp}</option>
+                            ))}
+                          </select>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* État de chargement plein — façon maquette image 3 */}
                 {searching && (
-                  <div className="flex items-center justify-center gap-3 py-6 text-text-secondary font-sans">
-                    <Loader2 className="h-5 w-5 animate-spin text-accent" />
-                    Recherche en cours sur mahakim.ma...
-                  </div>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center text-center py-16 px-6"
+                    dir="rtl"
+                  >
+                    <RotateCw className="h-10 w-10 text-accent animate-spin mb-5" />
+                    <p className="font-display text-2xl font-semibold text-primary mb-2">
+                      جار البحث في سجلات المحكمة...
+                    </p>
+                    <p className="text-sm font-sans text-text-muted">
+                      تجهيز الملف...
+                    </p>
+                  </motion.div>
                 )}
 
+                {/* Boutons de recherche — visibles seulement avant le résultat */}
                 {!searchResult && !searching && (
-                  <div className="flex gap-3">
-                    <Button type="button" variant="secondary" onClick={handleCancel}>
-                      Annuler
-                    </Button>
-                    <Button type="button" onClick={handleSearch} disabled={!courAppel}>
-                      Rechercher sur mahakim.ma
-                    </Button>
-                  </div>
+                  <>
+                    <Separator className="my-5" />
+                    <div className="flex gap-3">
+                      <Button type="button" variant="secondary" onClick={handleCancel}>
+                        إلغاء
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleSearch}
+                        disabled={!peutRechercher}
+                        className="flex-1"
+                      >
+                        <Search className="h-4 w-4" />
+                        ابحث عن الملف
+                      </Button>
+                    </div>
+                  </>
                 )}
 
+                {/* Dossier non trouvé */}
                 {searchResult && !searchResult.trouve && (
                   <div className="space-y-4">
+                    <Separator className="my-5" />
                     <Card padding="md" className="border-danger/30 bg-danger-bg">
-                      <p className="font-medium text-danger font-sans">Dossier non trouvé sur mahakim.ma</p>
+                      <p className="font-medium text-danger font-sans">لم يتم العثور على الملف في mahakim.ma</p>
                       <p className="text-sm text-danger font-sans mt-1">Vérifiez le numéro, l'année et le tribunal saisis.</p>
                     </Card>
                     <Button type="button" variant="secondary" onClick={() => { setSearchResult(null); setSearching(false) }}>
-                      Modifier les informations et réessayer
+                      تعديل المعلومات وإعادة المحاولة
                     </Button>
                   </div>
                 )}
 
+                {/* Dossier trouvé */}
                 {searchResult && searchResult.trouve && (
                   <div className="space-y-5">
-                    <div>
-                      <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted mb-1">
-                        Titre de l'affaire
+                    {/* Bannière de succès — façon maquette image 4 */}
+                    <div className="rounded-md border border-success/30 bg-success-bg p-4 text-center" dir="rtl">
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                        <p className="font-display text-lg font-semibold text-success">تم العثور على الملف</p>
+                      </div>
+                      <p className="text-xl font-bold text-text-primary tabular-nums">{numComplet}</p>
+                    </div>
+
+                    <div dir="rtl">
+                      <p className="text-[11px] font-medium font-sans text-text-muted mb-1 text-right">
+                        موضوع القضية
                       </p>
                       <Input
                         value={titreAffaire}
                         onChange={(e) => setTitreAffaire(e.target.value)}
-                        placeholder="Ex: Société X c/ Société Y"
+                        placeholder="مثال: شركة س ضد شركة ص"
+                        dir="rtl"
+                        className="text-right font-arabic"
                       />
                     </div>
 
@@ -543,19 +707,24 @@ export default function DossiersPage() {
                       parties={(searchResult.parties ?? []).map((p) => ({
                         nom: p.nom,
                         qualite: p.qualite,
-                        conseil: p.avocats || p.delegues || p.agents || p.representants || undefined,
+                        avocats: p.avocats,
+                        delegues: p.delegues,
+                        agents: p.agents,
+                        representants: p.representants,
                       }))}
                     />
 
                     {searchResult.expertises && searchResult.expertises.length > 0 && (
                       <Card padding="md">
-                        <h3 className="font-display text-xl font-semibold text-primary mb-3" dir="rtl">لائحة الخبرات</h3>
-                        <div className="space-y-2">
-                          {searchResult.expertises.map((exp, i) => (
-                            <div key={i} className="rounded-sm bg-surface-alt p-3">
-                              <p className="text-sm font-sans text-text-primary font-arabic text-base" dir="rtl">{exp}</p>
-                            </div>
-                          ))}
+                        <div dir="rtl">
+                          <h3 className="font-display text-xl font-semibold text-primary mb-3">لائحة الخبرات</h3>
+                          <div className="space-y-2">
+                            {searchResult.expertises.map((exp, i) => (
+                              <div key={i} className="rounded-sm bg-surface-alt p-3">
+                                <p className="text-base font-sans text-text-primary font-arabic">{exp}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </Card>
                     )}
@@ -563,9 +732,12 @@ export default function DossiersPage() {
                     <AppealsTable
                       recours={(searchResult.recours ?? []).map((r) => ({
                         type: r.type,
-                        date: r.dateDepot || r.dateEnvoi || undefined,
-                        statut: r.tribunal || undefined,
-                        details: `Partie: ${r.partie || '—'} · N°: ${r.numero || '—'}`,
+                        partie: r.partie,
+                        dateDepot: r.dateDepot,
+                        numero: r.numero,
+                        numeroEnvoi: r.numeroEnvoi,
+                        dateEnvoi: r.dateEnvoi,
+                        tribunal: r.tribunal,
                       }))}
                     />
 
@@ -574,15 +746,19 @@ export default function DossiersPage() {
                         numero: d.numeroDossier,
                         tribunal: d.tribunal,
                         type: d.type,
+                        dateInscription: d.dateInscription,
                       }))}
                     />
 
+                    <Separator className="my-2" />
+
                     <div className="flex gap-3 pt-2">
-                      <Button type="submit" loading={submitting}>
-                        {submitting ? 'Création en cours...' : 'Ajouter et surveiller'}
+                      <Button type="submit" loading={submitting} className="flex-1">
+                        {!submitting && <CheckCircle2 className="h-4 w-4" />}
+                        {submitting ? 'جارٍ الإضافة...' : 'إضافة ومتابعة'}
                       </Button>
-                      <Button type="button" variant="ghost" onClick={handleCancel}>
-                        Annuler
+                      <Button type="button" variant="ghost" onClick={() => { setSearchResult(null); setSearching(false) }}>
+                        بحث جديد
                       </Button>
                     </div>
                   </div>
@@ -595,8 +771,8 @@ export default function DossiersPage() {
 
       {/* Liste des dossiers */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
             <Card key={i} padding="md">
               <Skeleton className="h-4 w-20 mb-3" />
               <Skeleton className="h-6 w-40 mb-2" />
@@ -607,17 +783,23 @@ export default function DossiersPage() {
         </div>
       ) : filteredDossiers.length === 0 ? (
         <Card padding="lg" className="text-center">
-          <div className="py-12">
-            <p className="font-display text-xl text-text-muted mb-2">
-              {filterQuery ? 'Aucun dossier ne correspond à votre recherche' : 'Aucun dossier surveillé'}
+          <div className="py-12" dir="rtl">
+            <p className="text-xl font-semibold text-text-secondary mb-2">
+              {filterQuery || statusFilter !== 'tous' ? 'لا يوجد ملف يطابق بحثك' : 'لا يوجد ملف قيد المراقبة'}
             </p>
-            <p className="text-sm text-text-muted font-sans">
-              {filterQuery ? 'Essayez un autre terme de recherche' : 'Ajoutez votre premier dossier pour commencer la surveillance'}
+            <p className="text-sm text-text-muted mb-5">
+              {filterQuery || statusFilter !== 'tous' ? 'جرّب كلمة بحث أو تصنيفاً آخر' : 'أضف ملفك الأول لبدء المراقبة'}
             </p>
+            {!filterQuery && statusFilter === 'tous' && !showForm && (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4" />
+                أضف ملفك الأول
+              </Button>
+            )}
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <AnimatePresence>
             {filteredDossiers.map((d, i) => (
               <motion.div
@@ -632,22 +814,23 @@ export default function DossiersPage() {
                   dossierNumber={d.numeroDossier}
                   tribunal={d.tribunal}
                   typeAffaire={d.titreAffaire}
-                  statut={d._count.evenements > 0 ? 'en_cours' : 'nouveau'}
-                  updatedAt={new Date(d.updatedAt).toLocaleDateString('fr-MA')}
+                  statut={d.echeances.length > 0 ? 'critique' : d._count.evenements > 0 ? 'en_cours' : 'nouveau'}
+                  updatedAt={new Date(d.updatedAt).toLocaleDateString('ar-MA')}
                 />
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
+                {/* Actions : en RTL, on les place en haut à GAUCHE */}
+                <div className="absolute top-3 left-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
                   <button
                     onClick={(e) => { e.preventDefault(); handleScrape(d.id) }}
-                    title="Forcer la mise à jour"
-                    className="p-1.5 rounded-sm bg-surface border border-border text-text-muted hover:text-accent hover:border-accent transition-colors"
+                    title="تحديث الآن"
+                    className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-accent hover:border-accent transition-colors"
                   >
                     <RotateCw className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={(e) => { e.preventDefault(); handleDelete(d.id) }}
                     disabled={deleting === d.id}
-                    title="Supprimer"
-                    className="p-1.5 rounded-sm bg-surface border border-border text-text-muted hover:text-danger hover:border-danger transition-colors"
+                    title="حذف"
+                    className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-danger hover:border-danger transition-colors"
                   >
                     {deleting === d.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -656,15 +839,17 @@ export default function DossiersPage() {
                     )}
                   </button>
                 </div>
+                {/* Badge "استئناف" : en haut à droite (RTL) */}
                 {d.estCourAppel && (
-                  <div className="absolute top-3 left-3 z-10">
-                    <Badge variant="accent">CA</Badge>
+                  <div className="absolute top-3 right-3 z-10">
+                    <Badge variant="accent">استئناف</Badge>
                   </div>
                 )}
+                {/* Badge délais : en bas à gauche (RTL) */}
                 {d.echeances.length > 0 && (
-                  <div className="absolute bottom-3 right-3 z-10">
+                  <div className="absolute bottom-3 left-3 z-10">
                     <Badge variant="danger">
-                      {d.echeances.length} délai{d.echeances.length > 1 ? 's' : ''}
+                      {d.echeances.length} {d.echeances.length > 1 ? 'آجال' : 'أجل'}
                     </Badge>
                   </div>
                 )}

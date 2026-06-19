@@ -3,15 +3,16 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import {
   LayoutDashboard,
   FolderOpen,
   Bell,
   Calendar,
+  CalendarDays,
   Settings,
   LogOut,
   AlertTriangle,
-  Scale,
 } from 'lucide-react'
 
 interface User {
@@ -29,26 +30,28 @@ interface SidebarProps {
 }
 
 const NAV = [
-  { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-  { href: '/dossiers', label: 'Mes dossiers', icon: FolderOpen },
-  { href: '/echeances', label: 'Échéances', icon: Calendar },
-  { href: '/alertes', label: 'Alertes', icon: Bell },
-  { href: '/parametres', label: 'Paramètres', icon: Settings },
+  { href: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
+  { href: '/dossiers', label: 'ملفاتي', icon: FolderOpen },
+  { href: '/calendrier', label: 'الأجندة', icon: CalendarDays },
+  { href: '/echeances', label: 'الآجال', icon: Calendar },
+  { href: '/alertes', label: 'التنبيهات', icon: Bell },
+  { href: '/parametres', label: 'الإعدادات', icon: Settings },
 ]
 
 export function Sidebar({ user, onLogout }: SidebarProps) {
   const pathname = usePathname()
 
   return (
-    <aside className="w-60 bg-surface-alt border-r border-border flex flex-col shrink-0">
+    // En RTL, la sidebar est à droite : la bordure passe à gauche (border-l)
+    <aside className="w-60 bg-surface-alt border-l border-border flex flex-col shrink-0">
       <div className="p-6 border-b border-border">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <Scale className="h-6 w-6 text-primary" />
-          <h1 className="font-display text-2xl font-bold text-primary leading-none">
-            Mouraqib
-          </h1>
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <Image src="/new_logo.png" alt="Mouraqib" width={40} height={40} />
+          <div>
+            <h1 className="text-2xl font-bold text-primary leading-none">مراقب</h1>
+            <p className="text-xs text-text-muted leading-none mt-0.5">Mouraqib</p>
+          </div>
         </Link>
-        <p className="font-arabic text-xs text-text-muted mt-1">مراقب</p>
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5">
@@ -60,10 +63,10 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
               <motion.div
                 whileTap={{ scale: 0.98 }}
                 className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-medium font-sans
+                  flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
                   transition-colors duration-150 relative
                   ${active
-                    ? 'bg-white text-primary shadow-sm border-l-2 border-accent'
+                    ? 'bg-white text-primary shadow-sm border-r-2 border-accent'
                     : 'text-text-secondary hover:bg-white/60 hover:text-text-primary'
                   }
                 `}
@@ -78,28 +81,28 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
 
       <div className="p-4 border-t border-border space-y-2">
         <div className="px-3 py-2">
-          <div className="text-sm font-medium font-sans text-text-primary leading-tight">
-            Maître {user.nom}
+          <div className="text-sm font-medium text-text-primary leading-tight">
+            الأستاذ(ة) {user.nom}
           </div>
-          <div className="text-xs text-text-muted font-sans mt-0.5">{user.email}</div>
+          <div className="text-xs text-text-muted mt-0.5" dir="ltr">{user.email}</div>
         </div>
 
         {!user.whatsappVerifie && (
           <Link
             href="/parametres/whatsapp"
-            className="flex items-center gap-2 px-3 py-2 text-xs font-sans text-warning bg-warning-bg rounded-sm hover:bg-warning-bg/80 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-xs text-warning bg-warning-bg rounded-md hover:bg-warning-bg/80 transition-colors"
           >
             <AlertTriangle className="h-3.5 w-3.5" />
-            Vérifier WhatsApp
+            تأكيد رقم واتساب
           </Link>
         )}
 
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 text-xs font-sans text-text-muted hover:text-text-primary rounded-sm hover:bg-white/60 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-xs text-text-muted hover:text-text-primary rounded-md hover:bg-white/60 transition-colors"
         >
           <LogOut className="h-3.5 w-3.5" />
-          Déconnexion
+          تسجيل الخروج
         </button>
       </div>
     </aside>

@@ -8,11 +8,11 @@ interface StatusBadgeProps {
 }
 
 const STATUS_MAP: Record<Status, { label: string; variant: 'default' | 'accent' | 'success' | 'danger' | 'muted' }> = {
-  en_cours: { label: 'En cours', variant: 'default' },
-  nouveau: { label: 'Nouveau', variant: 'accent' },
-  audience: { label: 'Audience', variant: 'success' },
-  critique: { label: 'Urgent', variant: 'danger' },
-  clos: { label: 'Clos', variant: 'muted' },
+  en_cours: { label: 'قيد المعالجة', variant: 'default' },
+  nouveau: { label: 'جديد', variant: 'accent' },
+  audience: { label: 'جلسة', variant: 'success' },
+  critique: { label: 'عاجل', variant: 'danger' },
+  clos: { label: 'مغلق', variant: 'muted' },
 }
 
 export function StatusBadge({ status, className = '' }: StatusBadgeProps) {

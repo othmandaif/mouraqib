@@ -9,6 +9,16 @@ export async function startScheduler(): Promise<void> {
     { name: 'scrape-all', data: {} }
   )
 
+  // Scraping de FIN DE JOURNÉE — tous les jours à 21:00 heure du Maroc.
+  // Le serveur tourne en UTC ; le Maroc est à UTC+1 (heure d'hiver) → 20:00 UTC.
+  // Ce passage met à jour toutes les audiences/délais avant le lendemain,
+  // ce qui alimente le calendrier hebdomadaire.
+  await scraperQueue.upsertJobScheduler(
+    'scrape-fin-journee',
+    { pattern: '0 20 * * *' },
+    { name: 'scrape-all', data: { raison: 'fin-de-journee' } }
+  )
+
   // NLP classification — every 30 minutes
   await nlpQueue.upsertJobScheduler(
     'nlp-recurring',
@@ -37,5 +47,5 @@ export async function startScheduler(): Promise<void> {
     { name: 'generate-deadlines', data: {} }
   )
 
-  logger.info('Scheduler démarré — 5 jobs récurrents configurés')
+  logger.info('Scheduler démarré — 6 jobs récurrents configurés (dont scrape fin de journée)')
 }

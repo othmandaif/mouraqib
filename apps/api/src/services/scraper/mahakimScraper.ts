@@ -1,4 +1,4 @@
-import { chromium, Browser, Page, Locator } from 'playwright'
+import { chromium, Browser, BrowserContext, Page, Locator } from 'playwright'
 import * as cheerio from 'cheerio'
 import * as Prisma from '@prisma/client'
 import { logger } from '../../utils/logger'
@@ -8,10 +8,23 @@ const prisma = new Prisma.PrismaClient()
 const CONFIG = {
   // Application Angular en hash-routing : l'URL complète recharge directement la bonne vue
   SEARCH_URL: 'https://www.mahakim.ma/#/suivi/dossier-suivi',
-  DELAY_MS: 1000,
+  DELAY_MS: 300,
   TIMEOUT_MS: 30000,
-  USER_AGENT: 'MouraqibBot/1.0 (Lawyer deadline assistant; contact@mouraqib.ma)',
+  USER_AGENT: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  // Active les screenshots de debug uniquement si la variable d'env est définie.
+  DEBUG: !!process.env.SCRAPER_DEBUG,
+  // headless contrôlable par env (par défaut true = rapide). Mettre SCRAPER_HEADLESS=false pour debugger visuellement.
+  HEADLESS: process.env.SCRAPER_HEADLESS !== 'false',
 }
+
+// Ressources inutiles au scraping (le DOM HTML suffit pour cheerio).
+// Bloquer images/fonts/media/CSS/analytics divise le temps de chargement.
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font'])
+const BLOCKED_URL_FRAGMENTS = [
+  'google-analytics', 'googletagmanager', 'gtag', 'doubleclick',
+  'facebook', 'hotjar', 'clarity.ms', '.woff', '.woff2', '.ttf',
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
+]
 
 export interface EvenementBrut {
   texteArabe: string
@@ -60,40 +73,88 @@ export interface DossierData {
 
 export class MahakimScraper {
   private browser: Browser | null = null
+  private context: BrowserContext | null = null
 
   async init(): Promise<void> {
+    if (this.browser) return // déjà initialisé : ne pas relancer Chromium inutilement
+
     this.browser = await chromium.launch({
-      headless: false,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: CONFIG.HEADLESS,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+      ],
     })
-    logger.info('Browser Playwright initialisé')
+
+    // Un seul contexte réutilisé pour toutes les pages — beaucoup plus rapide
+    // que de relancer un navigateur à chaque recherche.
+    this.context = await this.browser.newContext({
+      userAgent: CONFIG.USER_AGENT,
+      viewport: { width: 1280, height: 900 },
+      // On ne charge pas les ressources lourdes
+      serviceWorkers: 'block',
+    })
+
+    // Blocage global des ressources inutiles au niveau du contexte
+    await this.context.route('**/*', (route) => {
+      const req = route.request()
+      const type = req.resourceType()
+      const url = req.url().toLowerCase()
+      if (BLOCKED_RESOURCE_TYPES.has(type) || BLOCKED_URL_FRAGMENTS.some((f) => url.includes(f))) {
+        return route.abort()
+      }
+      return route.continue()
+    })
+
+    logger.info(`Browser Playwright initialisé (headless=${CONFIG.HEADLESS})`)
+  }
+
+  /** Vérifie que le browser est vivant ; le relance s'il a crashé. */
+  private async ensureBrowser(): Promise<void> {
+    if (!this.browser || !this.browser.isConnected()) {
+      logger.warn('Browser non connecté — réinitialisation')
+      this.browser = null
+      this.context = null
+      await this.init()
+    }
   }
 
   async close(): Promise<void> {
+    if (this.context) {
+      await this.context.close().catch(() => {})
+      this.context = null
+    }
     if (this.browser) {
-      await this.browser.close()
+      await this.browser.close().catch(() => {})
       this.browser = null
     }
   }
 
-  /**
-   * @param numeroDossier format "annee/code/numero", ex: "2023/1501/5697"
-   * @param courAppel nom exact de la cour d'appel tel qu'affiché dans le menu (ex: "محكمة الاستئناف بالدار البيضاء")
-   * @param tribunalPrimaire optionnel — nom exact du tribunal de première instance si on veut affiner la recherche
-   */
   private async takeDebugScreenshot(page: Page, numeroDossier: string, label: string): Promise<void> {
+    if (!CONFIG.DEBUG) return // désactivé par défaut : les screenshots fullPage sont coûteux
     try {
       const screenshotDir = process.env.SCRAPER_SCREENSHOT_DIR || '.scraper-debug'
       await page.screenshot({ path: `${screenshotDir}/${label}-${Date.now()}.png`, fullPage: true })
     } catch {}
   }
 
+  /**
+   * @param numeroDossier format "annee/code/numero", ex: "2023/1501/5697"
+   * @param courAppel nom exact de la cour d'appel (ex: "محكمة الاستئناف بالدار البيضاء")
+   * @param tribunalPrimaire optionnel — nom exact du tribunal de première instance
+   */
   async scrapeDossier(
     numeroDossier: string,
     courAppel: string,
     tribunalPrimaire?: string,
   ): Promise<DossierData | null> {
-    if (!this.browser) throw new Error('Browser non initialisé — appeler init() d\'abord')
+    await this.ensureBrowser()
+    if (!this.context) throw new Error('Context non initialisé — appeler init() d\'abord')
 
     const parsed = parseNumeroDossier(numeroDossier)
     if (!parsed) {
@@ -101,39 +162,13 @@ export class MahakimScraper {
       return null
     }
 
-    const page = await this.browser.newPage()
+    const page = await this.context.newPage()
     page.setDefaultTimeout(CONFIG.TIMEOUT_MS)
 
     try {
-      await page.setExtraHTTPHeaders({ 'User-Agent': CONFIG.USER_AGENT })
       await page.goto(CONFIG.SEARCH_URL, { waitUntil: 'domcontentloaded' })
 
-      // Laisser l'application Angular charger
-      await page.waitForTimeout(1500)
-      try {
-        await page.waitForLoadState('networkidle', { timeout: 3000 })
-      } catch {}
-      logger.info(`Page chargée: ${page.url()}`)
-      await this.takeDebugScreenshot(page, numeroDossier, '01-after-load')
-
-      // Intercepter les requêtes XHR pour debugging
-      const xhrUrls: string[] = []
-      page.on('response', (response) => {
-        const url = response.url()
-        if (url.includes('mahakim.ma/api') || url.includes('mahakim.ma/service')) {
-          xhrUrls.push(`${url} -> ${response.status()}`)
-        }
-      })
-
-      // Le bouton "ملف/محضر/شكاية" est sélectionné par défaut sur cette URL,
-      // mais on s'assure d'être sur le bon onglet de recherche.
-      const dossierTab = page.locator('#Dossier, .dossier-tab, [data-tab="dossier"], a:has-text("ملف")')
-      if (await dossierTab.count() > 0) {
-        await dossierTab.first().click()
-        await page.waitForTimeout(200)
-      }
-
-      // Remplissage des 3 champs du numéro de dossier — essayer plusieurs sélecteurs
+      // Attendre que le formulaire Angular soit réellement prêt plutôt qu'un délai fixe.
       const fieldAnnee = page.locator('input[formcontrolname="annee"], input[placeholder*="سنة"], input[placeholder*="Année"], input#annee, input[name="annee"], [ng-reflect-name="annee"] input, input[formControlName="annee"]').first()
       const fieldMark = page.locator('input[formcontrolname="mark"], input[placeholder*="رمز"], input#mark, input[name="mark"], [ng-reflect-name="mark"] input, input[formControlName="mark"]').first()
       const fieldNumero = page.locator('input[formcontrolname="numero"], input[placeholder*="رقم"], input#numero, input[name="numero"], input[formcontrolname="numDossier"], [ng-reflect-name="numero"] input, input[formControlName="numero"]').first()
@@ -141,107 +176,97 @@ export class MahakimScraper {
       await fieldAnnee.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
         logger.warn(`Champ année non trouvé pour ${numeroDossier}`)
       })
+
+      // S'assurer d'être sur l'onglet "ملف" (souvent par défaut)
+      const dossierTab = page.locator('#Dossier, .dossier-tab, [data-tab="dossier"], a:has-text("ملف")')
+      if (await dossierTab.count() > 0) {
+        await dossierTab.first().click().catch(() => {})
+      }
+
       await this.takeDebugScreenshot(page, numeroDossier, '02-before-fill')
 
-      // Utiliser dispatchEvent pour les inputs Angular (qui utilisent souvent des écouteurs
-      // personnalisés au lieu des événements DOM standards)
-      await fieldAnnee.click()
-      await fieldAnnee.fill('')
-      await fieldAnnee.type(parsed.annee, { delay: 50 })
-      await fieldAnnee.dispatchEvent('input')
-      await fieldAnnee.dispatchEvent('change')
+      // fill() au lieu de type({delay:50}) — instantané, et on garde dispatchEvent
+      // pour les listeners Angular qui n'écoutent pas toujours l'event natif.
+      const fillField = async (field: Locator, value: string) => {
+        await field.click()
+        await field.fill(value)
+        await field.dispatchEvent('input')
+        await field.dispatchEvent('change')
+      }
+      await fillField(fieldAnnee, parsed.annee)
+      await fillField(fieldMark, parsed.mark)
+      await fillField(fieldNumero, parsed.numero)
 
-      await fieldMark.click()
-      await fieldMark.fill('')
-      await fieldMark.type(parsed.mark, { delay: 50 })
-      await fieldMark.dispatchEvent('input')
-      await fieldMark.dispatchEvent('change')
-
-      await fieldNumero.click()
-      await fieldNumero.fill('')
-      await fieldNumero.type(parsed.numero, { delay: 50 })
-      await fieldNumero.dispatchEvent('input')
-      await fieldNumero.dispatchEvent('change')
-
-      await page.waitForTimeout(200)
       await this.takeDebugScreenshot(page, numeroDossier, '03-after-fill')
 
       // Sélection de la cour d'appel
-      await selectPrimeDropdown(page, 'p-dropdown[formcontrolname="tribunal"], p-dropdown .p-dropdown:first-of-type, [ng-reflect-name="tribunal"] p-dropdown', courAppel)
-      await page.waitForTimeout(300)
+      await selectPrimeDropdown(page, courAppel)
       await this.takeDebugScreenshot(page, numeroDossier, '04-after-ca-select')
 
       if (tribunalPrimaire) {
-        // Cocher la case pour révéler le second dropdown
-        // Dans PrimeNG, l'<input> réel est caché dans .p-hidden-accessible ;
-        // on clique sur la boîte visible .p-checkbox-box
         const checkboxBox = page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] .p-checkbox-box')
         if (await checkboxBox.count() > 0) {
-          await checkboxBox.click()
+          await checkboxBox.click().catch(() => {})
         } else {
-          // Fallback: cliquer sur l'input hidden avec force
-          await page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] input[type="checkbox"]').click({ force: true })
+          await page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] input[type="checkbox"]').click({ force: true }).catch(() => {})
         }
-        await page.waitForTimeout(500)
-        await selectPrimeDropdown(page, 'p-dropdown[formcontrolname="tribunaux_primaires"]', tribunalPrimaire)
-        await page.waitForTimeout(200)
+        // Attendre que le 2e dropdown apparaisse plutôt qu'un délai fixe
+        await page.locator('p-dropdown[formcontrolname="tribunaux_primaires"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+        await selectPrimeDropdown(page, tribunalPrimaire)
         await this.takeDebugScreenshot(page, numeroDossier, '05-after-tp-select')
       }
 
-      // Tentatives de clic sur le bouton de recherche
-      // Ne pas dépendre de type="submit" — Angular/PrimeNG utilise souvent des handlers (click)
       const submitBtn = page.locator('button:has-text("بحث"), input[value="بحث"], button:has-text("Rechercher"), .p-button:has-text("بحث")')
       await submitBtn.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {
         logger.warn(`Bouton recherche non trouvé pour ${numeroDossier}`)
       })
       await this.takeDebugScreenshot(page, numeroDossier, '06-before-submit')
 
-      // Fonction de soumission : click + attente résultats
-      const submitAndWait = async (force = false) => {
+      if (await submitBtn.count() > 0) {
+        await submitBtn.first().click({ timeout: 5000 }).catch(() => {})
+      }
+
+      // Attendre soit le résultat, soit le message "aucun résultat".
+      // Promise.race évite d'attendre 30s quand le dossier n'existe pas.
+      const resultFound = await Promise.race([
+        page.waitForSelector('app-resultat-normal', { timeout: CONFIG.TIMEOUT_MS }).then(() => true).catch(() => false),
+        page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: CONFIG.TIMEOUT_MS }).then(() => false).catch(() => false),
+      ])
+
+      if (!resultFound) {
+        logger.warn(`Aucun résultat pour ${numeroDossier} — nouvelle tentative`)
         if (await submitBtn.count() > 0) {
-          await submitBtn.first().click({ force, timeout: 5000 }).catch(() => {})
+          await submitBtn.first().click({ force: true, timeout: 5000 }).catch(() => {})
         }
-        await page.waitForTimeout(500)
-        try { await page.waitForLoadState('networkidle', { timeout: 3000 }) } catch {}
-        await page.waitForTimeout(500)
+        const retry = await page.waitForSelector('app-resultat-normal', { timeout: 20000 }).then(() => true).catch(() => false)
+        if (!retry) {
+          logger.warn(`Aucun sélecteur de résultat trouvé pour ${numeroDossier}`)
+          await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
+          // On parse quand même : si la page contient "aucun résultat" on renverra des tables vides
+          const html = await page.content()
+          const data = this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
+          const aQuelqueChose = data.evenements.length || data.parties.length || Object.keys(data.infosCarte).length
+          return aQuelqueChose ? data : null
+        }
       }
 
-      // Première tentative
-      await submitAndWait(false)
-
-      let resultFound = await page.waitForSelector('app-resultat-normal', { timeout: 30000 }).then(() => true).catch(() => false)
-
-      if (!resultFound) {
-        // Deuxième tentative : attendre le message "aucun résultat"
-        resultFound = await page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: 10000 }).then(() => {
-          logger.warn(`Dossier ${numeroDossier} introuvable sur mahakim.ma`)
-          return false
-        }).catch(() => false)
-      }
-
-      if (!resultFound) {
-        // Troisième tentative : essai force + evaluate
-        logger.warn(`Aucun résultat après 1ère soumission pour ${numeroDossier} — nouvelle tentative`)
-        await page.evaluate(`document.querySelector('button:has-text("بحث")')?.click()`)
-        await page.waitForTimeout(500)
-        try { await page.waitForLoadState('networkidle', { timeout: 3000 }) } catch {}
-        resultFound = await page.waitForSelector('app-resultat-normal', { timeout: 25000 }).then(() => true).catch(() => false)
-      }
-
-      if (!resultFound) {
-        logger.warn(`Aucun sélecteur de résultat trouvé pour ${numeroDossier}`)
-      }
-
-      logger.info(`Résultat trouvé: ${resultFound} — URL: ${page.url()}`)
-      await this.takeDebugScreenshot(page, numeroDossier, resultFound ? '08-result-found' : '08-no-result')
-
-      if (resultFound) {
-        await page.waitForSelector('text=لائحة الإجراءات', { timeout: 5000 }).catch(() => {})
-        await sleep(500)
-      }
-
-      await this.takeDebugScreenshot(page, numeroDossier, '07-after-submit')
-      logger.info(`Requêtes XHR interceptées (${xhrUrls.length}): ${xhrUrls.join(' | ')}`)
+      // S'assurer que le contenu est réellement rendu avant de lire le DOM.
+      // 1) La carte d'identité (.cm-child-dossier) confirme que le dossier est chargé.
+      await page.waitForSelector('.cm-child-dossier', { timeout: 8000 }).catch(() => {})
+      // 2) La barre d'onglets PrimeNG est présente.
+      await page.waitForSelector('p-tabview a[role="tab"]', { timeout: 5000 }).catch(() => {})
+      // 3) Le tableau du 1er onglet (لائحة الإجراءات) a au moins une ligne — c'est
+      //    ce qui manquait : on lisait le HTML avant que le tbody soit peuplé.
+      await page.waitForFunction(
+        `(() => {
+          var panel = document.querySelector('p-tabview .p-tabview-panels');
+          if (!panel) return false;
+          // au moins une ligne de données dans n'importe quel onglet
+          return panel.querySelectorAll('tbody tr').length > 0;
+        })()`,
+        { timeout: 8000 },
+      ).catch(() => {})
+      await this.takeDebugScreenshot(page, numeroDossier, '08-result-found')
 
       const html = await page.content()
       return this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
@@ -249,7 +274,7 @@ export class MahakimScraper {
       logger.error(`Erreur scraping dossier ${numeroDossier}:`, error)
       return null
     } finally {
-      await page.close()
+      await page.close().catch(() => {})
       await sleep(CONFIG.DELAY_MS)
     }
   }
@@ -257,30 +282,51 @@ export class MahakimScraper {
   private parseHtml(html: string, numeroDossier: string, tribunal: string): DossierData {
     const $ = cheerio.load(html)
 
-    // 1) Carte d'identité du dossier : paires label/valeur génériques
+    // Normalise le texte d'une cellule : compacte les espaces/retours et
+    // capture le texte des <p> imbriqués (ex: "حكم قطعي" + <p>رقم 5361</p>).
+    const clean = (s: string) => (s ?? '').replace(/\s+/g, ' ').trim()
+
+    // 1) Carte d'identité du dossier
     const infosCarte: Record<string, string> = {}
     $('.cm-child-dossier').each((_, el) => {
-      const label = $(el).find('.cm-div-label label').text().trim()
-      const value = $(el).find('.cm-div-value p').text().trim()
+      const label = clean($(el).find('.cm-div-label label').text())
+      const value = clean($(el).find('.cm-div-value p').text())
       if (label) infosCarte[label] = value
     })
 
     const titreAffaire = infosCarte['الموضوع'] || infosCarte['نوع الملف'] || undefined
 
-    // Helper: trouver un <table> dont l'en-tête contient tous les textes donnés
-    const findTableByHeaders = (...headers: string[]): cheerio.Cheerio<any> =>
-      $('table').filter((_, t) => headers.every(h => $(t).find('th').text().includes(h))).first()
+    // Retrouve le PANNEAU d'un onglet par le texte de son label.
+    // PrimeNG : <a role="tab" aria-controls="p-tabpanel-XX"><span>TEXTE</span></a>
+    //           <div id="p-tabpanel-XX" aria-labelledby="p-tabpanel-XX-label">…</div>
+    // Beaucoup plus robuste que de deviner par en-têtes de colonnes.
+    const panelByTabText = (tabText: string): cheerio.Cheerio<any> => {
+      let panelId: string | undefined
+      $('a[role="tab"]').each((_, a) => {
+        if (clean($(a).text()) === tabText) panelId = $(a).attr('aria-controls')
+      })
+      if (panelId) {
+        const byId = $(`#${panelId}`)
+        if (byId.length) return byId
+      }
+      // Fallback : par aria-labelledby si l'id direct est introuvable
+      let labelId: string | undefined
+      $('a[role="tab"]').each((_, a) => {
+        if (clean($(a).text()) === tabText) labelId = $(a).attr('id')
+      })
+      if (labelId) return $(`[aria-labelledby="${labelId}"]`)
+      return $() // sélection vide
+    }
 
-    // 2) لائحة الإجراءات
+    // 2) لائحة الإجراءات (événements)
     const evenements: EvenementBrut[] = []
-    const tableEvents = findTableByHeaders('تاريخ الإجراء')
-    tableEvents.find('tbody tr').each((_, tr) => {
+    panelByTabText('لائحة الإجراءات').find('tbody tr').each((_, tr) => {
       const cells = $(tr).find('td')
       if (cells.length < 4) return
-      const dateAction = $(cells[0]).text().trim()
-      const typeAction = $(cells[1]).text().trim()
-      const decision = $(cells[2]).text().trim()
-      const dateProchaineAudience = $(cells[3]).text().trim()
+      const dateAction = clean($(cells[0]).text())
+      const typeAction = clean($(cells[1]).text())
+      const decision = clean($(cells[2]).text())
+      const dateProchaineAudience = clean($(cells[3]).text())
       if (!typeAction && !decision) return
       evenements.push({
         texteArabe: [typeAction, decision].filter(Boolean).join(' — '),
@@ -292,63 +338,58 @@ export class MahakimScraper {
 
     // 3) لائحة الأطراف
     const parties: DossierPartie[] = []
-    const tableParties = findTableByHeaders('الصفة', 'اسم الطرف')
-    tableParties.find('tbody tr').each((_, tr) => {
+    panelByTabText('لائحة الأطراف').find('tbody tr').each((_, tr) => {
       const cells = $(tr).find('td')
       if (cells.length < 6) return
       parties.push({
-        qualite: $(cells[0]).text().trim(),
-        nom: $(cells[1]).text().trim(),
-        avocats: $(cells[2]).text().trim(),
-        delegues: $(cells[3]).text().trim(),
-        agents: $(cells[4]).text().trim(),
-        representants: $(cells[5]).text().trim(),
+        qualite: clean($(cells[0]).text()),
+        nom: clean($(cells[1]).text()),
+        avocats: clean($(cells[2]).text()),
+        delegues: clean($(cells[3]).text()),
+        agents: clean($(cells[4]).text()),
+        representants: clean($(cells[5]).text()),
       })
     })
 
-    // 4) عرائض الطعن
-    const recours: DossierRecours[] = []
-    const tableRecours = findTableByHeaders('تعرض/إستئناف/عريضة نقض')
-    tableRecours.find('tbody tr').each((_, tr) => {
-      const cells = $(tr).find('td')
-      if (cells.length < 7) return
-      recours.push({
-        type: $(cells[0]).text().trim(),
-        partie: $(cells[1]).text().trim(),
-        dateDepot: $(cells[2]).text().trim(),
-        numero: $(cells[3]).text().trim(),
-        numeroEnvoi: $(cells[4]).text().trim(),
-        dateEnvoi: $(cells[5]).text().trim(),
-        tribunal: $(cells[6]).text().trim(),
-      })
-    })
-
-    // 4b) لائحة الخبرات
+    // 4) لائحة الخبرات
     const expertises: string[] = []
-    const expertiseTabLabel = $('a').filter((_, el) => $(el).text().trim() === 'لائحة الخبرات').first()
-    const expertiseTabId = expertiseTabLabel.attr('id')
-    if (expertiseTabId) {
-      const expertisePanel = $(`[aria-labelledby="${expertiseTabId}"]`)
-      expertisePanel.find('tbody tr td').each((_, td) => {
-        const txt = $(td).text().trim()
-        if (txt && txt !== 'لا توجد خبرات') expertises.push(txt)
+    const panelExp = panelByTabText('لائحة الخبرات')
+    const expVide = panelExp.find('td').text().includes('لا توجد خبرات')
+    if (!expVide) {
+      panelExp.find('tbody tr').each((_, tr) => {
+        // ignorer une éventuelle ligne "no data"
+        if ($(tr).find('img[alt="image no_data"]').length) return
+        const txt = clean($(tr).text())
+        if (txt) expertises.push(txt)
       })
     }
 
-    // 5) الملفات المرتبطة
+    // 5) عرائض الطعن
+    const recours: DossierRecours[] = []
+    panelByTabText('عرائض الطعن').find('tbody tr').each((_, tr) => {
+      const cells = $(tr).find('td')
+      if (cells.length < 7) return
+      recours.push({
+        type: clean($(cells[0]).text()),
+        partie: clean($(cells[1]).text()),
+        dateDepot: clean($(cells[2]).text()),
+        numero: clean($(cells[3]).text()),
+        numeroEnvoi: clean($(cells[4]).text()),
+        dateEnvoi: clean($(cells[5]).text()),
+        tribunal: clean($(cells[6]).text()),
+      })
+    })
+
+    // 6) الملفات المرتبطة
     const dossiersLies: DossierLie[] = []
-    const tableLies = findTableByHeaders('نوع الملف', 'رقم الملف')
-    // S'assurer qu'on a bien la BONNE table (celle avec "المحكمة" comme 4e colonne)
-    // et pas une autre table qui aurait accidentellement "نوع الملف" et "رقم الملف"
-    const tableLiesOk = tableLies.filter((_, t) => $(t).find('th').text().includes('المحكمة')).first()
-    tableLiesOk.find('tbody tr').each((_, tr) => {
+    panelByTabText('الملفات المرتبطة (ابتدائي/استئنافي-تبليغ/تنفيذ)').find('tbody tr').each((_, tr) => {
       const cells = $(tr).find('td')
       if (cells.length < 4) return
       dossiersLies.push({
-        type: $(cells[0]).text().trim(),
-        numeroDossier: $(cells[1]).text().trim(),
-        dateInscription: $(cells[2]).text().trim(),
-        tribunal: $(cells[3]).text().trim(),
+        type: clean($(cells[0]).text()),
+        numeroDossier: clean($(cells[1]).text()),
+        dateInscription: clean($(cells[2]).text()),
+        tribunal: clean($(cells[3]).text()),
       })
     })
 
@@ -397,13 +438,11 @@ export class MahakimScraper {
   private async sauvegarderNouveaux(
     dossierId: string,
     evenements: EvenementBrut[],
-    derniereDateConnue?: Date
+    derniereDateConnue?: Date,
   ): Promise<number> {
     let count = 0
-
     for (const ev of evenements) {
       if (derniereDateConnue && ev.datePublication <= derniereDateConnue) continue
-
       await prisma.evenement.create({
         data: {
           dossierId,
@@ -417,45 +456,25 @@ export class MahakimScraper {
       })
       count++
     }
-
     if (count > 0) logger.info(`${count} nouveaux événements sauvegardés pour dossier ${dossierId}`)
     return count
   }
 }
 
 /**
- * Ouvre un p-dropdown PrimeNG sur mahakim.ma et sélectionne l'option par texte.
- *
- * Le DOM réel mahakim.ma :
- *   <p-dropdown formcontrolname="tribunal">
- *     <div class="p-dropdown p-component p-inputwrapper">
- *       <!-- l'input readonly est le trigger, mais peut être caché -->
- *       <input readonly type="text" role="combobox" placeholder="..." class="p-element" />
- *       <!-- parfois label et trigger sont des enfants non-standards -->
- *     </div>
- *   </p-dropdown>
- *
- * L'input est parfois invisible (inside .p-hidden-accessible). On tente tout :
- *   - click sur .p-dropdown-label / trigger / wrapper
- *   - click force sur l'input
- *   - keyboard (focus + Espace / Flèche bas)
- *   - evaluate sur l'host <p-dropdown>
- *   - evaluate sur le wrapper .p-dropdown
- *   - évaluation du HTML pour debug
+ * Ouvre un p-dropdown PrimeNG et sélectionne l'option par texte.
+ * Inchangé fonctionnellement ; seuls les délais fixes ont été resserrés.
  */
-async function selectPrimeDropdown(page: Page, _dropdownSelector: string, optionText: string): Promise<void> {
-  // Déterminer l'identifiant : par formcontrolname (TP) ou par placeholder (CA)
+async function selectPrimeDropdown(page: Page, optionText: string): Promise<void> {
   const isCA = optionText.includes('محكمة الاستئناف')
   const isTP = optionText.includes('المحكمة الابتدائية')
   const formcontrol = isTP ? 'tribunaux_primaires' : isCA ? 'tribunal' : null
   const placeholderFragment = isCA ? 'محكمة الاستئناف' : isTP ? 'المحكمة الابتدائية' : null
 
-  // Trouver le bon <p-dropdown>
   let pDropdown: Locator
   if (formcontrol) {
     pDropdown = page.locator(`p-dropdown[formcontrolname="${formcontrol}"]`)
     if (await pDropdown.count() === 0) {
-      // Fallback: par ng-reflect-name (Angular attribute)
       pDropdown = page.locator(`p-dropdown[ng-reflect-name="${formcontrol}"]`)
     }
   } else if (placeholderFragment) {
@@ -465,49 +484,36 @@ async function selectPrimeDropdown(page: Page, _dropdownSelector: string, option
   }
 
   if (await pDropdown.count() === 0) {
-    logger.warn(`Aucun p-dropdown trouvé pour: ${optionText} — recherche large`)
     pDropdown = page.locator('p-dropdown').filter({ has: page.locator('input[role="combobox"]') }).last()
     if (await pDropdown.count() === 0) {
-      logger.warn(`Aucun p-dropdown trouvé du tout pour: ${optionText}`)
+      logger.warn(`Aucun p-dropdown trouvé pour: ${optionText}`)
       return
     }
   }
 
-  // DEBUG : logger la structure HTML du dropdown
-  const dropdownHtml = await pDropdown.evaluate((el: any) => el.innerHTML ? el.innerHTML.substring(0, 600) : 'no innerHTML')
-  logger.info(`Structure p-dropdown pour "${optionText}": ${dropdownHtml}`)
-
-  await page.waitForTimeout(200)
   const panelOpened = await openDropdownPanel(page, pDropdown, placeholderFragment ?? '')
   if (!panelOpened) {
     logger.warn(`Impossible d'ouvrir le dropdown pour: ${optionText}`)
     return
   }
 
-  await page.waitForTimeout(300)
   try {
     await page.waitForSelector('.p-dropdown-item, li[role="option"]', { timeout: 8000 })
   } catch {
     logger.warn(`Aucun item trouvé dans le panneau pour: ${optionText}`)
   }
 
-  // DEBUG : logging des 5 premiers items du dropdown
-  const debugItems = await page.evaluate(`Array.from(document.querySelectorAll('.p-dropdown-item, li[role="option"]')).slice(0,5).map(i => JSON.stringify(i.textContent ? i.textContent.trim() : ''))`) as string[]
-  logger.info(`Items dans le dropdown (5 premiers): ${debugItems.join(', ')}`)
-
-  // 1) Sélection par Playwright hasText (clic réel, fiable pour PrimeNG/Angular)
+  // 1) Sélection par hasText
   try {
     const option = page.locator('.p-dropdown-item, li[role="option"]', { hasText: optionText }).first()
     await option.waitFor({ state: 'visible', timeout: 3000 })
     await option.click()
-    logger.info(`Option sélectionnée via hasText: ${optionText}`)
-    await page.waitForTimeout(200)
     return
   } catch {
     logger.warn(`Option non trouvée par hasText: ${optionText}`)
   }
 
-  // 2) Fallback : évaluation exacte normalisée (supprime les espaces multiples)
+  // 2) Fallback : evaluate normalisé
   const found = await page.evaluate(new Function('text', `
     var norm = function(s) { return s.replace(/\\s+/g, ' ').trim(); };
     var items = document.querySelectorAll('.p-dropdown-item, li[role="option"]');
@@ -520,18 +526,10 @@ async function selectPrimeDropdown(page: Page, _dropdownSelector: string, option
     return false;
   `) as any, optionText)
 
-  if (found) {
-    logger.info(`Option sélectionnée via evaluate normalisé: ${optionText}`)
-    await page.waitForTimeout(200)
-    return
-  }
-
-  logger.warn(`Impossible de sélectionner l'option: ${optionText}`)
+  if (!found) logger.warn(`Impossible de sélectionner l'option: ${optionText}`)
 }
 
-/** Essaie plusieurs méthodes pour ouvrir le panneau PrimeNG. Retourne true si réussi. */
 async function openDropdownPanel(page: Page, pDropdown: Locator, placeholderFragment: string): Promise<boolean> {
-  // Méthode 1 : Playwright click sur les enfants visibles
   for (const sel of ['.p-dropdown-label', '.p-dropdown-trigger', '.p-dropdown', 'input[role="combobox"]']) {
     const el = pDropdown.locator(sel).first()
     if (await el.count() > 0) {
@@ -542,7 +540,6 @@ async function openDropdownPanel(page: Page, pDropdown: Locator, placeholderFrag
     }
   }
 
-  // Méthode 2 : click force sur l'input
   const input = pDropdown.locator('input[role="combobox"]').first()
   if (await input.count() > 0) {
     try {
@@ -551,23 +548,18 @@ async function openDropdownPanel(page: Page, pDropdown: Locator, placeholderFrag
     } catch {}
   }
 
-  // Méthode 3 : keyboard (focus + Space / ArrowDown)
   if (await input.count() > 0) {
     try {
       await input.focus()
       await page.keyboard.press('Space')
-      await page.waitForTimeout(200)
       if (await isPanelVisible(page)) return true
       await page.keyboard.press('ArrowDown')
-      await page.waitForTimeout(200)
       if (await isPanelVisible(page)) return true
       await page.keyboard.press('Enter')
-      await page.waitForTimeout(200)
       if (await isPanelVisible(page)) return true
     } catch {}
   }
 
-  // Méthode 4 : evaluate — dispatch sur l'host <p-dropdown>
   const hostOpened = await page.evaluate(new Function('fragment', `
     var tryOpen = function(el) {
       if (!el) return false;
@@ -576,23 +568,17 @@ async function openDropdownPanel(page: Page, pDropdown: Locator, placeholderFrag
       });
       return true;
     };
-    // Essayer plusieurs cibles
-    var host = document.querySelector('p-dropdown input[placeholder*="' + fragment + '"]');
-    if (host) tryOpen(host);
-    host = document.querySelector('p-dropdown input[placeholder*="' + fragment + '"]').closest('p-dropdown');
-    if (host) tryOpen(host);
-    host = document.querySelector('p-dropdown input[placeholder*="' + fragment + '"]').parentElement;
-    if (host) tryOpen(host);
+    var sel = 'p-dropdown input[placeholder*="' + fragment + '"]';
+    var input = document.querySelector(sel);
+    if (input) { tryOpen(input); var host = input.closest('p-dropdown'); if (host) tryOpen(host); if (input.parentElement) tryOpen(input.parentElement); }
     return true;
   `) as any, placeholderFragment)
-  await page.waitForTimeout(300)
   if (hostOpened && await isPanelVisible(page)) return true
 
   return false
 }
 
 async function isPanelVisible(page: Page): Promise<boolean> {
-  await page.waitForTimeout(100)
   try {
     const panel = page.locator('.p-dropdown-panel').last()
     await panel.waitFor({ state: 'visible', timeout: 2000 })
@@ -610,33 +596,22 @@ function parseNumeroDossier(numeroDossier: string): { annee: string; mark: strin
   return { annee, mark, numero }
 }
 
-// Supporte "JJ/MM/AAAA" et "JJ/MM/AAAA HH:mm" (le site mahakim.ma ajoute parfois l'heure)
 export function parseDateMahakim(dateStr: string): Date | null {
   if (!dateStr || dateStr.trim() === '') return null
-
   const normalized = dateStr
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
     .trim()
-
   const match = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/)
   if (!match) return null
-
   const [, jour, mois, an, heure, minute] = match
   const d = new Date(`${an}-${mois}-${jour}T${heure ?? '00'}:${minute ?? '00'}:00`)
   return isNaN(d.getTime()) ? null : d
 }
 
-/**
- * Structure complète des tribunaux marocains.
- * Chaque cour d'appel (CA) a une liste de tribunaux primaires (TPI/TC/etc.) qui en dépendent.
- */
 export interface CourAppelEntry {
-  code: string           // ex: "CA_RABAT"
-  nomAr: string          // ex: "محكمة الاستئناف بالرباط"
-  tribunauxPrimaires: {
-    code: string         // ex: "TPI_RABAT"
-    nomAr: string        // ex: "المحكمة الابتدائية بالرباط"
-  }[]
+  code: string
+  nomAr: string
+  tribunauxPrimaires: { code: string; nomAr: string }[]
 }
 
 export const TRIBUNAUX_COMPLETS: CourAppelEntry[] = [
@@ -903,7 +878,6 @@ export const TRIBUNAUX_COMPLETS: CourAppelEntry[] = [
   },
 ]
 
-/** Mapping code → noms arabes pour résolution rapide dans le scraper worker. */
 const TRIBUNAUX_AR: Record<string, { courAppel: string; tribunalPrimaire?: string }> = {}
 for (const ca of TRIBUNAUX_COMPLETS) {
   TRIBUNAUX_AR[ca.code] = { courAppel: ca.nomAr }
@@ -912,12 +886,10 @@ for (const ca of TRIBUNAUX_COMPLETS) {
   }
 }
 
-/** Résout le code tribunal vers les noms arabes pour les dropdowns mahakim.ma. */
 export function resolveTribunalNames(tribunal: string): { courAppel: string; tribunalPrimaire?: string } {
   return TRIBUNAUX_AR[tribunal] ?? { courAppel: tribunal }
 }
 
-/** Trouve le code tribunal à partir des noms arabes (inverse de resolveTribunalNames). */
 export function findTribunalCode(courAppel: string, tribunalPrimaire?: string): string | null {
   for (const ca of TRIBUNAUX_COMPLETS) {
     if (ca.nomAr === courAppel) {

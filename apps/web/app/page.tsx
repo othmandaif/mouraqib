@@ -1,98 +1,102 @@
 import Link from 'next/link'
 
+const C = {
+  pageA: '#E7D9A6', pageB: '#EFE7D0', pageC: '#ECE2C2',
+  card: '#FBF9F2', ink: '#2C2A24', ink2: '#3A3322', muted: '#5B5544', faint: '#A39C8B',
+  goldD: '#9A7820', goldM: '#CBAE55', goldChip: '#F4EFDF', goldSubtle: '#FBF6E7',
+  green: '#3F9E6B', border: '#EEE7D6',
+}
+
+const FEATURES = [
+  { icon: '🔍', title: 'مراقبة آلية', desc: 'فحص يومي لموقع mahakim.ma لجميع ملفاتكم. دون أي تدخّل يدوي.' },
+  { icon: '⏰', title: 'احتساب الآجال', desc: 'يحتسب المحرّك تلقائياً آجال الاستئناف والتعرّض والنقض وفق قانون المسطرة المدنية المغربي.' },
+  { icon: '📱', title: 'تنبيهات واتساب', desc: 'تلقّوا تنبيهاً فورياً عند رصد أي حدث، مع ملخّص صباحي على الساعة السابعة.' },
+]
+
+const PLANS = [
+  { plan: 'مجاني', prix: 0, features: ['3 ملفات', 'تنبيهات واتساب', 'احتساب الآجال'] },
+  { plan: 'فردي', prix: 190, features: ['100 ملف', 'تنبيهات واتساب', 'ملخّص صباحي', 'دعم بالأولوية'], popular: true },
+  { plan: 'مكتب', prix: 790, features: ['500 ملف', 'محامون متعدّدون', 'ولوج API', 'مرافقة مخصّصة'] },
+]
+
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 to-blue-900 text-white">
+    <main dir="rtl" style={{ minHeight: '100vh', background: `linear-gradient(155deg, ${C.pageA} 0%, ${C.pageB} 45%, ${C.pageC} 100%)`, color: C.ink, fontFamily: "'IBM Plex Sans Arabic','IBM Plex Sans',sans-serif" }}>
       {/* Nav */}
-      <nav className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold">⚖️ Mouraqib</span>
-          <span className="text-slate-400 text-sm">مراقب</span>
+      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(145deg,#CBAE55,#9A7820)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px -4px rgba(150,115,20,.6)' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18" /><path d="M7 7h10" /><path d="M5 7 2.5 13a3.5 3.5 0 0 0 5 0L5 7Z" /><path d="M19 7l-2.5 6a3.5 3.5 0 0 0 5 0L19 7Z" /><path d="M8 21h8" /></svg>
+          </div>
+          <span style={{ fontSize: 22, fontWeight: 700, color: C.ink }}>مُراقِب</span>
         </div>
-        <div className="flex gap-4">
-          <Link href="/login" className="text-slate-300 hover:text-white transition-colors px-4 py-2">
-            Connexion
-          </Link>
-          <Link href="/register" className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg font-medium transition-colors">
-            Essai gratuit
-          </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Link href="/login" style={{ color: C.ink2, textDecoration: 'none', padding: '8px 14px', fontSize: 14, fontWeight: 500 }}>تسجيل الدخول</Link>
+          <Link href="/register" style={{ background: 'linear-gradient(140deg,#CBAE55,#9A7820)', color: '#fff', padding: '10px 18px', borderRadius: 11, fontWeight: 600, fontSize: 14, textDecoration: 'none', boxShadow: '0 6px 14px -5px rgba(150,115,20,.6)' }}>تجربة مجانية</Link>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-8 pt-20 pb-16 text-center">
-        <div className="inline-flex items-center gap-2 bg-blue-800/50 text-blue-200 text-sm px-4 py-2 rounded-full mb-8">
-          🚀 Nouveau — Alertes WhatsApp en temps réel
+      <section style={{ maxWidth: 920, margin: '0 auto', padding: '72px 32px 56px', textAlign: 'center' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: C.goldSubtle, color: C.goldD, fontSize: 13, fontWeight: 600, padding: '8px 16px', borderRadius: 999, marginBottom: 28, border: `1px solid ${C.goldM}55` }}>
+          ✦ جديد — تنبيهات واتساب فورية
         </div>
-        <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-          Ne ratez plus jamais<br />
-          <span className="text-blue-400">une audience marocaine</span>
+        <h1 style={{ fontSize: 'clamp(34px, 6vw, 56px)', fontWeight: 700, lineHeight: 1.25, color: C.ink, marginBottom: 22 }}>
+          لا تفوّتوا أبداً<br />
+          <span style={{ color: C.goldD }}>جلسة أمام المحاكم المغربية</span>
         </h1>
-        <p className="text-xl text-slate-300 mb-4 max-w-2xl mx-auto">
-          Mouraqib surveille automatiquement vos dossiers sur <strong>mahakim.ma</strong>,
-          calcule vos délais procéduraux et vous envoie des alertes WhatsApp avant chaque échéance.
+        <p style={{ fontSize: 18, color: C.muted, marginBottom: 14, maxWidth: 640, margin: '0 auto 14px', lineHeight: 1.8 }}>
+          يراقب «مُراقِب» ملفاتكم تلقائياً على <strong style={{ color: C.ink }}>mahakim.ma</strong>، ويحتسب آجالكم المسطرية، ويرسل لكم تنبيهات عبر واتساب قبل كل أجل.
         </p>
-        <p className="text-lg text-slate-400 mb-10" dir="rtl">
-          مراقبة تلقائية لملفاتكم القضائية مع تنبيهات واتساب فورية
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/register" className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-colors">
-            Commencer gratuitement →
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', marginTop: 34 }}>
+          <Link href="/register" style={{ background: 'linear-gradient(140deg,#CBAE55,#9A7820)', color: '#fff', padding: '15px 30px', borderRadius: 14, fontSize: 17, fontWeight: 700, textDecoration: 'none', boxShadow: '0 10px 24px -8px rgba(150,115,20,.6)' }}>
+            ابدأوا مجاناً ←
           </Link>
-          <a href="#demo" className="border border-slate-600 hover:border-slate-400 text-slate-300 px-8 py-4 rounded-xl text-lg transition-colors">
-            Voir la démo
+          <a href="#tarifs" style={{ border: `1px solid ${C.goldM}`, color: C.ink2, padding: '15px 30px', borderRadius: 14, fontSize: 17, textDecoration: 'none', background: '#fff' }}>
+            اطّلعوا على الأسعار
           </a>
         </div>
       </section>
 
       {/* Features */}
-      <section className="max-w-6xl mx-auto px-8 py-16 grid md:grid-cols-3 gap-8">
-        {[
-          { icon: '🔍', title: 'Scraping automatique', desc: 'Consultation quotidienne de mahakim.ma pour tous vos dossiers. Aucune action manuelle requise.' },
-          { icon: '⏰', title: 'Délais calculés', desc: 'Le moteur calcule automatiquement les délais d\'appel, opposition et cassation selon le CPC marocain.' },
-          { icon: '📱', title: 'Alertes WhatsApp', desc: 'Recevez une alerte instantanée dès qu\'un événement est détecté, plus un digest matinal à 7h.' },
-        ].map((f) => (
-          <div key={f.title} className="bg-white/5 rounded-2xl p-6 border border-white/10">
-            <div className="text-4xl mb-4">{f.icon}</div>
-            <h3 className="text-xl font-semibold mb-2">{f.title}</h3>
-            <p className="text-slate-400">{f.desc}</p>
+      <section style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+        {FEATURES.map((f) => (
+          <div key={f.title} style={{ background: C.card, borderRadius: 22, padding: 26, border: `1px solid ${C.border}`, boxShadow: '0 14px 34px -24px rgba(110,90,30,.4)' }}>
+            <div style={{ fontSize: 36, marginBottom: 14 }}>{f.icon}</div>
+            <h3 style={{ fontSize: 19, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{f.title}</h3>
+            <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.8 }}>{f.desc}</p>
           </div>
         ))}
       </section>
 
       {/* Pricing */}
-      <section className="max-w-5xl mx-auto px-8 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">Tarifs simples</h2>
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            { plan: 'GRATUIT', prix: 0, dossiers: 3, features: ['3 dossiers', 'Alertes WhatsApp', 'Calcul délais'] },
-            { plan: 'SOLO', prix: 190, dossiers: 100, features: ['100 dossiers', 'Alertes WhatsApp', 'Digest matinal', 'Priorité support'], popular: true },
-            { plan: 'CABINET', prix: 790, dossiers: 500, features: ['500 dossiers', 'Multi-avocats', 'API accès', 'Onboarding dédié'] },
-          ].map((p) => (
-            <div key={p.plan} className={`rounded-2xl p-6 border ${p.popular ? 'border-blue-500 bg-blue-600/20' : 'border-white/10 bg-white/5'}`}>
-              {p.popular && <div className="text-blue-400 text-sm font-semibold mb-2">⭐ Plus populaire</div>}
-              <h3 className="text-xl font-bold mb-1">{p.plan}</h3>
-              <div className="text-3xl font-bold mb-4">
-                {p.prix === 0 ? 'Gratuit' : <>{p.prix} <span className="text-lg font-normal text-slate-400">DH/mois</span></>}
+      <section id="tarifs" style={{ maxWidth: 980, margin: '0 auto', padding: '56px 32px' }}>
+        <h2 style={{ fontSize: 30, fontWeight: 700, textAlign: 'center', color: C.ink, marginBottom: 44 }}>أسعار بسيطة وواضحة</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 22 }}>
+          {PLANS.map((p) => (
+            <div key={p.plan} style={{ borderRadius: 22, padding: 28, border: p.popular ? `2px solid ${C.goldM}` : `1px solid ${C.border}`, background: p.popular ? C.goldSubtle : C.card, boxShadow: p.popular ? '0 20px 44px -22px rgba(150,115,20,.45)' : '0 14px 34px -24px rgba(110,90,30,.4)', position: 'relative' }}>
+              {p.popular && <div style={{ color: C.goldD, fontSize: 13, fontWeight: 700, marginBottom: 8 }}>★ الأكثر اختياراً</div>}
+              <h3 style={{ fontSize: 20, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{p.plan}</h3>
+              <div style={{ fontSize: 30, fontWeight: 700, color: C.ink, marginBottom: 18, fontFamily: "'IBM Plex Sans',sans-serif", direction: 'rtl' }}>
+                {p.prix === 0 ? 'مجاني' : <>{p.prix} <span style={{ fontSize: 15, fontWeight: 400, color: C.faint }}>درهم/شهرياً</span></>}
               </div>
-              <ul className="space-y-2 mb-6">
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'flex', flexDirection: 'column', gap: 9 }}>
                 {p.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-slate-300">
-                    <span className="text-green-400">✓</span> {f}
+                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.ink2, fontSize: 14 }}>
+                    <span style={{ color: C.green, fontWeight: 700 }}>✓</span> {f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register" className={`block text-center py-3 rounded-lg font-semibold transition-colors ${p.popular ? 'bg-blue-600 hover:bg-blue-500' : 'bg-white/10 hover:bg-white/20'}`}>
-                Commencer
+              <Link href="/register" style={{ display: 'block', textAlign: 'center', padding: 13, borderRadius: 12, fontWeight: 700, fontSize: 15, textDecoration: 'none', ...(p.popular ? { background: 'linear-gradient(140deg,#CBAE55,#9A7820)', color: '#fff' } : { background: '#fff', color: C.ink, border: `1px solid ${C.border}` }) }}>
+                ابدأوا الآن
               </Link>
             </div>
           ))}
         </div>
       </section>
 
-      <footer className="text-center text-slate-500 py-8 border-t border-white/10">
-        © 2024 Mouraqib — مراقب · contact@mouraqib.ma
+      <footer style={{ textAlign: 'center', color: C.faint, padding: '32px 0', borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
+        © 2024 مُراقِب · contact@mouraqib.ma
       </footer>
     </main>
   )

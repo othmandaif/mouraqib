@@ -5,6 +5,7 @@ import { startScheduler } from './jobs/scheduler'
 import './jobs/workers/scraperWorker'
 import './jobs/workers/nlpWorker'
 import './jobs/workers/alertWorker'
+import './jobs/workers/searchWorker'
 
 const app = express()
 const PORT = process.env.PORT || 3001
