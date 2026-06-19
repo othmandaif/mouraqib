@@ -70,12 +70,11 @@ export default function LoginPage() {
 
 export function Brand({ subtitle }: { subtitle: string }) {
   return (
-    <div style={{ textAlign: 'center', marginBottom: 28 }}>
-      <div style={{ marginBottom: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Image src="/new_logo.png" alt="Mouraqib" width={56} height={56} />
+    <div style={{ textAlign: 'center', marginBottom: 36 }}>
+      <div style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #E5D9B0', borderRadius: 24, padding: 8, background: '#fff', boxShadow: '0 8px 24px -8px rgba(150,115,20,.3)' }}>
+        <Image src="/new_logo.png" alt="Mouraqib" width={120} height={120} />
       </div>
-      <h1 style={{ fontSize: 28, fontWeight: 700, color: C.ink, fontFamily: "'IBM Plex Sans',sans-serif" }}>مُراقِب</h1>
-      <p style={{ color: C.muted, marginTop: 4, fontSize: 14 }}>{subtitle}</p>
+      <p style={{ color: C.muted, fontSize: 14 }}>{subtitle}</p>
     </div>
   )
 }
