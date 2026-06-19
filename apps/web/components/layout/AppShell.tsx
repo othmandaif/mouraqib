@@ -89,13 +89,7 @@ export function AppShell({ children }: AppShellProps) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingBottom: isMobile ? 14 : 22 }}>
             {/* brand */}
             <Link href="/dashboard" style={{ textDecoration: 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Image src="/new_logo.png" alt="Mouraqib" width={isMobile ? 38 : 46} height={isMobile ? 38 : 46} style={{ borderRadius: 13 }} />
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: isMobile ? 17 : 21, fontWeight: 700, color: C.ink, letterSpacing: '.5px' }}>مُراقِب</div>
-                  {!isMobile && <div style={{ fontSize: 10.5, color: '#A8895F', letterSpacing: '.5px', fontWeight: 500 }}>مراقبة قضائية ذكية</div>}
-                </div>
-              </div>
+              <Image src="/new_logo.png" alt="Mouraqib" width={isMobile ? 48 : 60} height={isMobile ? 48 : 60} style={{ borderRadius: 14 }} />
             </Link>
 
             {/* onglets horizontaux — masqués sur tablette/mobile */}
