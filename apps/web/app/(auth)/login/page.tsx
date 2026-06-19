@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useAuth } from '@/hooks/useAuth'
 
 const C = {
@@ -70,8 +71,8 @@ export default function LoginPage() {
 export function Brand({ subtitle }: { subtitle: string }) {
   return (
     <div style={{ textAlign: 'center', marginBottom: 28 }}>
-      <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(145deg,#CBAE55,#9A7820)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 18px -5px rgba(150,115,20,.6)', marginBottom: 12 }}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18" /><path d="M7 7h10" /><path d="M5 7 2.5 13a3.5 3.5 0 0 0 5 0L5 7Z" /><path d="M19 7l-2.5 6a3.5 3.5 0 0 0 5 0L19 7Z" /><path d="M8 21h8" /></svg>
+      <div style={{ marginBottom: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Image src="/new_logo.png" alt="Mouraqib" width={56} height={56} />
       </div>
       <h1 style={{ fontSize: 28, fontWeight: 700, color: C.ink, fontFamily: "'IBM Plex Sans',sans-serif" }}>مُراقِب</h1>
       <p style={{ color: C.muted, marginTop: 4, fontSize: 14 }}>{subtitle}</p>
