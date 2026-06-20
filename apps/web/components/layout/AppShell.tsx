@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { ToastProvider } from '@/components/Toast'
+import Image from 'next/image'
 import {
   Home, FolderOpen, Clock, Bell, Settings, Calendar, Menu, X, Sparkles,
 } from 'lucide-react'
@@ -92,9 +93,7 @@ export function AppShell({ children }: AppShellProps) {
             {/* brand */}
             <Link href="/dashboard" style={{ textDecoration: 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: isMobile ? 38 : 46, height: isMobile ? 38 : 46, borderRadius: 13, background: 'linear-gradient(145deg,#CBAE55,#9A7820)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px -4px rgba(150,115,20,.6)' }}>
-                  <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18" /><path d="M7 7h10" /><path d="M5 7 2.5 13a3.5 3.5 0 0 0 5 0L5 7Z" /><path d="M19 7l-2.5 6a3.5 3.5 0 0 0 5 0L19 7Z" /><path d="M8 21h8" /></svg>
-                </div>
+                <Image src="/logo.png" alt="Mouraqib" width={isMobile ? 40 : 48} height={isMobile ? 40 : 48} style={{ borderRadius: 10 }} />
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: isMobile ? 17 : 21, fontWeight: 700, color: C.ink, letterSpacing: '.5px' }}>مُراقِب</div>
                   {!isMobile && <div style={{ fontSize: 10.5, color: '#A8895F', letterSpacing: '.5px', fontWeight: 500 }}>مراقبة قضائية ذكية</div>}

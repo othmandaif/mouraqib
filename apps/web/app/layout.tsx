@@ -12,7 +12,7 @@ const cairo = Cairo({
 export const metadata: Metadata = {
   title: 'مراقب — تتبع ملفات المحاكم المغربية',
   description: 'مراقبة آلية لملفاتكم على mahakim.ma مع تنبيهات فورية عبر واتساب',
-  icons: { icon: '/new_logo.png' },
+  icons: { icon: '/logo.png' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
