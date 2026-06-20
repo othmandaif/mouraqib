@@ -85,7 +85,7 @@ function Brand({ subtitle }: { subtitle: string }) {
   return (
     <div style={{ textAlign: 'center', marginBottom: 36 }}>
       <div style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #E5D9B0', borderRadius: 24, padding: 8, background: '#fff', boxShadow: '0 8px 24px -8px rgba(150,115,20,.3)' }}>
-        <Image src="/new_logo.png" alt="Mouraqib" width={120} height={120} />
+        <Image src="/logo.png" alt="Mouraqib" width={120} height={120} />
       </div>
       <p style={{ color: C.muted, fontSize: 14 }}>{subtitle}</p>
     </div>

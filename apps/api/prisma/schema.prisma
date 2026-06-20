@@ -30,10 +30,12 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  messagesChat MessageChat[]  
+  conversations Conversation[]
   @@index([email])
   @@index([cabinetId])
 }
+
 
 enum UserRole {
   AVOCAT
@@ -83,6 +85,12 @@ model Dossier {
   titreAffaire  String?
   partieAdverse String?
 
+  // ─── Analyse IA (DeepSeek) ───
+  statutIA   StatutDossier @default(INCONNU) // ouvert / en délibéré / clos
+  resumeIA   String?                          // résumé court en arabe
+  analyseIA  Json?                            // { resume, prochainesEcheances[], conseils[] }
+  analyseAt  DateTime?                        // dernière analyse IA (cache anti-rappel)
+
   // Suivi
   estActif       Boolean   @default(true)
   derniereVerif  DateTime?
@@ -104,10 +112,14 @@ model Dossier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  messagesChat MessageChat[] 
+  conversations Conversation[]
+
   @@unique([anneeDossier, codeRole, numeroDossier, tribunal, userId])
   @@index([userId])
   @@index([numeroDossier])
-}
+} 
+
 
 enum TypeProcedure {
   CIVILE
@@ -118,6 +130,14 @@ enum TypeProcedure {
   FAMILLE
   REFERE
 }
+
+enum StatutDossier {
+  OUVERT       // قضية جارية
+  EN_DELIBERE  // حجز للمداولة
+  CLOS         // قضية منتهية / محكوم فيها
+  INCONNU      // غير محدد بعد
+}
+
 
 // ─── ÉVÉNEMENTS PROCÉDURAUX ───────────────────────────────────────────────────
 
@@ -347,4 +367,47 @@ model Tribunal {
 
   @@index([ville])
   @@index([type])
+}
+
+
+
+model MessageChat {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?    @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  role      RoleChat    // USER ou ASSISTANT
+  contenu   String      @db.Text
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+
+  @@index([userId])
+  @@index([dossierId])
+  @@index([conversationId])
+}
+
+enum RoleChat {
+  USER
+  ASSISTANT
+}
+
+
+model Conversation {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  titre     String        @default("محادثة جديدة")
+  messages  MessageChat[]
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId])
 }

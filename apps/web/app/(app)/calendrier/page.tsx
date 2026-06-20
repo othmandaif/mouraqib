@@ -36,6 +36,7 @@ const fmtCourt = (d: Date) => d.toLocaleDateString('ar-MA', { day: 'numeric', mo
 export default function CalendrierPage() {
   const [offset, setOffset] = useState(0)
   const { data, loading, error } = useApi<SemaineData>(`/calendrier/semaine?offset=${offset}`)
+  const { data: ov } = useApi<{ evenements: { semaine: number; evolutionPct: number | null; heatmap: number[] } }>('/dashboard/overview')
   const isMobile = useMediaQuery('(max-width: 768px)')
 
   const debut = data?.debut ? new Date(data.debut) : null
@@ -72,6 +73,18 @@ export default function CalendrierPage() {
   const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0)
   const libelle = offset === 0 ? 'هذا الأسبوع' : offset === 1 ? 'الأسبوع المقبل' : offset === -1 ? 'الأسبوع الماضي' : `${offset > 0 ? '+' : ''}${offset} أسابيع`
 
+  // Mini-heatmap (façon dashboard) — données réelles sur 7 jours glissants
+  const heat = ov?.evenements.heatmap ?? [0, 0, 0, 0, 0, 0, 0]
+  const heatPalArr = ['#F7F1E1', '#EFE6C8', '#F2D7C2', '#E2C77C', '#D9C06A']
+  const heatLevel = (n: number) => (n === 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4)
+  const evtSemaine = ov?.evenements.semaine ?? 0
+  const evolutionPct = ov?.evenements.evolutionPct ?? null
+  const heatJours = (() => {
+    const names = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+    const t = new Date()
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(t); d.setDate(d.getDate() - (6 - i)); return names[d.getDay()] })
+  })()
+
   return (
     <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* En-tête */}
@@ -100,6 +113,39 @@ export default function CalendrierPage() {
           <Legend color={C.goldD} txt="جلسة" /><Legend color={C.goldM} txt="أجل" /><Legend color={C.red} txt="أجل عاجل" />
         </div>
       </div>
+
+      {/* Mini-heatmap (façon dashboard) — activité réelle 7 jours */}
+      {!error && !loading && (
+        <Shell pad={isMobile ? 16 : 20}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.border}`, borderRadius: 10, padding: '6px 11px' }}>
+              <Clock size={13} stroke={C.goldD} />
+              <span style={{ fontSize: 11.5, color: '#7A7461', fontFamily: "'IBM Plex Sans',sans-serif" }}>آخر 7 أيام</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>الأحداث حسب اليوم</h3>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={14} stroke={C.goldD} /></div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              {evolutionPct !== null && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: evolutionPct >= 0 ? C.green : C.red, background: evolutionPct >= 0 ? C.greenBg : C.redBg, borderRadius: 6, padding: '2px 7px' }}>{evolutionPct >= 0 ? '+' : ''}{evolutionPct}%</span>
+              )}
+              <span style={{ fontSize: 10.5, color: C.muted }}>عن الأسبوع الماضي</span>
+            </div>
+            <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 30, fontWeight: 700, color: C.ink }}>{evtSemaine}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {heat.map((v, i) => (
+              <div key={i} title={`${v}`} style={{ flex: 1, height: 40, borderRadius: 8, background: heatPalArr[heatLevel(v)], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: v === 0 ? C.faint : C.ink2, fontFamily: "'IBM Plex Sans',sans-serif" }}>{v > 0 ? v : ''}</div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            {heatJours.map((j, i) => <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10.5, color: C.muted }}>{j}</div>)}
+          </div>
+        </Shell>
+      )}
 
       {error ? (
         <Shell><div style={{ padding: 18, textAlign: 'center' }}><p style={{ color: C.red, fontWeight: 600, fontSize: 14 }}>تعذّر تحميل الأجندة</p></div></Shell>

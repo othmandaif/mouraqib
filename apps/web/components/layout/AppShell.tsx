@@ -6,9 +6,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { ToastProvider } from '@/components/Toast'
-import Image from 'next/image'
 import {
-  Home, FolderOpen, Clock, Bell, Settings, Calendar, Menu, X,
+  Home, FolderOpen, Clock, Bell, Settings, Calendar, Menu, X, Sparkles,
 } from 'lucide-react'
 
 interface AppShellProps { children: React.ReactNode }
@@ -24,7 +23,7 @@ const TABS = [
   { href: '/dashboard', label: 'الرئيسية' },
   { href: '/dossiers', label: 'الملفات' },
   { href: '/echeances', label: 'الآجال' },
-  { href: '/alertes', label: 'التنبيهات' },
+  { href: '/assistant', label: 'المساعد' },
   { href: '/calendrier', label: 'الأجندة' },
 ]
 
@@ -34,6 +33,9 @@ const NAV = [
     { href: '/dossiers', label: 'الملفات', Icon: FolderOpen },
     { href: '/echeances', label: 'الآجال', Icon: Clock },
     { href: '/calendrier', label: 'الأجندة', Icon: Calendar },
+  ] },
+  { section: 'الذكاء الاصطناعي', items: [
+    { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },
   ] },
   { section: 'المتابعة والتقارير', items: [
     { href: '/alertes', label: 'التنبيهات', Icon: Bell },
@@ -90,7 +92,9 @@ export function AppShell({ children }: AppShellProps) {
             {/* brand */}
             <Link href="/dashboard" style={{ textDecoration: 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Image src="/new_logo.png" alt="Mouraqib" width={isMobile ? 38 : 46} height={isMobile ? 38 : 46} style={{ borderRadius: 13 }} />
+                <div style={{ width: isMobile ? 38 : 46, height: isMobile ? 38 : 46, borderRadius: 13, background: 'linear-gradient(145deg,#CBAE55,#9A7820)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px -4px rgba(150,115,20,.6)' }}>
+                  <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v18" /><path d="M7 7h10" /><path d="M5 7 2.5 13a3.5 3.5 0 0 0 5 0L5 7Z" /><path d="M19 7l-2.5 6a3.5 3.5 0 0 0 5 0L19 7Z" /><path d="M8 21h8" /></svg>
+                </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: isMobile ? 17 : 21, fontWeight: 700, color: C.ink, letterSpacing: '.5px' }}>مُراقِب</div>
                   {!isMobile && <div style={{ fontSize: 10.5, color: '#A8895F', letterSpacing: '.5px', fontWeight: 500 }}>مراقبة قضائية ذكية</div>}
@@ -163,17 +167,17 @@ export function AppShell({ children }: AppShellProps) {
 function SideNav({ pathname }: { pathname: string }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
   return (
-    <div style={{ width: 208, flex: 'none', paddingTop: 4 }}>
+    <div dir="rtl" style={{ width: 208, flex: 'none', paddingTop: 4, direction: 'rtl' }}>
       {NAV.map((grp) => (
         <div key={grp.section}>
-          <div style={{ fontSize: 11, color: C.faint, margin: '18px 0 12px', paddingRight: 6 }}>{grp.section}</div>
+          <div style={{ fontSize: 11, color: C.faint, margin: '18px 0 12px', paddingRight: 6, textAlign: 'right' }}>{grp.section}</div>
           {grp.items.map(({ href, label, Icon }) => {
             const active = isActive(href)
             return (
               <Link key={label} href={href} style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '11px 14px', marginBottom: active ? 6 : 2, borderRadius: active ? 13 : 0, background: active ? C.goldChip : 'transparent', cursor: 'pointer' }}>
-                  <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, color: active ? C.ink2 : '#7A7461' }}>{label}</span>
-                  <Icon size={17} stroke={active ? C.goldD : C.faint} strokeWidth={2} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, padding: '11px 14px', marginBottom: active ? 6 : 2, borderRadius: active ? 13 : 0, background: active ? C.goldChip : 'transparent', cursor: 'pointer' }}>
+                  <Icon size={17} stroke={active ? C.goldD : C.faint} strokeWidth={2} style={{ flex: 'none' }} />
+                  <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, color: active ? C.ink2 : '#7A7461', textAlign: 'right' }}>{label}</span>
                 </div>
               </Link>
             )
@@ -209,14 +213,14 @@ function Drawer({ user, initials, pathname, onClose, onLogout }: { user: any; in
         <div style={{ flex: 1 }}>
           {NAV.map((grp) => (
             <div key={grp.section}>
-              <div style={{ fontSize: 11, color: C.faint, margin: '16px 0 10px', paddingRight: 6 }}>{grp.section}</div>
+              <div style={{ fontSize: 11, color: C.faint, margin: '16px 0 10px', paddingRight: 6, textAlign: 'right' }}>{grp.section}</div>
               {grp.items.map(({ href, label, Icon }) => {
                 const active = isActive(href)
                 return (
                   <Link key={label} href={href} onClick={onClose} style={{ textDecoration: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '12px 14px', marginBottom: 2, borderRadius: active ? 13 : 0, background: active ? C.goldChip : 'transparent' }}>
-                      <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? C.ink2 : '#7A7461' }}>{label}</span>
-                      <Icon size={18} stroke={active ? C.goldD : C.faint} strokeWidth={2} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, padding: '12px 14px', marginBottom: 2, borderRadius: active ? 13 : 0, background: active ? C.goldChip : 'transparent' }}>
+                      <Icon size={18} stroke={active ? C.goldD : C.faint} strokeWidth={2} style={{ flex: 'none' }} />
+                      <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? C.ink2 : '#7A7461', textAlign: 'right' }}>{label}</span>
                     </div>
                   </Link>
                 )

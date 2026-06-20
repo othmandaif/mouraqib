@@ -46,7 +46,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
     <aside className="w-60 bg-surface-alt border-l border-border flex flex-col shrink-0">
       <div className="p-6 border-b border-border">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <Image src="/new_logo.png" alt="Mouraqib" width={40} height={40} />
+          <Image src="/logo.png" alt="Mouraqib" width={50} height={50} />
           <div>
             <h1 className="text-2xl font-bold text-primary leading-none">مراقب</h1>
             <p className="text-xs text-text-muted leading-none mt-0.5">Mouraqib</p>

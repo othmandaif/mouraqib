@@ -1,12 +1,14 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ArrowRight, RefreshCw, CheckCircle2, Clock, AlertTriangle, Activity } from 'lucide-react'
+import { ArrowRight, RefreshCw, CheckCircle2, Clock, AlertTriangle, Activity, Sparkles, Archive, ArchiveRestore } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
 import { apiFetch } from '@/lib/api'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useTribunaux } from '@/hooks/useTribunaux'
+import { labelProcedure } from '@/lib/labels'
 
 interface Evenement {
   id: string
@@ -30,6 +32,10 @@ interface DossierDetail {
   tribunal: string
   titreAffaire?: string
   typeProcedure: string
+  estActif?: boolean
+  statutIA?: string
+  resumeIA?: string | null
+  analyseAt?: string | null
   evenements: Evenement[]
   echeances: Echeance[]
   rawData?: {
@@ -43,7 +49,7 @@ interface DossierDetail {
 
 const C = {
   card: '#fff', ink: '#2C2A24', ink2: '#3A3322', label: '#5B5544', muted: '#A39C8B', faint: '#BDB6A4',
-  goldD: '#9A7820', goldM: '#CBAE55', goldChip: '#F4EFDF', green: '#3F9E6B', greenBg: '#E6F3EB',
+  goldD: '#9A7820', goldM: '#CBAE55', goldChip: '#F4EFDF', goldSubtle: '#FBF6E7', green: '#3F9E6B', greenBg: '#E6F3EB',
   red: '#DB6A52', redBg: '#FCE8E2', warn: '#B8860B', warnBg: '#FBF6E9', border: '#EEE7D6', surfaceAlt: '#F4EFDF',
 }
 const val = (s?: string) => (s && s.trim() ? s.trim() : '—')
@@ -53,6 +59,9 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
   const { id } = use(params)
   const { data: dossier, loading, refetch } = useApi<DossierDetail>(`/dossiers/${id}`)
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const { tribunalAr } = useTribunaux()
+  const [analyse, setAnalyse] = useState<any>(null)
+  const [analysing, setAnalysing] = useState(false)
 
   const handleComplete = async (echeanceId: string) => {
     await apiFetch(`/echeances/${echeanceId}/complete`, { method: 'PATCH' }).catch(() => {})
@@ -61,6 +70,26 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
   const handleScrape = async () => {
     await apiFetch(`/dossiers/${id}/scraper`, { method: 'POST' }).catch(() => {})
     refetch()
+  }
+  const handleArchiver = async () => {
+    const estArchive = dossier?.estActif === false
+    await apiFetch(`/dossiers/${id}/${estArchive ? 'restaurer' : 'archiver'}`, { method: 'PATCH' }).catch(() => {})
+    refetch()
+  }
+  const handleAnalyser = async () => {
+    setAnalysing(true)
+    try {
+      const res = await apiFetch<any>(`/assistant/dossiers/${id}/analyser`, {
+        method: 'POST',
+        body: JSON.stringify({ force: true }),
+      })
+      setAnalyse(res)
+      refetch()
+    } catch {
+      // erreur silencieuse : la carte garde le résumé existant
+    } finally {
+      setAnalysing(false)
+    }
   }
 
   if (loading) {
@@ -100,17 +129,81 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
               {dossier.numeroDossier}
             </h1>
             <p style={{ fontSize: 13.5, color: C.ink2, marginTop: 6 }}>
-              {dossier.tribunal}
+              {tribunalAr(dossier.tribunal)}
               <span style={{ color: C.faint, margin: '0 8px' }}>·</span>
-              {dossier.typeProcedure}
+              {labelProcedure(dossier.typeProcedure)}
             </p>
             {dossier.titreAffaire && <p style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{dossier.titreAffaire}</p>}
           </div>
-          <button onClick={handleScrape} style={{ display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${C.border}`, background: '#fff', borderRadius: 11, padding: '9px 15px', fontSize: 13, fontWeight: 600, color: C.ink, cursor: 'pointer' }}>
-            <RefreshCw size={14} stroke={C.goldD} />
-            تحديث
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={handleScrape} style={{ display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${C.border}`, background: '#fff', borderRadius: 11, padding: '9px 15px', fontSize: 13, fontWeight: 600, color: C.ink, cursor: 'pointer' }}>
+              <RefreshCw size={14} stroke={C.goldD} />
+              تحديث
+            </button>
+            <button onClick={handleArchiver} style={{ display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${C.border}`, background: '#fff', borderRadius: 11, padding: '9px 15px', fontSize: 13, fontWeight: 600, color: C.ink, cursor: 'pointer' }}>
+              {dossier.estActif === false ? <ArchiveRestore size={14} stroke={C.green} /> : <Archive size={14} stroke={C.goldD} />}
+              {dossier.estActif === false ? 'استرجاع' : 'أرشفة'}
+            </button>
+          </div>
         </div>
+      </CardShell>
+
+      {/* Analyse IA : statut + résumé */}
+      <CardShell>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <button onClick={handleAnalyser} disabled={analysing} style={{ display: 'flex', alignItems: 'center', gap: 6, border: `1px solid ${C.border}`, background: '#fff', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: analysing ? 'default' : 'pointer' }}>
+              <Sparkles size={13} stroke={C.goldD} style={analysing ? { animation: 'spin 1s linear infinite' } : undefined} />
+              {analysing ? 'جارٍ التحليل...' : dossier.resumeIA ? 'إعادة التحليل' : 'تحليل بالذكاء الاصطناعي'}
+            </button>
+            <StatutBadge statut={analyse?.statut ?? dossier.statutIA} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>التحليل القانوني</h3>
+            <div style={{ width: 30, height: 30, borderRadius: 9, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles size={15} stroke={C.goldD} />
+            </div>
+          </div>
+        </div>
+        {(analyse?.resume || dossier.resumeIA) ? (
+          <p style={{ fontSize: 14, color: C.ink2, lineHeight: 1.9, textAlign: 'right' }}>{analyse?.resume || dossier.resumeIA}</p>
+        ) : (
+          <p style={{ fontSize: 13, color: C.muted, textAlign: 'right' }}>
+            لم يتم تحليل هذا الملف بعد. اضغط «تحليل بالذكاء الاصطناعي» أو انتظر التحديث القادم.
+          </p>
+        )}
+
+        {/* Prochaines échéances probables + conseils (analyse complète) */}
+        {analyse && (Array.isArray(analyse.prochainesEcheances) && analyse.prochainesEcheances.length > 0 || Array.isArray(analyse.conseils) && analyse.conseils.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginTop: 16 }}>
+            {Array.isArray(analyse.prochainesEcheances) && analyse.prochainesEcheances.length > 0 && (
+              <div style={{ background: C.goldSubtle, borderRadius: 12, padding: 14 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink2, marginBottom: 8, textAlign: 'right' }}>آجال محتملة</p>
+                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {analyse.prochainesEcheances.map((e: string, i: number) => (
+                    <li key={i} style={{ fontSize: 13, color: C.ink2, textAlign: 'right', lineHeight: 1.7 }}>• {e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(analyse.conseils) && analyse.conseils.length > 0 && (
+              <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink2, marginBottom: 8, textAlign: 'right' }}>نصائح إجرائية</p>
+                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {analyse.conseils.map((c: string, i: number) => (
+                    <li key={i} style={{ fontSize: 13, color: C.ink2, textAlign: 'right', lineHeight: 1.7 }}>• {c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        <p style={{ fontSize: 11, color: C.faint, marginTop: 12, textAlign: 'right' }}>
+          تحليل آلي إرشادي بالذكاء الاصطناعي، لا يغني عن مراجعة الوثائق الأصلية.
+          {dossier.analyseAt ? ` · آخر تحليل: ${new Date(dossier.analyseAt).toLocaleDateString('fr-MA')}` : ''}
+        </p>
+        <style>{`@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
       </CardShell>
 
       {/* Échéances */}
@@ -219,27 +312,50 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
 
       {/* لائحة الإجراءات (historique) */}
       <CardShell>
-        <SectionTitle icon={<Activity size={15} stroke={C.goldD} />} title="لائحة الإجراءات" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <span style={{ fontSize: 12, color: C.muted }}>{dossier.evenements.length} إجراء</span>
+          <SectionTitle icon={<Activity size={15} stroke={C.goldD} />} title="لائحة الإجراءات" noMargin />
+        </div>
         {dossier.evenements.length === 0 ? (
           <p style={{ padding: '24px 0', textAlign: 'center', color: C.muted, fontSize: 13 }}>لا توجد إجراءات مسجّلة بعد</p>
         ) : (
-          <div style={{ position: 'relative', paddingRight: 4 }}>
-            <div style={{ position: 'absolute', right: 11, top: 6, bottom: 6, width: 1, background: C.border }} />
-            <div>
-              {dossier.evenements.map((ev, i) => (
-                <motion.div key={ev.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                  style={{ position: 'relative', paddingRight: 28, paddingBottom: 18, ...(ev.estNouvel ? { background: '#FBF6E7', margin: '0 -8px', padding: '8px 8px 18px 8px', borderRadius: 8 } : {}) }}>
-                  <div style={{ position: 'absolute', right: 5, top: 6, width: 13, height: 13, borderRadius: '50%', border: `2px solid ${ev.estNouvel ? C.goldD : C.border}`, background: '#fff' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, justifyContent: 'flex-end' }}>
-                    {ev.estNouvel && <span style={{ fontSize: 10, fontWeight: 700, color: C.goldD }}>جديد</span>}
-                    <span dir="ltr" style={{ fontSize: 12, fontWeight: 600, color: C.ink2, fontFamily: "'IBM Plex Sans',sans-serif" }}>
-                      {new Date(ev.datePublicationGreffe).toLocaleDateString('fr-MA')}
-                      {ev.dateAudience ? ` — ${new Date(ev.dateAudience).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: 14, color: C.ink, textAlign: 'right' }}>{ev.texteArabe}</p>
-                </motion.div>
-              ))}
+          <div style={{ position: 'relative', paddingRight: 18 }}>
+            {/* ligne verticale */}
+            <div style={{ position: 'absolute', right: 6, top: 8, bottom: 8, width: 2, background: `linear-gradient(${C.goldM}, ${C.border})`, borderRadius: 2 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {dossier.evenements.map((ev, i) => {
+                const estAudience = !!ev.dateAudience
+                return (
+                  <motion.div key={ev.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                    style={{ position: 'relative' }}>
+                    {/* puce sur la ligne */}
+                    <div style={{ position: 'absolute', right: -17, top: 16, width: 14, height: 14, borderRadius: '50%', background: '#fff', border: `3px solid ${ev.estNouvel ? C.goldD : estAudience ? C.green : C.faint}`, boxShadow: '0 0 0 3px #fff', zIndex: 1 }} />
+                    {/* carte événement */}
+                    <div style={{
+                      background: ev.estNouvel ? '#FBF6E7' : '#fff',
+                      border: `1px solid ${ev.estNouvel ? C.goldM + '66' : C.border}`,
+                      borderRadius: 14, padding: '13px 16px',
+                      boxShadow: ev.estNouvel ? '0 6px 18px -10px rgba(154,120,32,.35)' : '0 4px 14px -10px rgba(110,90,30,.3)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        {ev.estNouvel && <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: C.goldD, borderRadius: 6, padding: '2px 8px' }}>جديد</span>}
+                        {estAudience && <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenBg, borderRadius: 6, padding: '2px 8px' }}>جلسة</span>}
+                        <span dir="ltr" style={{ fontSize: 12, fontWeight: 600, color: C.ink2, fontFamily: "'IBM Plex Sans',sans-serif", background: C.goldChip, borderRadius: 6, padding: '3px 9px' }}>
+                          {new Date(ev.datePublicationGreffe).toLocaleDateString('fr-MA')}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 14, color: C.ink, textAlign: 'right', lineHeight: 1.8 }}>{ev.texteArabe}</p>
+                      {estAudience && (
+                        <p style={{ fontSize: 12, color: C.green, textAlign: 'right', marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
+                          <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>{new Date(ev.dateAudience!).toLocaleDateString('fr-MA')}</span>
+                          موعد الجلسة:
+                          <Clock size={12} stroke={C.green} />
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -249,13 +365,26 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
 }
 
 /* helpers */
+function StatutBadge({ statut }: { statut?: string }) {
+  const map: Record<string, { label: string; color: string; bg: string }> = {
+    OUVERT: { label: 'قضية جارية', color: C.green, bg: C.greenBg },
+    EN_DELIBERE: { label: 'حجز للمداولة', color: C.warn, bg: C.warnBg },
+    CLOS: { label: 'قضية منتهية', color: C.muted, bg: '#F2EFE8' },
+    INCONNU: { label: 'غير محدّد', color: C.muted, bg: '#F2EFE8' },
+  }
+  const s = map[statut ?? 'INCONNU'] ?? map.INCONNU
+  return (
+    <span style={{ fontSize: 12, fontWeight: 600, color: s.color, background: s.bg, borderRadius: 8, padding: '5px 12px' }}>{s.label}</span>
+  )
+}
+
 function CardShell({ children }: { children: React.ReactNode }) {
   return <div style={{ background: C.card, borderRadius: 22, padding: '22px 24px', boxShadow: '0 14px 34px -22px rgba(110,90,30,.4)' }}>{children}</div>
 }
 
-function SectionTitle({ title, icon }: { title: string; icon?: React.ReactNode }) {
+function SectionTitle({ title, icon, noMargin }: { title: string; icon?: React.ReactNode; noMargin?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifyContent: 'flex-end', marginBottom: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifyContent: 'flex-end', marginBottom: noMargin ? 0 : 16 }}>
       <h3 style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{title}</h3>
       {icon && <div style={{ width: 30, height: 30, borderRadius: 9, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>}
     </div>

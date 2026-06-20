@@ -8,18 +8,23 @@ const prisma = new Prisma.PrismaClient()
 const CONFIG = {
   // Application Angular en hash-routing : l'URL complète recharge directement la bonne vue
   SEARCH_URL: 'https://www.mahakim.ma/#/suivi/dossier-suivi',
-  DELAY_MS: 300,
+  DELAY_MS: 150,
   TIMEOUT_MS: 30000,
   USER_AGENT: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   // Active les screenshots de debug uniquement si la variable d'env est définie.
   DEBUG: !!process.env.SCRAPER_DEBUG,
   // headless contrôlable par env (par défaut true = rapide). Mettre SCRAPER_HEADLESS=false pour debugger visuellement.
   HEADLESS: process.env.SCRAPER_HEADLESS !== 'false',
+  // Nombre de tentatives complètes par dossier (réseau, Angular non chargé, etc.)
+  MAX_TENTATIVES: 3,
+  // Dossiers traités en parallèle dans scraperTousDossiers (rester poli : 2-3 max).
+  CONCURRENCE: 2,
 }
 
 // Ressources inutiles au scraping (le DOM HTML suffit pour cheerio).
 // Bloquer images/fonts/media/CSS/analytics divise le temps de chargement.
-const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font'])
+// ⚠️ Ne JAMAIS bloquer 'script' ni 'xhr'/'fetch' : Angular + AJAX chargent لائحة الإجراءات.
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font', 'stylesheet'])
 const BLOCKED_URL_FRAGMENTS = [
   'google-analytics', 'googletagmanager', 'gtag', 'doubleclick',
   'facebook', 'hotjar', 'clarity.ms', '.woff', '.woff2', '.ttf',
@@ -144,11 +149,45 @@ export class MahakimScraper {
   }
 
   /**
+   * Scrape un dossier avec retry complet (réseau, Angular non chargé, page sale…).
    * @param numeroDossier format "annee/code/numero", ex: "2023/1501/5697"
-   * @param courAppel nom exact de la cour d'appel (ex: "محكمة الاستئناف بالدار البيضاء")
+   * @param courAppel nom exact de la cour d'appel
    * @param tribunalPrimaire optionnel — nom exact du tribunal de première instance
    */
   async scrapeDossier(
+    numeroDossier: string,
+    courAppel: string,
+    tribunalPrimaire?: string,
+  ): Promise<DossierData | null> {
+    let derniereErreur: unknown
+    for (let tentative = 1; tentative <= CONFIG.MAX_TENTATIVES; tentative++) {
+      try {
+        const data = await this.scrapeDossierUneFois(numeroDossier, courAppel, tribunalPrimaire)
+        // Succès "complet" = au moins la carte d'identité OU des événements.
+        if (data && (Object.keys(data.infosCarte).length > 0 || data.evenements.length > 0)) {
+          return data
+        }
+        // null = dossier introuvable CONFIRMÉ par le portail → pas de retry inutile.
+        if (data === null) {
+          logger.info(`Scrape ${numeroDossier} : aucun résultat (arrêt sans retry)`)
+          return null
+        }
+        // data tronqué (sans infos ni événements) : on l'accepte dès la 2e tentative.
+        if (tentative >= 2) return data
+        logger.warn(`Scrape ${numeroDossier} incomplet (tentative ${tentative}/${CONFIG.MAX_TENTATIVES})`)
+      } catch (err) {
+        derniereErreur = err
+        logger.warn(`Scrape ${numeroDossier} échoué (tentative ${tentative}/${CONFIG.MAX_TENTATIVES}):`, err)
+        await this.ensureBrowser() // le browser a peut-être crashé
+      }
+      if (tentative < CONFIG.MAX_TENTATIVES) await sleep(tentative * 1000) // backoff 1s, 2s
+    }
+    logger.error(`Scrape ${numeroDossier} abandonné après ${CONFIG.MAX_TENTATIVES} tentatives`, derniereErreur)
+    return null
+  }
+
+  /** Une seule tentative de scraping (ouvre/ferme une page). */
+  private async scrapeDossierUneFois(
     numeroDossier: string,
     courAppel: string,
     tribunalPrimaire?: string,
@@ -204,14 +243,18 @@ export class MahakimScraper {
       await this.takeDebugScreenshot(page, numeroDossier, '04-after-ca-select')
 
       if (tribunalPrimaire) {
-        const checkboxBox = page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] .p-checkbox-box')
-        if (await checkboxBox.count() > 0) {
-          await checkboxBox.click().catch(() => {})
-        } else {
-          await page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] input[type="checkbox"]').click({ force: true }).catch(() => {})
+        // Cocher "هل تريد البحث بالمحاكم الابتدائية" — robuste : on tente plusieurs
+        // façons de localiser la case (formcontrolname, label texte, p-checkbox proche).
+        const coche = await cocherCaseTribunauxPrimaires(page)
+        if (!coche) {
+          logger.warn(`Impossible de cocher 'البحث بالمحاكم الابتدائية' pour ${numeroDossier}`)
         }
-        // Attendre que le 2e dropdown apparaisse plutôt qu'un délai fixe
-        await page.locator('p-dropdown[formcontrolname="tribunaux_primaires"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+
+        // Attendre que le 2e dropdown apparaisse (preuve que la case est bien cochée).
+        const dd2 = page.locator('p-dropdown[formcontrolname="tribunaux_primaires"], p-dropdown[ng-reflect-name="tribunaux_primaires"]')
+        await dd2.first().waitFor({ state: 'visible', timeout: 6000 }).catch(() => {
+          logger.warn(`2e dropdown (tribunaux primaires) non apparu pour ${numeroDossier}`)
+        })
         await selectPrimeDropdown(page, tribunalPrimaire)
         await this.takeDebugScreenshot(page, numeroDossier, '05-after-tp-select')
       }
@@ -227,52 +270,102 @@ export class MahakimScraper {
       }
 
       // Attendre soit le résultat, soit le message "aucun résultat".
-      // Promise.race évite d'attendre 30s quand le dossier n'existe pas.
-      const resultFound = await Promise.race([
-        page.waitForSelector('app-resultat-normal', { timeout: CONFIG.TIMEOUT_MS }).then(() => true).catch(() => false),
-        page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: CONFIG.TIMEOUT_MS }).then(() => false).catch(() => false),
+      // Promise.race renvoie : 'found' | 'empty' | 'timeout'.
+      const issue = await Promise.race([
+        page.waitForSelector('app-resultat-normal', { timeout: CONFIG.TIMEOUT_MS }).then(() => 'found' as const).catch(() => 'timeout' as const),
+        page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: CONFIG.TIMEOUT_MS }).then(() => 'empty' as const).catch(() => 'timeout' as const),
       ])
 
+      // CAS 1 — "aucun résultat" confirmé par le portail : dossier introuvable.
+      // Ce n'est PAS une erreur : on renvoie null sans retry inutile.
+      if (issue === 'empty') {
+        logger.info(`Aucun résultat (dossier introuvable) pour ${numeroDossier}`)
+        await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
+        return null
+      }
+
+      let resultFound = issue === 'found'
+
       if (!resultFound) {
-        logger.warn(`Aucun résultat pour ${numeroDossier} — nouvelle tentative`)
+        // CAS 2 — ni résultat ni message clair : possible lenteur → une 2e tentative.
+        logger.warn(`Aucun résultat clair pour ${numeroDossier} — nouvelle tentative de soumission`)
         if (await submitBtn.count() > 0) {
           await submitBtn.first().click({ force: true, timeout: 5000 }).catch(() => {})
         }
-        const retry = await page.waitForSelector('app-resultat-normal', { timeout: 20000 }).then(() => true).catch(() => false)
-        if (!retry) {
-          logger.warn(`Aucun sélecteur de résultat trouvé pour ${numeroDossier}`)
+        const retry = await Promise.race([
+          page.waitForSelector('app-resultat-normal', { timeout: 20000 }).then(() => 'found' as const).catch(() => 'timeout' as const),
+          page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: 20000 }).then(() => 'empty' as const).catch(() => 'timeout' as const),
+        ])
+        if (retry === 'empty') {
+          logger.info(`Aucun résultat (dossier introuvable) pour ${numeroDossier}`)
           await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
-          // On parse quand même : si la page contient "aucun résultat" on renverra des tables vides
-          const html = await page.content()
-          const data = this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
-          const aQuelqueChose = data.evenements.length || data.parties.length || Object.keys(data.infosCarte).length
-          return aQuelqueChose ? data : null
+          return null
+        }
+        resultFound = retry === 'found'
+        if (!resultFound) {
+          // CAS 3 — toujours rien : échec technique. On lève pour déclencher le retry global.
+          await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
+          throw new Error(`Aucun résultat ni message d'absence pour ${numeroDossier} (échec technique)`)
         }
       }
 
-      // S'assurer que le contenu est réellement rendu avant de lire le DOM.
-      // 1) La carte d'identité (.cm-child-dossier) confirme que le dossier est chargé.
+      // ── Rendu fiable du contenu avant lecture du DOM ──
+      // 1) carte d'identité = dossier chargé
       await page.waitForSelector('.cm-child-dossier', { timeout: 8000 }).catch(() => {})
-      // 2) La barre d'onglets PrimeNG est présente.
-      await page.waitForSelector('p-tabview a[role="tab"]', { timeout: 5000 }).catch(() => {})
-      // 3) Le tableau du 1er onglet (لائحة الإجراءات) a au moins une ligne — c'est
-      //    ce qui manquait : on lisait le HTML avant que le tbody soit peuplé.
+      // 2) barre d'onglets PrimeNG
+      await page.waitForSelector('p-tabview a[role="tab"]', { timeout: 6000 }).catch(() => {})
+
+      // 3) Forcer le rendu de لائحة الإجراءات : cliquer son onglet (PrimeNG lazy-render)
+      const tabProc = page.locator('a[role="tab"]', { hasText: 'لائحة الإجراءات' })
+      if (await tabProc.count() > 0) {
+        await tabProc.first().click({ timeout: 4000 }).catch(() => {})
+      }
+
+      // 4) Attendre que le PANNEAU de لائحة الإجراءات ait des lignes, OU "لا توجد".
+      //    Signal fiable de fin de chargement AJAX (et pas n'importe quel tbody).
       await page.waitForFunction(
         `(() => {
-          var panel = document.querySelector('p-tabview .p-tabview-panels');
+          var tabs = Array.prototype.slice.call(document.querySelectorAll('a[role="tab"]'));
+          var tab = tabs.find(function(t){ return (t.textContent||'').replace(/\\s+/g,' ').trim() === 'لائحة الإجراءات'; });
+          if (!tab) return false;
+          var panelId = tab.getAttribute('aria-controls');
+          var panel = panelId ? document.getElementById(panelId) : null;
           if (!panel) return false;
-          // au moins une ligne de données dans n'importe quel onglet
-          return panel.querySelectorAll('tbody tr').length > 0;
+          var rows = panel.querySelectorAll('tbody tr');
+          var txt = panel.textContent || '';
+          return rows.length > 0 || /لا توجد/.test(txt);
         })()`,
-        { timeout: 8000 },
+        { timeout: 12000, polling: 400 },
       ).catch(() => {})
+      await sleep(250)
       await this.takeDebugScreenshot(page, numeroDossier, '08-result-found')
 
-      const html = await page.content()
-      return this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
+      let html = await page.content()
+      let parsed2 = this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
+
+      // 5) Retry de RENDU : dossier chargé mais procédures vides → re-clic + ré-attente.
+      if (parsed2.evenements.length === 0 && Object.keys(parsed2.infosCarte).length > 0) {
+        logger.warn(`لائحة الإجراءات vide pour ${numeroDossier} — re-render`)
+        const tabProc2 = page.locator('a[role="tab"]', { hasText: 'لائحة الإجراءات' })
+        if (await tabProc2.count() > 0) await tabProc2.first().click({ timeout: 4000 }).catch(() => {})
+        await page.waitForFunction(
+          `(() => {
+            var tabs = Array.prototype.slice.call(document.querySelectorAll('a[role="tab"]'));
+            var tab = tabs.find(function(t){ return (t.textContent||'').replace(/\\s+/g,' ').trim() === 'لائحة الإجراءات'; });
+            if (!tab) return false;
+            var panel = document.getElementById(tab.getAttribute('aria-controls'));
+            return !!panel && (panel.querySelectorAll('tbody tr').length > 0 || /لا توجد/.test(panel.textContent||''));
+          })()`,
+          { timeout: 8000, polling: 400 },
+        ).catch(() => {})
+        html = await page.content()
+        parsed2 = this.parseHtml(html, numeroDossier, tribunalPrimaire ?? courAppel)
+      }
+
+      return parsed2
     } catch (error) {
       logger.error(`Erreur scraping dossier ${numeroDossier}:`, error)
-      return null
+      throw error // propagé pour déclencher le retry global
     } finally {
       await page.close().catch(() => {})
       await sleep(CONFIG.DELAY_MS)
@@ -297,9 +390,6 @@ export class MahakimScraper {
     const titreAffaire = infosCarte['الموضوع'] || infosCarte['نوع الملف'] || undefined
 
     // Retrouve le PANNEAU d'un onglet par le texte de son label.
-    // PrimeNG : <a role="tab" aria-controls="p-tabpanel-XX"><span>TEXTE</span></a>
-    //           <div id="p-tabpanel-XX" aria-labelledby="p-tabpanel-XX-label">…</div>
-    // Beaucoup plus robuste que de deviner par en-têtes de colonnes.
     const panelByTabText = (tabText: string): cheerio.Cheerio<any> => {
       let panelId: string | undefined
       $('a[role="tab"]').each((_, a) => {
@@ -309,7 +399,6 @@ export class MahakimScraper {
         const byId = $(`#${panelId}`)
         if (byId.length) return byId
       }
-      // Fallback : par aria-labelledby si l'id direct est introuvable
       let labelId: string | undefined
       $('a[role="tab"]').each((_, a) => {
         if (clean($(a).text()) === tabText) labelId = $(a).attr('id')
@@ -357,7 +446,6 @@ export class MahakimScraper {
     const expVide = panelExp.find('td').text().includes('لا توجد خبرات')
     if (!expVide) {
       panelExp.find('tbody tr').each((_, tr) => {
-        // ignorer une éventuelle ligne "no data"
         if ($(tr).find('img[alt="image no_data"]').length) return
         const txt = clean($(tr).text())
         if (txt) expertises.push(txt)
@@ -416,22 +504,26 @@ export class MahakimScraper {
 
     logger.info(`Scraping de ${dossiers.length} dossiers pour userId=${userId}`)
 
-    for (const dossier of dossiers) {
-      try {
-        const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
-        const data = await this.scrapeDossier(dossier.numeroDossier, courAppel, tribunalPrimaire)
-        if (!data) continue
+    // Traitement par lots de CONFIG.CONCURRENCE (pages parallèles du même contexte).
+    for (let i = 0; i < dossiers.length; i += CONFIG.CONCURRENCE) {
+      const lot = dossiers.slice(i, i + CONFIG.CONCURRENCE)
+      await Promise.all(lot.map(async (dossier) => {
+        try {
+          const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
+          const data = await this.scrapeDossier(dossier.numeroDossier, courAppel, tribunalPrimaire)
+          if (!data) return
 
-        const dernierDate = dossier.evenements[0]?.datePublicationGreffe
-        await this.sauvegarderNouveaux(dossier.id, data.evenements, dernierDate)
+          const dernierDate = dossier.evenements[0]?.datePublicationGreffe
+          await this.sauvegarderNouveaux(dossier.id, data.evenements, dernierDate)
 
-        await prisma.dossier.update({
-          where: { id: dossier.id },
-          data: { derniereVerif: new Date() },
-        })
-      } catch (error) {
-        logger.error(`Erreur traitement dossier ${dossier.numeroDossier}:`, error)
-      }
+          await prisma.dossier.update({
+            where: { id: dossier.id },
+            data: { derniereVerif: new Date() },
+          })
+        } catch (error) {
+          logger.error(`Erreur traitement dossier ${dossier.numeroDossier}:`, error)
+        }
+      }))
     }
   }
 
@@ -462,10 +554,82 @@ export class MahakimScraper {
 }
 
 /**
- * Ouvre un p-dropdown PrimeNG et sélectionne l'option par texte.
- * Inchangé fonctionnellement ; seuls les délais fixes ont été resserrés.
+ * Coche la case "هل تريد البحث بالمحاكم الابتدائية".
+ * Essaie plusieurs façons de la localiser car le formcontrolname n'est pas fiable.
+ * Retourne true si la case est cochée (vérifié), false sinon.
  */
-async function selectPrimeDropdown(page: Page, optionText: string): Promise<void> {
+async function cocherCaseTribunauxPrimaires(page: Page): Promise<boolean> {
+  const LABEL = 'البحث بالمحاكم الابتدائية' // fragment du label (sans "هل تريد")
+
+  // Vérifie si une p-checkbox est cochée (classe p-highlight de PrimeNG).
+  const estCochee = async (): Promise<boolean> => {
+    return await page.evaluate(() => {
+      const d = (globalThis as any).document
+      const boxes = Array.from(d.querySelectorAll('p-checkbox, .p-checkbox')) as any[]
+      for (const b of boxes) {
+        const box = b.querySelector('.p-checkbox-box') || b
+        if (box && box.classList.contains('p-highlight')) return true
+      }
+      const inp = d.querySelector('input[type="checkbox"]:checked')
+      return !!inp
+    }).catch(() => false)
+  }
+
+  if (await estCochee()) return true
+
+  // Stratégie 1 — par formcontrolname (si présent)
+  const byFc = page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] .p-checkbox-box, p-checkbox[ng-reflect-name="si_tribunaux_primaires"] .p-checkbox-box').first()
+  if (await byFc.count() > 0) {
+    await byFc.click({ timeout: 3000 }).catch(() => {})
+    if (await estCochee()) return true
+  }
+
+  // Stratégie 2 — par le LABEL texte : trouver le label puis cliquer la checkbox associée.
+  //   <label ...>هل تريد البحث بالمحاكم الابتدائية</label> est souvent à côté de la p-checkbox.
+  const labelLoc = page.locator(`label:has-text("${LABEL}"), span:has-text("${LABEL}")`).first()
+  if (await labelLoc.count() > 0) {
+    // a) cliquer le label lui-même (souvent lié à la case)
+    await labelLoc.click({ timeout: 3000 }).catch(() => {})
+    if (await estCochee()) return true
+    // b) cliquer la p-checkbox la plus proche du label
+    const clicked = await page.evaluate((frag: string) => {
+      const d = (globalThis as any).document
+      const norm = (s: string) => (s || '').replace(/\s+/g, ' ').trim()
+      const nodes = Array.from(d.querySelectorAll('label, span, div')) as any[]
+      const lab = nodes.find((n) => norm(n.textContent || '').includes(frag))
+      if (!lab) return false
+      let container: any = lab
+      for (let i = 0; i < 4 && container; i++) {
+        const cb = container.querySelector('.p-checkbox-box, p-checkbox .p-checkbox-box, input[type="checkbox"]')
+        if (cb) { cb.click(); return true }
+        container = container.parentElement
+      }
+      return false
+    }, LABEL).catch(() => false)
+    if (clicked && await estCochee()) return true
+  }
+
+  // Stratégie 3 — input natif forcé
+  const nativeInp = page.locator('p-checkbox[formcontrolname="si_tribunaux_primaires"] input[type="checkbox"], input[type="checkbox"]').first()
+  if (await nativeInp.count() > 0) {
+    await nativeInp.click({ force: true, timeout: 3000 }).catch(() => {})
+    if (await estCochee()) return true
+  }
+
+  // Stratégie 4 — la 1ère p-checkbox visible de la page (dernier recours)
+  const anyBox = page.locator('p-checkbox .p-checkbox-box').first()
+  if (await anyBox.count() > 0) {
+    await anyBox.click({ timeout: 3000 }).catch(() => {})
+    if (await estCochee()) return true
+  }
+
+  return false
+}
+
+/**
+ * Ouvre un p-dropdown PrimeNG et sélectionne l'option par texte.
+ */
+async function selectPrimeDropdown(page: Page, optionText: string): Promise<boolean> {
   const isCA = optionText.includes('محكمة الاستئناف')
   const isTP = optionText.includes('المحكمة الابتدائية')
   const formcontrol = isTP ? 'tribunaux_primaires' : isCA ? 'tribunal' : null
@@ -487,46 +651,68 @@ async function selectPrimeDropdown(page: Page, optionText: string): Promise<void
     pDropdown = page.locator('p-dropdown').filter({ has: page.locator('input[role="combobox"]') }).last()
     if (await pDropdown.count() === 0) {
       logger.warn(`Aucun p-dropdown trouvé pour: ${optionText}`)
-      return
+      return false
     }
   }
 
   const panelOpened = await openDropdownPanel(page, pDropdown, placeholderFragment ?? '')
   if (!panelOpened) {
     logger.warn(`Impossible d'ouvrir le dropdown pour: ${optionText}`)
-    return
+    return false
   }
 
+  // Attendre qu'au moins une option soit rendue dans le panneau.
   try {
     await page.waitForSelector('.p-dropdown-item, li[role="option"]', { timeout: 8000 })
   } catch {
     logger.warn(`Aucun item trouvé dans le panneau pour: ${optionText}`)
+    return false
   }
 
-  // 1) Sélection par hasText
-  try {
-    const option = page.locator('.p-dropdown-item, li[role="option"]', { hasText: optionText }).first()
-    await option.waitFor({ state: 'visible', timeout: 3000 })
-    await option.click()
-    return
-  } catch {
-    logger.warn(`Option non trouvée par hasText: ${optionText}`)
-  }
-
-  // 2) Fallback : evaluate normalisé
+  // Sélection par ÉGALITÉ EXACTE du texte (pas de filtre, pas de correspondance
+  // partielle) pour ne JAMAIS sélectionner un tribunal au nom voisin.
+  // On normalise uniquement les espaces/caractères invisibles, pas les lettres.
   const found = await page.evaluate(new Function('text', `
-    var norm = function(s) { return s.replace(/\\s+/g, ' ').trim(); };
-    var items = document.querySelectorAll('.p-dropdown-item, li[role="option"]');
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].textContent && norm(items[i].textContent) === norm(text)) {
-        items[i].click();
-        return true;
+    return (async function() {
+      var norm = function(s) {
+        return (s || '')
+          .replace(/[\\u00A0\\u200B-\\u200F\\u202A-\\u202E]/g, ' ') // espaces invisibles
+          .replace(/\\s+/g, ' ')
+          .trim();
+      };
+      var target = norm(text);
+      var panel = document.querySelector('.p-dropdown-panel');
+      var scroller = panel ? (panel.querySelector('.p-dropdown-items-wrapper') || panel) : null;
+
+      var tryClick = function() {
+        var items = document.querySelectorAll('.p-dropdown-item, li[role="option"]');
+        for (var i = 0; i < items.length; i++) {
+          if (norm(items[i].textContent) === target) {   // ÉGALITÉ STRICTE
+            items[i].scrollIntoView({ block: 'center' });
+            items[i].click();
+            return true;
+          }
+        }
+        return false;
+      };
+
+      if (tryClick()) return true;
+
+      // Liste virtualisée : scroller progressivement pour charger toutes les options,
+      // puis retenter l'égalité exacte à chaque palier.
+      if (scroller) {
+        for (var s = 0; s < 40; s++) {
+          scroller.scrollTop = s * 180;
+          await new Promise(function(r){ setTimeout(r, 60); });
+          if (tryClick()) return true;
+        }
       }
-    }
-    return false;
+      return false;
+    })();
   `) as any, optionText)
 
-  if (!found) logger.warn(`Impossible de sélectionner l'option: ${optionText}`)
+  if (!found) logger.warn(`Option exacte introuvable dans le dropdown: ${optionText}`)
+  return found as boolean
 }
 
 async function openDropdownPanel(page: Page, pDropdown: Locator, placeholderFragment: string): Promise<boolean> {

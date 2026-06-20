@@ -8,7 +8,8 @@ import dashboardRouter from './dashboard'
 import calendrierRouter from './calendrier'
 import webhooksRouter from './webhooks'
 import adminRouter from './admin'
-
+import assistantRouter from './assistant'
+import tribunauxRouter from './tribunaux'
 const router = Router()
 
 router.use('/auth', authRouter)
@@ -20,5 +21,7 @@ router.use('/dashboard', dashboardRouter)
 router.use('/calendrier', calendrierRouter)
 router.use('/webhooks', webhooksRouter)
 router.use('/admin', adminRouter)
+router.use('/assistant', assistantRouter)
+router.use('/tribunaux', tribunauxRouter)
 
 export default router

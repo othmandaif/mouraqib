@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, RotateCw, Trash2, X, Loader2, CheckCircle2, Lock, ArrowRight } from 'lucide-react'
+import { Plus, Search, RotateCw, Trash2, X, Loader2, CheckCircle2, Lock, ArrowRight, Archive, ArchiveRestore } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
 import { apiFetch, rechercherDossier } from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Separator } from '@/components/ui/Separator'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { CaseCard } from '@/components/legal/CaseCard'
+import { useTribunaux } from '@/hooks/useTribunaux'
+import { labelProcedure } from '@/lib/labels'
 import { InfoGrid } from '@/components/legal/InfoGrid'
 import { EventsTimeline } from '@/components/legal/EventsTimeline'
 import { PartiesTable } from '@/components/legal/PartiesTable'
@@ -199,6 +201,7 @@ interface Dossier {
   anneeDossier: string
   codeRole: string
   tribunal: string
+  typeProcedure?: string
   titreAffaire?: string
   estCourAppel: boolean
   estActif: boolean
@@ -224,7 +227,6 @@ interface SearchResult {
 }
 
 export default function DossiersPage() {
-  const { data: dossiers, loading, refetch } = useApi<Dossier[]>('/dossiers')
   const [showForm, setShowForm] = useState(false)
   const [annee, setAnnee] = useState('')
   const [codeRole, setCodeRole] = useState('')
@@ -238,27 +240,25 @@ export default function DossiersPage() {
   const [formError, setFormError] = useState('')
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [filterQuery, setFilterQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'tous' | 'actifs' | 'delais' | 'appel'>('tous')
+  const [vue, setVue] = useState<'actifs' | 'archives'>('actifs')
+  const { data: dossiers, loading, refetch } = useApi<Dossier[]>(vue === 'archives' ? '/dossiers/archives' : '/dossiers')
+  const { tribunalAr } = useTribunaux()
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  // Compteurs pour les filtres rapides
-  const counts = useMemo(() => {
-    const list = dossiers ?? []
-    return {
-      tous: list.length,
-      actifs: list.filter((d) => d._count.evenements > 0).length,
-      delais: list.filter((d) => d.echeances.length > 0).length,
-      appel: list.filter((d) => d.estCourAppel).length,
+  // Contrôleur d'annulation de la recherche en cours (polling).
+  // Annulé au démontage du composant (changement de page) et au clic "Annuler".
+  const searchAbortRef = useRef<AbortController | null>(null)
+
+  // Au démontage : on coupe toute recherche en cours pour éviter le travail
+  // en arrière-plan et les mises à jour d'état sur composant démonté.
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort()
     }
-  }, [dossiers])
+  }, [])
 
   const filteredDossiers = useMemo(() => {
     let list = dossiers ?? []
-    // Filtre rapide par catégorie
-    if (statusFilter === 'actifs') list = list.filter((d) => d._count.evenements > 0)
-    else if (statusFilter === 'delais') list = list.filter((d) => d.echeances.length > 0)
-    else if (statusFilter === 'appel') list = list.filter((d) => d.estCourAppel)
-    // Recherche texte
     if (filterQuery.trim()) {
       const q = filterQuery.toLowerCase()
       list = list.filter((d) =>
@@ -268,7 +268,7 @@ export default function DossiersPage() {
       )
     }
     return list
-  }, [dossiers, filterQuery, statusFilter])
+  }, [dossiers, filterQuery])
 
   const caCourant = useMemo(
     () => COURS_APPEL.find((ca) => ca.nomAr === courAppel),
@@ -307,9 +307,13 @@ export default function DossiersPage() {
     setFormError('')
     setSearching(true)
     setSearchResult(null)
+
+    // Annule une éventuelle recherche précédente, puis ouvre un nouveau contrôleur.
+    searchAbortRef.current?.abort()
+    const controller = new AbortController()
+    searchAbortRef.current = controller
+
     try {
-      // Recherche asynchrone : lance un job côté serveur puis interroge jusqu'au résultat.
-      // Aucun timeout de requête unique → plus d'erreur 500/504 si mahakim.ma est lent.
       const res = await rechercherDossier(
         {
           anneeDossier: annee,
@@ -318,15 +322,19 @@ export default function DossiersPage() {
           courAppel,
           tribunalPrimaire: recherchePrimaire ? tribunalPrimaire : undefined,
         },
-        { intervalMs: 2000, timeoutMs: 120000 },
+        { intervalMs: 2000, timeoutMs: 120000, signal: controller.signal },
       )
+      if (controller.signal.aborted) return // annulée entre-temps : on ignore
       setSearchResult(res)
       if (res.trouve && res.titreAffaire && !titreAffaire) {
         setTitreAffaire(res.titreAffaire)
       }
     } catch (err: any) {
+      // Une annulation volontaire ne doit pas afficher d'erreur.
+      if (controller.signal.aborted || err?.message === 'Recherche annulée') return
       setFormError(err?.message || 'حدث خطأ أثناء البحث في mahakim.ma')
     } finally {
+      if (searchAbortRef.current === controller) searchAbortRef.current = null
       setSearching(false)
     }
   }
@@ -377,12 +385,32 @@ export default function DossiersPage() {
   }
 
   const handleCancel = () => {
+    searchAbortRef.current?.abort() // stoppe le polling en cours
+    searchAbortRef.current = null
+    setSearching(false)
     setShowForm(false)
     resetForm()
   }
 
+  // "Nouvelle recherche" / réinitialiser : coupe aussi le polling en cours.
+  const resetSearch = () => {
+    searchAbortRef.current?.abort()
+    searchAbortRef.current = null
+    setSearchResult(null)
+    setSearching(false)
+  }
+
   const handleScrape = async (id: string) => {
     await apiFetch(`/dossiers/${id}/scraper`, { method: 'POST' }).catch(() => {})
+  }
+
+  const handleArchiver = async (id: string) => {
+    await apiFetch(`/dossiers/${id}/archiver`, { method: 'PATCH' }).catch(() => {})
+    refetch()
+  }
+  const handleRestaurer = async (id: string) => {
+    await apiFetch(`/dossiers/${id}/restaurer`, { method: 'PATCH' }).catch(() => {})
+    refetch()
   }
 
   const handleDelete = async (id: string) => {
@@ -443,26 +471,21 @@ export default function DossiersPage() {
 
         <div className="flex flex-wrap gap-2">
           {([
-            { key: 'tous', label: 'الكل' },
-            { key: 'actifs', label: 'نشطة' },
-            { key: 'delais', label: 'بآجال' },
-            { key: 'appel', label: 'استئناف' },
+            { key: 'actifs', label: 'النشطة' },
+            { key: 'archives', label: 'المؤرشفة' },
           ] as const).map((chip) => {
-            const active = statusFilter === chip.key
+            const active = vue === chip.key
             return (
               <button
                 key={chip.key}
-                onClick={() => setStatusFilter(chip.key)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors border ${
+                onClick={() => setVue(chip.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-colors border ${
                   active
                     ? 'bg-primary text-white border-primary'
                     : 'bg-white text-text-secondary border-border hover:border-primary/40'
                 }`}
               >
                 {chip.label}
-                <span className={`tabular-nums ${active ? 'text-white/80' : 'text-text-muted'}`} dir="ltr">
-                  {counts[chip.key]}
-                </span>
               </button>
             )
           })}
@@ -666,7 +689,7 @@ export default function DossiersPage() {
                       <p className="font-medium text-danger font-sans">لم يتم العثور على الملف في mahakim.ma</p>
                       <p className="text-sm text-danger font-sans mt-1">Vérifiez le numéro, l'année et le tribunal saisis.</p>
                     </Card>
-                    <Button type="button" variant="secondary" onClick={() => { setSearchResult(null); setSearching(false) }}>
+                    <Button type="button" variant="secondary" onClick={resetSearch}>
                       تعديل المعلومات وإعادة المحاولة
                     </Button>
                   </div>
@@ -757,7 +780,7 @@ export default function DossiersPage() {
                         {!submitting && <CheckCircle2 className="h-4 w-4" />}
                         {submitting ? 'جارٍ الإضافة...' : 'إضافة ومتابعة'}
                       </Button>
-                      <Button type="button" variant="ghost" onClick={() => { setSearchResult(null); setSearching(false) }}>
+                      <Button type="button" variant="ghost" onClick={resetSearch}>
                         بحث جديد
                       </Button>
                     </div>
@@ -785,12 +808,12 @@ export default function DossiersPage() {
         <Card padding="lg" className="text-center">
           <div className="py-12" dir="rtl">
             <p className="text-xl font-semibold text-text-secondary mb-2">
-              {filterQuery || statusFilter !== 'tous' ? 'لا يوجد ملف يطابق بحثك' : 'لا يوجد ملف قيد المراقبة'}
+              {filterQuery ? 'لا يوجد ملف يطابق بحثك' : 'لا يوجد ملف قيد المراقبة'}
             </p>
             <p className="text-sm text-text-muted mb-5">
-              {filterQuery || statusFilter !== 'tous' ? 'جرّب كلمة بحث أو تصنيفاً آخر' : 'أضف ملفك الأول لبدء المراقبة'}
+              {filterQuery ? 'جرّب كلمة بحث أو تصنيفاً آخر' : 'أضف ملفك الأول لبدء المراقبة'}
             </p>
-            {!filterQuery && statusFilter === 'tous' && !showForm && (
+            {!filterQuery && vue === 'actifs' && !showForm && (
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="h-4 w-4" />
                 أضف ملفك الأول
@@ -812,20 +835,39 @@ export default function DossiersPage() {
                 <CaseCard
                   id={d.id}
                   dossierNumber={d.numeroDossier}
-                  tribunal={d.tribunal}
-                  typeAffaire={d.titreAffaire}
+                  tribunal={tribunalAr(d.tribunal)}
+                  typeAffaire={d.titreAffaire || labelProcedure(d.typeProcedure)}
                   statut={d.echeances.length > 0 ? 'critique' : d._count.evenements > 0 ? 'en_cours' : 'nouveau'}
                   updatedAt={new Date(d.updatedAt).toLocaleDateString('ar-MA')}
                 />
                 {/* Actions : en RTL, on les place en haut à GAUCHE */}
                 <div className="absolute top-3 left-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
-                  <button
-                    onClick={(e) => { e.preventDefault(); handleScrape(d.id) }}
-                    title="تحديث الآن"
-                    className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-accent hover:border-accent transition-colors"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" />
-                  </button>
+                  {vue === 'actifs' ? (
+                    <>
+                      <button
+                        onClick={(e) => { e.preventDefault(); handleScrape(d.id) }}
+                        title="تحديث الآن"
+                        className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-accent hover:border-accent transition-colors"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); handleArchiver(d.id) }}
+                        title="أرشفة"
+                        className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-primary hover:border-primary transition-colors"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleRestaurer(d.id) }}
+                      title="استرجاع"
+                      className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-success hover:border-success transition-colors"
+                    >
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.preventDefault(); handleDelete(d.id) }}
                     disabled={deleting === d.id}

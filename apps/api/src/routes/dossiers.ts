@@ -40,6 +40,37 @@ const RechercheSchema = z.object({
   tribunalPrimaire: z.string().optional(),
 })
 
+
+// PATCH /api/v1/dossiers/:id/archiver   → estActif = false
+router.patch('/:id/archiver', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const dossier = await prisma.dossier.findFirst({ where: { id: req.params.id, userId: req.userId! } })
+  if (!dossier) { res.status(404).json({ error: 'Dossier non trouvé' }); return }
+  await prisma.dossier.update({ where: { id: dossier.id }, data: { estActif: false } })
+  res.json({ ok: true, estActif: false })
+})
+
+// PATCH /api/v1/dossiers/:id/restaurer  → estActif = true
+router.patch('/:id/restaurer', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const dossier = await prisma.dossier.findFirst({ where: { id: req.params.id, userId: req.userId! } })
+  if (!dossier) { res.status(404).json({ error: 'Dossier non trouvé' }); return }
+  await prisma.dossier.update({ where: { id: dossier.id }, data: { estActif: true } })
+  res.json({ ok: true, estActif: true })
+})
+ 
+// GET /api/v1/dossiers/archives  → liste des dossiers archivés
+router.get('/archives', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const dossiers = await prisma.dossier.findMany({
+    where: { userId: req.userId!, estActif: false },
+    include: {
+      echeances: { where: { estExpire: false, estComplete: false }, orderBy: { dateLimite: 'asc' }, take: 3 },
+      evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1 },
+      _count: { select: { evenements: true } },
+    },
+    orderBy: { updatedAt: 'desc' },
+  })
+  res.json(dossiers)
+})
+ 
 router.get('/ping', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), version: 3 })
 })
@@ -303,5 +334,6 @@ router.get('/:id/evenements', requireAuth, async (req: AuthRequest, res: Respons
 
   res.json(evenements)
 })
+
 
 export default router

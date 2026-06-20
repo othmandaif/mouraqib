@@ -1,5 +1,6 @@
 import { PrismaClient, CanalAlerte, TypeAlerte, StatutAlerte } from '@prisma/client'
 import { WhatsAppService } from '../whatsapp/whatsappService'
+import { redigerMessageEvenement, estAudience } from '../ai/audienceMessage'
 import { logger } from '../../utils/logger'
 
 const prisma = new PrismaClient()
@@ -16,9 +17,9 @@ export class AlertService {
       },
       include: {
         user: { select: { whatsappNumero: true, telephone: true, nom: true, prenom: true } },
-        dossier: { select: { numeroDossier: true, tribunal: true } },
+        dossier: { select: { numeroDossier: true, tribunal: true, titreAffaire: true } },
         echeance: { select: { description: true, dateLimite: true, typeDelai: true } },
-        evenement: { select: { typeEvenement: true, texteArabe: true } },
+        evenement: { select: { typeEvenement: true, texteArabe: true, dateAudience: true } },
       },
       take: 50,
     })
@@ -36,16 +37,38 @@ export class AlertService {
         let ok = false
 
         if (alerte.canal === CanalAlerte.WHATSAPP) {
-          if (alerte.typeAlerte === TypeAlerte.NOUVEL_EVENEMENT && alerte.evenement && alerte.dossier) {
-            ok = await whatsapp.envoyerAlerteEvenement({
-              telephone,
+          // 1) PRIORITÉ : un message IA pré-rédigé (messageAr) → on l'envoie tel quel.
+          if (alerte.messageAr) {
+            ok = await whatsapp.envoyerTexte(telephone, alerte.messageAr)
+          }
+          // 2) Sinon, pour un nouvel événement : on tente de rédiger via IA à la volée,
+          //    avec repli sur le template existant.
+          else if (alerte.typeAlerte === TypeAlerte.NOUVEL_EVENEMENT && alerte.evenement && alerte.dossier) {
+            const messageAr = await redigerMessageEvenement({
               numeroDossier: alerte.dossier.numeroDossier,
               tribunal: alerte.dossier.tribunal,
-              texteEvenement: alerte.evenement.texteArabe,
-              typeEvenement: alerte.evenement.typeEvenement ?? 'AUTRE',
-              dateLimite: alerte.echeance?.dateLimite ?? undefined,
+              texteArabe: alerte.evenement.texteArabe,
+              dateAudience: alerte.evenement.dateAudience,
+              titreAffaire: alerte.dossier.titreAffaire,
+              typeEvenement: alerte.evenement.typeEvenement ?? undefined,
             })
-          } else if (alerte.typeAlerte === TypeAlerte.DELAI_CRITIQUE && alerte.echeance && alerte.dossier) {
+            if (messageAr) {
+              ok = await whatsapp.envoyerTexte(telephone, messageAr)
+              // mémoriser le message IA produit
+              await prisma.alerte.update({ where: { id: alerte.id }, data: { messageAr } }).catch(() => {})
+            } else {
+              ok = await whatsapp.envoyerAlerteEvenement({
+                telephone,
+                numeroDossier: alerte.dossier.numeroDossier,
+                tribunal: alerte.dossier.tribunal,
+                texteEvenement: alerte.evenement.texteArabe,
+                typeEvenement: alerte.evenement.typeEvenement ?? 'AUTRE',
+                dateLimite: alerte.echeance?.dateLimite ?? undefined,
+              })
+            }
+          }
+          // 3) Délai critique : template dédié (inchangé).
+          else if (alerte.typeAlerte === TypeAlerte.DELAI_CRITIQUE && alerte.echeance && alerte.dossier) {
             const joursRestants = Math.ceil(
               (alerte.echeance.dateLimite.getTime() - Date.now()) / 86_400_000
             )
@@ -91,13 +114,29 @@ export class AlertService {
         continue
       }
 
-      const ok = await whatsapp.envoyerAlerteEvenement({
-        telephone: user.whatsappNumero,
+      // L'IA rédige le message pour TOUT changement de dossier (audience ou autre).
+      const messageAr = await redigerMessageEvenement({
         numeroDossier: ev.dossier.numeroDossier,
         tribunal: ev.dossier.tribunal,
-        texteEvenement: ev.texteArabe,
-        typeEvenement: ev.typeEvenement ?? 'AUTRE',
+        texteArabe: ev.texteArabe,
+        dateAudience: ev.dateAudience,
+        titreAffaire: ev.dossier.titreAffaire,
+        typeEvenement: ev.typeEvenement ?? undefined,
       })
+
+      // Envoi : message IA en priorité, sinon template existant.
+      let ok = false
+      if (messageAr) {
+        ok = await whatsapp.envoyerTexte(user.whatsappNumero, messageAr)
+      } else {
+        ok = await whatsapp.envoyerAlerteEvenement({
+          telephone: user.whatsappNumero,
+          numeroDossier: ev.dossier.numeroDossier,
+          tribunal: ev.dossier.tribunal,
+          texteEvenement: ev.texteArabe,
+          typeEvenement: ev.typeEvenement ?? 'AUTRE',
+        })
+      }
 
       await prisma.alerte.create({
         data: {
@@ -107,6 +146,7 @@ export class AlertService {
           canal: CanalAlerte.WHATSAPP,
           typeAlerte: TypeAlerte.NOUVEL_EVENEMENT,
           message: ev.texteArabe.substring(0, 200),
+          messageAr: messageAr ?? undefined,
           statut: ok ? StatutAlerte.ENVOYEE : StatutAlerte.ECHEC,
           envoyeAt: ok ? new Date() : undefined,
         },
