@@ -2,7 +2,8 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15 
+    shm_size: '1gb'  
     environment:
       POSTGRES_DB: mouraqib_dev
       POSTGRES_USER: mouraqib

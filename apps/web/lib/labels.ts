@@ -1,0 +1,201 @@
+// Traduction d'affichage : codes/enums → arabe.
+// Centralisé pour que cartes, détail, dashboard et filtres montrent tous le même libellé.
+
+/* Types de procédure (enum Prisma) → arabe */
+export const PROCEDURE_AR: Record<string, string> = {
+  CIVILE: 'مدني',
+  PENALE: 'جنائي',
+  COMMERCIALE: 'تجاري',
+  ADMINISTRATIVE: 'إداري',
+  TRAVAIL: 'اجتماعي',
+  FAMILLE: 'أسري',
+  REFERE: 'استعجالي',
+}
+
+/* Statut IA (enum) → arabe */
+export const STATUT_AR: Record<string, string> = {
+  OUVERT: 'جارية',
+  EN_DELIBERE: 'في المداولة',
+  CLOS: 'منتهية',
+  INCONNU: 'غير محددة',
+}
+
+/**
+ * Table code-tribunal → nom arabe.
+ * Couvre les cours d'appel (CA_*) et tribunaux de première instance (TPI_*).
+ * Source : même nomenclature que TRIBUNAUX_COMPLETS du scraper.
+ */
+export const TRIBUNAL_AR: Record<string, string> = {
+  // Cours d'appel
+  CA_RABAT: 'محكمة الاستئناف بالرباط',
+  CA_CASA: 'محكمة الاستئناف بالدار البيضاء',
+  CA_AGADIR: 'محكمة الاستئناف بأكادير',
+  CA_OUARZAZATE: 'محكمة الاستئناف بورزازات',
+  CA_BENI_MELLAL: 'محكمة الاستئناف ببني ملال',
+  CA_MARRAKECH: 'محكمة الاستئناف بمراكش',
+  CA_GUELMIM: 'محكمة الاستئناف بكلميم',
+  CA_AL_HOCEIMA: 'محكمة الاستئناف بالحسيمة',
+  CA_TAZA: 'محكمة الاستئناف بتازة',
+  CA_MEKNES: 'محكمة الاستئناف بمكناس',
+  CA_ERRACHIDIA: 'محكمة الاستئناف بالرشيدية',
+  CA_NADOR: 'محكمة الاستئناف بالناضور',
+  CA_SAFI: 'محكمة الاستئناف بآسفي',
+  CA_KHOURIBGA: 'محكمة الاستئناف بخريبكة',
+  CA_TETOUAN: 'محكمة الاستئناف بتطوان',
+  CA_FES: 'محكمة الاستئناف بفاس',
+  CA_TANGER: 'محكمة الاستئناف بطنجة',
+  CA_KENITRA: 'محكمة الاستئناف بالقنيطرة',
+  CA_LAAYOUNE: 'محكمة الاستئناف بالعيون',
+  CA_EL_JADIDA: 'محكمة الاستئناف بالجديدة',
+  CA_SETTAT: 'محكمة الاستئناف بسطات',
+  CA_OUJDA: 'محكمة الاستئناف بوجدة',
+  // Tribunaux de première instance
+  TPI_RABAT: 'المحكمة الابتدائية بالرباط',
+  TPI_SALE: 'المحكمة الابتدائية بسلا',
+  TPI_TEMARA: 'المحكمة الابتدائية بتمارة',
+  TPI_KHEMISSET: 'المحكمة الابتدائية بالخميسات',
+  TPI_TIFLET: 'المحكمة الإبتدائية بتيفلت',
+  TPI_ROMMANI: 'المحكمة الابتدائية بالرماني',
+  TPI_RABAT_FAMILLE: 'المحكمة الابتدائية بالرباط - قسم قضاء الأسرة',
+  TPI_SALE_FAMILLE: 'المحكمة الابتدائية بسلا - قسم قضاء الأسرة',
+  TPI_KHEMISSET_FAMILLE: 'المحكمة الابتدائية بالخميسات - قسم قضاء الأسرة',
+  TPI_CASA_CIVIL: 'المحكمة الابتدائية المدنية بالدار البيضاء',
+  TPI_CASA_SOCIAL: 'المحكمة الابتدائية الاجتماعية بالدار البيضاء',
+  TPI_CASA_PENAL: 'المحكمة الابتدائية الزجرية بالدار البيضاء',
+  TPI_MOHAMMADIA: 'المحكمة الابتدائية بالمحمدية',
+  TPI_BENSLIMANE: 'المحكمة الابتدائية ببنسليمان',
+  TPI_BENSLIMANE_FAMILLE: 'المحكمة الابتدائية ببنسليمان - قسم قضاء الأسرة',
+  TPI_AGADIR: 'المحكمة الابتدائية بأكادير',
+  TPI_INEZGANE: 'المحكمة الابتدائية بانزكان',
+  TPI_OUED_TAIMA: 'المحكمة الابتدائية بأولاد تايمة',
+  TPI_TIZNIT: 'المحكمة الابتدائية بتيزنيت',
+  TPI_TATA: 'المحكمة الابتدائية بطاطا',
+  TPI_TAROUDANT: 'المحكمة الابتدائية بتارودانت',
+  TPI_BIOUGRA: 'المحكمة الابتدائية ببيوكرى',
+  TPI_TAROUDANT_FAMILLE: 'المحكمة الابتدائية بتارودانت - قسم قضاء الأسرة',
+  TPI_TIZNIT_FAMILLE: 'المحكمة الإبتدائية بتزنيت - قسم قضاء الأسرة',
+  TPI_INEZGANE_FAMILLE: 'المحكمة الابتدائية بانزكان - قسم قضاء الأسرة',
+  TPI_BIOUGRA_FAMILLE: 'المحكمة الابتدائية ببيوكرى - قسم قضاء الأسرة',
+  TPI_OUARZAZATE: 'المحكمة الابتدائية بورزازات',
+  TPI_TINGHIR: 'المحكمة الإبتدائية بتنغير',
+  TPI_ZAGORA: 'المحكمة الابتدائية بزاكورة',
+  TPI_OUARZAZATE_FAMILLE: 'المحكمة الابتدائية بورزازات - قسم قضاء الأسرة',
+  TPI_ZAGORA_FAMILLE: 'المحكمة الابتدائية بزاكورة - قسم قضاء الأسرة',
+  TPI_BENI_MELLAL: 'المحكمة الابتدائية ببني ملال',
+  TPI_QASBAT_TADLA: 'المحكمة الابتدائية بقصبة تادلة',
+  TPI_FQUIH_BEN_SALEH: 'المحكمة الابتدائية بالفقيه بن صالح',
+  TPI_SUQ_SEBT: 'المحكمة الإبتدائية بسوق السبت أولاد النمة',
+  TPI_KHENIFRA: 'المحكمة الابتدائية بخنيفرة',
+  TPI_AZILAL: 'المحكمة الابتدائية بأزيلال',
+  TPI_BENI_MELLAL_FAMILLE: 'المحكمة الابتدائية ببني ملال - قسم قضاء الأسرة',
+  TPI_FQUIH_BEN_SALEH_FAMILLE: 'المحكمة الابتدائية بالفقيه بن صالح - قسم قضاء الأسرة',
+  TPI_KHENIFRA_FAMILLE: 'المحكمة الابتدائية بخنيفرة - قسم قضاء الأسرة',
+  TPI_QASBAT_TADLA_FAMILLE: 'المحكمة الابتدائية بقصبة تادلة - قسم قضاء الأسرة',
+  TPI_MARRAKECH: 'المحكمة الابتدائية بمراكش',
+  TPI_AMTANOUT: 'المحكمة الابتدائية بامنتانوت',
+  TPI_EL_KELAA: 'المحكمة الابتدائية بقلعة السراغنة',
+  TPI_BEN_GUERIR: 'المحكمة الابتدائية بابن جرير',
+  TPI_MARRAKECH_FAMILLE: 'المحكمة الابتدائية بمراكش - قسم قضاء الأسرة',
+  TPI_EL_KELAA_FAMILLE: 'المحكمة الابتدائية بقلعة السراغنة - قسم قضاء الأسرة',
+  TPI_SIDI_IFNI: 'المحكمةالابتدائية بسيدي افني',
+  TPI_GUELMIM: 'المحكمة الابتدائية بكلميم',
+  TPI_ASSA_ZAG: 'المحكمة الابتدائية بآسا الزاك',
+  TPI_TAN_TAN: 'المحكمة الابتدائية بطانطان',
+  TPI_GUELMIM_FAMILLE: 'المحكمة الابتدائية بكلميم - قسم قضاء الأسرة',
+  TPI_TAN_TAN_FAMILLE: 'المحكمة الابتدائية بطانطان - قسم قضاء الأسرة',
+  TPI_AL_HOCEIMA: 'المحكمة الابتدائية بالحسيمة',
+  TPI_TARGUIST: 'المحكمة الإبتدائية بتارجيست',
+  TPI_TARGUIST_FAMILLE: 'المحكمة الابتدائية بتارجيست - قسم قضاء الأسرة',
+  TPI_TAZA: 'المحكمة الابتدائية بتازة',
+  TPI_GUERCIF: 'المحكمة الابتدائية بجرسيف',
+  TPI_TAZA_FAMILLE: 'المحكمة الابتدائية بتازة - قسم قضاء الأسرة',
+  TPI_GUERCIF_FAMILLE: 'المحكمة الابتدائية بجرسيف - قسم قضاء الأسرة',
+  TPI_MEKNES: 'المحكمة الابتدائية بمكناس',
+  TPI_EL_HAJEB: 'المحكمة الابتدائية بالحاجب',
+  TPI_AZROU: 'المحكمة الابتدائية بآزرو',
+  TPI_MEKNES_FAMILLE: 'المحكمة الابتدائية بمكناس - قسم قضاء الأسرة',
+  TPI_AZROU_FAMILLE: 'المحكمة الابتدائية بآزرو - قسم قضاء الأسرة',
+  TPI_ERRACHIDIA: 'المحكمة الابتدائية بالرشيدية',
+  TPI_MIDELT: 'المحكمة الابتدائية بميدلت',
+  TPI_NADOR: 'المحكمة الابتدائية بالناضور',
+  TPI_EDRICH: 'المحكمة الإبتدائية بالدريوش',
+  TPI_NADOR_FAMILLE: 'المحكمة الابتدائية بالناضور - قسم قضاء الأسرة',
+  TPI_SAFI: 'المحكمة الابتدائية بآسفي',
+  TPI_YOUSSOUFIA: 'المحكمة الابتدائية باليوسفية',
+  TPI_ESSAOUIRA: 'المحكمة الابتدائية بالصويرة',
+  TPI_SAFI_FAMILLE: 'المحكمة الابتدائية بآسفي - قسم قضاء الأسرة',
+  TPI_YOUSSOUFIA_FAMILLE: 'المحكمة الابتدائية باليوسفية - قسم قضاء الأسرة',
+  TPI_KHOURIBGA: 'المحكمة الابتدائية بخريبكة',
+  TPI_OUED_ZEM: 'المحكمة الابتدائية بواد زم',
+  TPI_BEJAAD: 'المحكمة الابتدائية بأبي الجعد',
+  TPI_KHOURIBGA_FAMILLE: 'المحكمة الابتدائية بخريبكة - قسم قضاء الأسرة',
+  TPI_TETOUAN: 'المحكمة الابتدائية بتطوان',
+  TPI_CHEFCHAOUEN: 'المحكمة الابتدائية بشفشاون',
+  TPI_OUAZZANE: 'المحكمة الابتدائية بوزان',
+  TPI_OUAZZANE_FAMILLE: 'المحكمة الابتدائية بوزان - قسم قضاء الأسرة',
+  TPI_FES: 'المحكمة الابتدائية بفاس',
+  TPI_SEFROU: 'المحكمة الابتدائية بصفرو',
+  TPI_BOULMANE: 'المحكمة الإبتدائية لبولمان بميسور',
+  TPI_TAOUNATE: 'المحكمة الابتدائية بتاونات',
+  TPI_FES_FAMILLE: 'المحكمة الابتدائية بفاس - قسم قضاء الأسرة',
+  TPI_BOULMANE_FAMILLE: 'المحكمة الابتدائية لبولمان بميسور - قسم قضاء الأسرة',
+  TPI_TAOUNATE_FAMILLE: 'المحكمة الابتدائية بتاونات - قسم قضاء الأسرة',
+  TPI_TANGER: 'المحكمة الابتدائية بطنجة',
+  TPI_ASILAH: 'المحكمة الابتدائية بأصيلة',
+  TPI_LARACHE: 'المحكمة الابتدائية بالعرائش',
+  TPI_KSAR_EL_KBIR: 'المحكمة الابتدائية بالقصر الكبير',
+  TPI_TANGER_FAMILLE: 'المحكمة الابتدائية بطنجة - قسم قضاء الأسرة',
+  TPI_LARACHE_FAMILLE: 'المحكمة الابتدائية بالعرائش - قسم قضاء الأسرة',
+  TPI_KSAR_EL_KBIR_FAMILLE: 'المحكمة الابتدائية بالقصر الكبير - قسم قضاء الأسرة',
+  TPI_KENITRA: 'المحكمة الابتدائية بالقنيطرة',
+  TPI_SIDI_SLIMANE: 'المحكمة الابتدائية بسيدي سليمان',
+  TPI_SOUQ_ARBAA: 'المحكمة الابتدائي بسوق الأريعاء',
+  TPI_SIDI_KACEM: 'المحكمة الابتدائية بسيدي قاسم',
+  TPI_MECHRA_BEL_KSIRI: 'المحكمة الإبتدائية بمشرع بلقصيري',
+  TPI_KENITRA_FAMILLE: 'المحكمة الابتدائية بالقنيطرة - قسم قضاء الأسرة',
+  TPI_SIDI_KACEM_FAMILLE: 'المحكمة الابتدائية بسيدي قاسم - قسم قضاء الأسرة',
+  TPI_LAAYOUNE: 'المحكمة الابتدائية بالعيون',
+  TPI_BOUJDOUR: 'المحكمة الابتدائية ببوجدور',
+  TPI_SMARA: 'المحكمة الابتدائية بالسمارة',
+  TPI_DAKHLA: 'المحكمة الابتدائية بالداخلة',
+  TPI_SMARA_FAMILLE: 'المحكمة الابتدائية بالسمارة - قسم قضاء الأسرة',
+  TPI_LAAYOUNE_FAMILLE: 'المحكمة الابتدائية بالعيون - قسم قضاء الأسرة',
+  TPI_DAKHLA_FAMILLE: 'المحكمة الابتدائية بالداخلة - قسم قضاء الأسرة',
+  TPI_EL_JADIDA: 'المحكمة الابتدائية بالجديدة',
+  TPI_SIDI_BENNOUR: 'المحكمة الابتدائية بسيدي بنور',
+  TPI_EL_JADIDA_FAMILLE: 'المحكمة الابتدائية بالجديدة - قسم قضاء الأسرة',
+  TPI_SIDI_BENNOUR_FAMILLE: 'المحكمة الابتدائية بسيدي بنور - قسم قضاء الأسرة',
+  TPI_SETTAT: 'المحكمة الابتدائية بسطات',
+  TPI_BERRECHID: 'المحكمة الابتدائية ببرشيد',
+  TPI_BEN_AHMED: 'المحكمة الابتدائية ببن أحمد',
+  TPI_BERRECHID_FAMILLE: 'المحكمة الابتدائية ببرشيد - قسم قضاء الأسرة',
+  TPI_BEN_AHMED_FAMILLE: 'المحكمة الإبتدائية ببن أحمد - قسم قضاء الأسرة',
+  TPI_OUJDA: 'المحكمة الابتدائية بوجدة',
+  TPI_JERADA: 'المحكمة الابتدائية بجرادة',
+  TPI_BERKANE: 'المحكمة الابتدائية ببركان',
+  TPI_FIGUIG: 'المحكمة الإبتدائية لفجيج ببوعرفة',
+  TPI_TAOURIRT: 'المحكمة الابتدائية بتاوريرت',
+  TPI_OUJDA_FAMILLE: 'المحكمة الإبتدائية بوجدة - قسم قضاء الأسرة',
+  TPI_TAOURIRT_FAMILLE: 'المحكمة الإبتدائية بتاوريرت - قسم قضاء الأسرة',
+  TPI_BERKANE_FAMILLE: 'المحكمة الإبتدائية ببركان - قسم قضاء الأسرة',
+  TPI_JERADA_FAMILLE: 'المحكمة الإبتدائية بجرادة - قسم قضاء الأسرة',
+}
+
+/** Tribunal : si on reçoit un code connu → nom arabe ; sinon on renvoie tel quel
+ *  (cas où la base stocke déjà le nom arabe). */
+export function labelTribunal(v?: string | null): string {
+  if (!v) return '—'
+  return TRIBUNAL_AR[v] ?? v
+}
+
+/** Type de procédure : enum → arabe, sinon tel quel. */
+export function labelProcedure(v?: string | null): string {
+  if (!v) return '—'
+  return PROCEDURE_AR[v] ?? v
+}
+
+/** Statut IA : enum → arabe, sinon tel quel. */
+export function labelStatut(v?: string | null): string {
+  if (!v) return '—'
+  return STATUT_AR[v] ?? v
+}

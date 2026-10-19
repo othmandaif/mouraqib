@@ -94,6 +94,13 @@ export class WhatsAppService {
     return this.envoyer(telephone, msg)
   }
 
+  /** Envoi public d'un texte brut (utilisé par les messages rédigés par l'IA). */
+  async envoyerTexte(telephone: string, message: string): Promise<boolean> {
+    return this.envoyer(telephone, message)
+  }
+
+  
+
   private async envoyer(telephone: string, message: string): Promise<boolean> {
     const numero = telephone.replace(/[^0-9]/g, '').replace(/^0/, '212')
 

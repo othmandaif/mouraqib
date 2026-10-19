@@ -15,7 +15,29 @@ export const scraperWorker = new Worker(
     }
 
     if (job.name === 'scrape-all') {
-      await scraper.scraperTousDossiers(userId)
+      const { PrismaClient } = await import('@prisma/client')
+      const prisma = new PrismaClient()
+
+      if (userId) {
+        // Scrape les dossiers d'un utilisateur précis
+        await scraper.scraperTousDossiers(userId)
+      } else {
+        // Pas de userId (ex: cron "fin de journée") → tous les utilisateurs actifs.
+        // On boucle utilisateur par utilisateur pour réutiliser scraperTousDossiers
+        // et garder le même navigateur (concurrency 1).
+        const users = await prisma.user.findMany({
+          where: { abonnements: { some: { statut: 'ACTIF' } } },
+          select: { id: true },
+        })
+        logger.info(`scrape-all global (${job.data.raison ?? 'manuel'}) : ${users.length} utilisateurs`)
+        for (const u of users) {
+          try {
+            await scraper.scraperTousDossiers(u.id)
+          } catch (err) {
+            logger.error(`scrape-all: échec pour user ${u.id}:`, err)
+          }
+        }
+      }
     } else if (job.name === 'scrape-dossier') {
       const { dossierId } = job.data
       const { PrismaClient } = await import('@prisma/client')
@@ -33,7 +55,7 @@ export const scraperWorker = new Worker(
 
     await nlpQueue.add('process-pending', {}, { delay: 2000 })
   },
-  { connection: redisConnection, concurrency: 1 }
+  { connection: redisConnection, concurrency: 1 },
 )
 
 scraperWorker.on('failed', (job, err) => {

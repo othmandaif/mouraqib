@@ -1,99 +1,102 @@
 'use client'
 
 import Link from 'next/link'
-import { Settings, CreditCard, Smartphone } from 'lucide-react'
+import { Settings, CreditCard, Smartphone, User2 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useApi } from '@/hooks/useApi'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import { Separator } from '@/components/ui/Separator'
+
+const C = {
+  card: '#fff', ink: '#2C2A24', ink2: '#3A3322', label: '#5B5544', muted: '#A39C8B',
+  goldD: '#9A7820', goldChip: '#F4EFDF', green: '#3F9E6B', greenBg: '#E6F3EB',
+  warn: '#B8860B', warnBg: '#FBF6E9', border: '#EEE7D6',
+}
 
 export default function ParametresPage() {
   const { user } = useAuth()
   const { data: abonnement } = useApi<{ abonnement: { plan: string; dateFin: string }; dossierCount: number }>('/abonnements/current')
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <PageHeader title="Paramètres" />
+    <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 720 }}>
+      <div style={{ textAlign: 'right' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.ink }}>الإعدادات</h1>
+        <p style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>إدارة حسابكم واشتراككم وتنبيهاتكم</p>
+      </div>
 
-      <Card padding="md">
-        <div className="flex items-center gap-3 mb-5">
-          <Settings className="h-5 w-5 text-accent" />
-          <h2 className="font-display text-xl font-semibold text-primary">Mon profil</h2>
-        </div>
-        <div className="space-y-3">
-          <Row label="Nom" value={`Maître ${user?.prenom} ${user?.nom}`} />
-          <Separator />
-          <Row label="Email" value={user?.email ?? '—'} />
-          <Separator />
-          <div className="flex items-center justify-between py-1">
-            <span className="text-sm font-sans text-text-muted">WhatsApp</span>
-            <span className="text-sm font-sans">
-              {user?.whatsappVerifie ? (
-                <Badge variant="success">Vérifié</Badge>
-              ) : (
-                <Link href="/parametres/whatsapp" className="text-warning hover:text-warning/80 font-medium transition-colors">
-                  Non vérifié — Configurer
-                </Link>
-              )}
-            </span>
+      {/* Profil */}
+      <Section icon={<User2 size={18} stroke={C.goldD} />} title="الملف الشخصي">
+        <Row label="الاسم" value={`الأستاذ(ة) ${user?.prenom ?? ''} ${user?.nom ?? ''}`} />
+        <Divider />
+        <Row label="البريد الإلكتروني" value={user?.email ?? '—'} ltr />
+        <Divider />
+        <div style={rowStyle}>
+          <div>
+            {user?.whatsappVerifie
+              ? <span style={{ fontSize: 12, fontWeight: 600, color: C.green, background: C.greenBg, borderRadius: 7, padding: '4px 10px' }}>مؤكَّد</span>
+              : <Link href="/parametres/whatsapp" style={{ fontSize: 13, fontWeight: 600, color: C.warn, textDecoration: 'none' }}>غير مؤكَّد — إعداد</Link>}
           </div>
+          <span style={{ fontSize: 13, color: C.muted }}>واتساب</span>
         </div>
-      </Card>
+      </Section>
 
-      <Card padding="md">
-        <div className="flex items-center gap-3 mb-5">
-          <CreditCard className="h-5 w-5 text-accent" />
-          <h2 className="font-display text-xl font-semibold text-primary">Abonnement</h2>
-        </div>
-        <div className="space-y-3 mb-4">
-          <Row
-            label="Plan actuel"
-            value={abonnement?.abonnement?.plan ?? 'GRATUIT'}
-          />
-          <Separator />
-          <Row
-            label="Dossiers utilisés"
-            value={`${abonnement?.dossierCount ?? 0}`}
-          />
-          {abonnement?.abonnement?.dateFin && (
-            <>
-              <Separator />
-              <Row
-                label="Renouvellement"
-                value={new Date(abonnement.abonnement.dateFin).toLocaleDateString('fr-MA')}
-              />
-            </>
-          )}
-        </div>
-        <Link href="/abonnement">
-          <Button variant="secondary" size="sm">Changer de plan</Button>
+      {/* Abonnement */}
+      <Section icon={<CreditCard size={18} stroke={C.goldD} />} title="الاشتراك">
+        <Row label="الخطة الحالية" value={planAr(abonnement?.abonnement?.plan)} />
+        <Divider />
+        <Row label="عدد الملفات المستعملة" value={`${abonnement?.dossierCount ?? 0}`} ltr />
+        {abonnement?.abonnement?.dateFin && (
+          <>
+            <Divider />
+            <Row label="تاريخ التجديد" value={new Date(abonnement.abonnement.dateFin).toLocaleDateString('fr-MA')} ltr />
+          </>
+        )}
+        <Link href="/abonnement" style={{ textDecoration: 'none' }}>
+          <button style={btnStyle}>تغيير الخطة</button>
         </Link>
-      </Card>
+      </Section>
 
-      <Card padding="md">
-        <div className="flex items-center gap-3 mb-3">
-          <Smartphone className="h-5 w-5 text-accent" />
-          <h2 className="font-display text-xl font-semibold text-primary">Alertes WhatsApp</h2>
-        </div>
-        <p className="text-sm text-text-muted font-sans mb-4">
-          Vérifiez votre numéro WhatsApp pour recevoir les alertes judiciaires.
+      {/* WhatsApp */}
+      <Section icon={<Smartphone size={18} stroke={C.goldD} />} title="تنبيهات واتساب">
+        <p style={{ fontSize: 13, color: C.muted, marginBottom: 14, textAlign: 'right' }}>
+          أكّدوا رقم واتساب الخاص بكم لتلقّي التنبيهات القضائية فور صدورها.
         </p>
-        <Link href="/parametres/whatsapp">
-          <Button variant="secondary" size="sm">Configurer WhatsApp</Button>
+        <Link href="/parametres/whatsapp" style={{ textDecoration: 'none' }}>
+          <button style={btnStyle}>إعداد واتساب</button>
         </Link>
-      </Card>
+      </Section>
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function planAr(plan?: string) {
+  if (!plan) return 'مجاني'
+  const map: Record<string, string> = { GRATUIT: 'مجاني', PRO: 'احترافي', CABINET: 'مكتب', ENTREPRISE: 'مؤسسة' }
+  return map[plan] ?? plan
+}
+
+const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexDirection: 'row-reverse', padding: '4px 0' }
+const btnStyle: React.CSSProperties = { marginTop: 16, border: `1px solid ${C.border}`, background: '#fff', color: C.ink, fontWeight: 600, fontSize: 13, borderRadius: 11, padding: '9px 16px', cursor: 'pointer', fontFamily: "'IBM Plex Sans Arabic',sans-serif" }
+
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-sm font-sans text-text-muted">{label}</span>
-      <span className="text-sm font-sans font-medium text-text-primary">{value}</span>
+    <div style={{ background: C.card, borderRadius: 22, padding: '22px 24px', boxShadow: '0 14px 34px -22px rgba(110,90,30,.4)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexDirection: 'row-reverse', justifyContent: 'flex-end', marginBottom: 18 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{title}</h2>
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
+      </div>
+      {children}
     </div>
   )
+}
+
+function Row({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
+  return (
+    <div style={rowStyle}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, ...(ltr ? { direction: 'ltr', fontFamily: "'IBM Plex Sans',sans-serif" } : {}) }}>{value}</span>
+      <span style={{ fontSize: 13, color: C.muted }}>{label}</span>
+    </div>
+  )
+}
+
+function Divider() {
+  return <div style={{ height: 1, background: '#F1EBDC', margin: '10px 0' }} />
 }
