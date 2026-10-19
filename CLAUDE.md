@@ -1,6 +1,18 @@
-# Mouraqib — مراقب
+# MalafiPro — ملفاتي
+
+> Anciennement **Mouraqib (مراقب)**. Voir la section « Marque » plus bas.
 
 SaaS de surveillance judiciaire pour avocats marocains. Surveille mahakim.ma, calcule les délais CPC, envoie des alertes WhatsApp.
+
+## Marque — MalafiPro
+
+Nouveau nom (octobre 2026) : **MalafiPro — ملفاتي** (« mes dossiers »). Ancien nom : Mouraqib (مراقب).
+Guide complet : [`docs/MARQUE.md`](docs/MARQUE.md).
+
+- **Couleurs** : Vert Malafi `#0E5A4E` (primaire), Vert profond `#083B34` (fonds sombres), **Ambre Signal `#F2A93B` (uniquement alertes, badges, délais proches)**, Encre `#15201E` (texte), Papier `#F5F3EE` (fond), Menthe `#E3F0EC`, Gris ardoise `#5E6B67`, Rouge délai `#C0392B`.
+- **Jamais de texte blanc sur l'ambre** (contraste 2,0) — texte sur ambre = Encre.
+- **Logo** : dossier vert avec étiquette + pastille ambre cochée. Polices : IBM Plex Sans Arabic (UI), Inter (latin, chiffres).
+- **Identifiants techniques encore nommés `mouraqib`** (volontairement, pour la compatibilité) : dépôt GitHub, packages `@mouraqib/*`, base Docker `mouraqib_dev` / utilisateur `mouraqib` (**ne pas renommer** : données), clé `localStorage('mouraqib_token')` (la renommer déconnecte les utilisateurs sans migration), préfixe de commande `MOURAQIB-` (paiements), domaine `mouraqib.ma` (tant que le nouveau domaine n'est pas acheté).
 
 ## Architecture
 
@@ -61,6 +73,15 @@ Copier `.env.example` → `.env` et remplir :
 3. **CMI** : nécessite un contrat commercial avec CMI Maroc
 4. **Credentials mahakim** : actuellement stockées en mémoire → ajouter colonnes chiffrées en base pour prod
 5. **WhatsApp** : vérifier les numéros OTP avant tout envoi
+
+## Conventions
+
+- Toujours TypeScript strict.
+- Zod pour valider toutes les entrées API.
+- Chaque service dans `apps/api/src/services/`.
+- Ne jamais logger les données sensibles (numéros de dossier, noms).
+- Spécification d'origine : `MOURAQIB_BUILD_SPEC.md` (nom de fichier historique, conservé).
+- ⚠️ Windows ignore la casse des noms de fichiers : un import doit avoir exactement la même casse que le fichier, sinon l'API plante sous Linux (Railway/Docker). Pour renommer en changeant seulement la casse : `git mv A.ts tmp.ts` puis `git mv tmp.ts a.ts`. Ne jamais créer deux fichiers qui ne diffèrent que par la casse (ex. `CLAUDE.md` / `claude.md`).
 
 ## Prisma
 
