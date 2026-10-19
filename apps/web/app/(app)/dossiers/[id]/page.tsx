@@ -21,6 +21,7 @@ interface Evenement {
 interface Echeance {
   id: string
   description: string
+  descriptionAr?: string | null
   typeDelai: string
   dateLimite: string
   estCritique: boolean
@@ -221,7 +222,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
                     <span style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, fontFamily: "'IBM Plex Sans',sans-serif" }}>{j}</span>
                   </div>
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{e.description || e.typeDelai}</p>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{e.descriptionAr || e.description || e.typeDelai}</p>
                     <p style={{ fontSize: 12, color: C.muted, display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end', marginTop: 2 }}>
                       <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>{new Date(e.dateLimite).toLocaleDateString('fr-MA')}</span>
                       <Clock size={12} stroke={C.muted} />

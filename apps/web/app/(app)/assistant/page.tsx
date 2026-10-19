@@ -122,6 +122,14 @@ export default function AssistantPage() {
                 return copy
               })
             }
+            if (p.error) {
+              setEtape(null)
+              setMessages((m) => {
+                const copy = [...m]
+                copy[copy.length - 1] = { role: 'assistant', contenu: p.error }
+                return copy
+              })
+            }
             if (p.done) { chargerConvs() } // rafraîchir la liste (titre auto)
           } catch {}
         }

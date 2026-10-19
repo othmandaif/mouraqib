@@ -9,6 +9,7 @@ import { apiFetch } from '@/lib/api'
 interface Echeance {
   id: string
   description: string
+  descriptionAr?: string | null
   typeDelai: string
   dateLimite: string
   estCritique: boolean
@@ -118,7 +119,7 @@ function EcheanceRow({ e, onComplete }: { e: Echeance; onComplete: (id: string) 
 
         {/* Texte */}
         <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 3 }}>{e.description || e.typeDelai}</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 3 }}>{e.descriptionAr || e.description || e.typeDelai}</p>
           <Link href={`/dossiers/${e.dossier.numeroDossier}`} style={{ fontSize: 12, color: C.muted, textDecoration: 'none' }}>
             <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>{e.dossier.numeroDossier}</span> — {e.dossier.tribunal}
           </Link>
