@@ -6,6 +6,7 @@ import { streamDeepseek, ChatMessage, askDeepseek } from '../services/ai/deepsee
 import { PROMPT_CHAT_SYSTEME } from '../services/ai/prompts.ar'
 import { construireContextePortefeuille } from '../services/ai/portefeuilleContext'
 import { logger } from '../utils/logger'
+import { rechercherArticles, formaterArticles, besoinDeDroit } from '../services/ai/ragJuridique'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -89,7 +90,6 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response): Promi
   }
 
   const contexte = await construireContextePortefeuille(userId, message, dossierId ?? conv.dossierId ?? undefined)
-  const systeme = PROMPT_CHAT_SYSTEME + '\n\n=== معطيات محفظة المحامي ===\n' + contexte
 
   const historique = await prisma.messageChat.findMany({
     where: { conversationId: conv.id },
@@ -97,6 +97,51 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response): Promi
     take: 10,
   })
   historique.reverse()
+
+  const estPremierMessage = historique.length === 0
+
+  // On enregistre tout de suite le message de l'utilisateur.
+  await prisma.messageChat.create({
+    data: { userId, conversationId: conv.id, dossierId: dossierId ?? conv.dossierId ?? null, role: RoleChat.USER, contenu: message },
+  })
+
+  // Ouverture du flux SSE.
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  res.write('data: ' + JSON.stringify({ conversationId: conv.id }) + '\n\n')
+
+  // Helper : envoyer une étape de chargement au front (thinking/searching/analyzing/writing).
+  const envoyerEtape = (etape: string) =>
+    res.write('data: ' + JSON.stringify({ etape }) + '\n\n')
+
+  // ── RAG juridique : on cherche dans les lois seulement si la question le nécessite ──
+  const dernierEchange = historique.slice(-2).map((h) => h.contenu).join(' | ')
+  let blocDroit = ''
+  try {
+    envoyerEtape('thinking')
+    if (await besoinDeDroit(message, dernierEchange)) {
+      envoyerEtape('searching')
+      const articles = await rechercherArticles(message)
+      if (articles.length) {
+        blocDroit = '\n\n=== مصادر قانونية (من القوانين المغربية) ===\n' + formaterArticles(articles)
+        envoyerEtape('analyzing')
+      }
+    }
+  } catch (e) {
+    logger.warn('RAG juridique ignoré:', e)
+  }
+
+  const systeme =
+    PROMPT_CHAT_SYSTEME +
+    '\n\n=== معطيات محفظة المحامي ===\n' + contexte +
+    blocDroit +
+    '\n\n=== تعليمة أخيرة ===\n' +
+    'قبل أن تكتب جوابك، فكّر داخلياً خطوة بخطوة: حدّد الإشكال، افحص كل مصدر متاح وما يثبته، ' +
+    'اربط المواد، استنتج النتائج، ثم ابنِ جواباً موثّقاً ودقيقاً. لا تُظهر خطوات تفكيرك الخام؛ ' +
+    'أظهر فقط الجواب النهائي المنظّم والموثّق بالمصادر. كن مفيداً دائماً ولا ترفض السؤال.'
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systeme },
@@ -107,21 +152,9 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response): Promi
     { role: 'user', content: message },
   ]
 
-  const estPremierMessage = historique.length === 0
-
-  await prisma.messageChat.create({
-    data: { userId, conversationId: conv.id, dossierId: dossierId ?? conv.dossierId ?? null, role: RoleChat.USER, contenu: message },
-  })
-
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders?.()
-
-  res.write('data: ' + JSON.stringify({ conversationId: conv.id }) + '\n\n')
-
   let complet = ''
   try {
+    envoyerEtape('writing')
     await streamDeepseek(messages, (chunk) => {
       complet += chunk
       res.write('data: ' + JSON.stringify({ delta: chunk }) + '\n\n')

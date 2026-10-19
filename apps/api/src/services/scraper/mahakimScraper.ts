@@ -14,7 +14,7 @@ const CONFIG = {
   // Active les screenshots de debug uniquement si la variable d'env est définie.
   DEBUG: !!process.env.SCRAPER_DEBUG,
   // headless contrôlable par env (par défaut true = rapide). Mettre SCRAPER_HEADLESS=false pour debugger visuellement.
-  HEADLESS: process.env.SCRAPER_HEADLESS !== 'false',
+  HEADLESS: true,
   // Nombre de tentatives complètes par dossier (réseau, Angular non chargé, etc.)
   MAX_TENTATIVES: 3,
   // Dossiers traités en parallèle dans scraperTousDossiers (rester poli : 2-3 max).
@@ -269,43 +269,68 @@ export class MahakimScraper {
         await submitBtn.first().click({ timeout: 5000 }).catch(() => {})
       }
 
-      // Attendre soit le résultat, soit le message "aucun résultat".
-      // Promise.race renvoie : 'found' | 'empty' | 'timeout'.
+      // Détection UNIVERSELLE, indépendante du type de dossier.
+      // Tous les résultats (civil, pénal, exécution, plainte, PV…) partagent la même
+      // structure : une carte "بطاقة الملف" (.cm-card-dossier / .cm-child-dossier).
+      // On ne dépend donc PAS du nom du composant Angular (app-resultat-*), qui varie.
+      const CARTE_SELECTOR = '.cm-card-dossier, .cm-child-dossier'
+      const aCarte = () => page.locator(CARTE_SELECTOR).count().then((n) => n > 0)
+
+      // Confirme un "introuvable" de façon FIABLE : on ne conclut l'absence
+      // qu'après avoir laissé l'AJAX se terminer ET re-vérifié l'absence de carte.
+      // Évite les faux négatifs quand le portail est lent.
+      const confirmerIntrouvable = async (): Promise<boolean> => {
+        // Laisser le réseau se calmer (Angular charge la carte via XHR).
+        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
+        await sleep(500)
+        if (await aCarte()) return false // une carte est finalement apparue
+        // Message d'absence explicite encore présent ET toujours pas de carte.
+        const msg = await page.locator('text=لا توجد أية نتيجة للبحث').count()
+        return msg > 0
+      }
+
+      // Attendre soit la carte du dossier (n'importe quel type), soit "aucun résultat".
       const issue = await Promise.race([
-        page.waitForSelector('app-resultat-normal', { timeout: CONFIG.TIMEOUT_MS }).then(() => 'found' as const).catch(() => 'timeout' as const),
+        page.waitForSelector(CARTE_SELECTOR, { timeout: CONFIG.TIMEOUT_MS }).then(() => 'found' as const).catch(() => 'timeout' as const),
         page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: CONFIG.TIMEOUT_MS }).then(() => 'empty' as const).catch(() => 'timeout' as const),
       ])
 
-      // CAS 1 — "aucun résultat" confirmé par le portail : dossier introuvable.
-      // Ce n'est PAS une erreur : on renvoie null sans retry inutile.
+      // CAS 1 — message "aucun résultat" : on le CONFIRME avant de conclure.
       if (issue === 'empty') {
-        logger.info(`Aucun résultat (dossier introuvable) pour ${numeroDossier}`)
-        await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
-        return null
+        if (await confirmerIntrouvable()) {
+          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${numeroDossier}`)
+          await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
+          return null
+        }
+        // sinon : carte présente ou chargement en cours → on continue.
       }
 
-      let resultFound = issue === 'found'
+      let resultFound = issue === 'found' || (await aCarte())
 
       if (!resultFound) {
-        // CAS 2 — ni résultat ni message clair : possible lenteur → une 2e tentative.
+        // CAS 2 — ni carte ni absence confirmée : lenteur probable → 2e soumission.
         logger.warn(`Aucun résultat clair pour ${numeroDossier} — nouvelle tentative de soumission`)
         if (await submitBtn.count() > 0) {
           await submitBtn.first().click({ force: true, timeout: 5000 }).catch(() => {})
         }
         const retry = await Promise.race([
-          page.waitForSelector('app-resultat-normal', { timeout: 20000 }).then(() => 'found' as const).catch(() => 'timeout' as const),
+          page.waitForSelector(CARTE_SELECTOR, { timeout: 20000 }).then(() => 'found' as const).catch(() => 'timeout' as const),
           page.waitForSelector('text=لا توجد أية نتيجة للبحث', { timeout: 20000 }).then(() => 'empty' as const).catch(() => 'timeout' as const),
         ])
-        if (retry === 'empty') {
-          logger.info(`Aucun résultat (dossier introuvable) pour ${numeroDossier}`)
+        if (await aCarte()) {
+          resultFound = true
+        } else if (retry === 'empty' && await confirmerIntrouvable()) {
+          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${numeroDossier}`)
           await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
           return null
         }
-        resultFound = retry === 'found'
+        // Dernière chance : re-vérifier la carte après confirmation réseau.
+        if (!resultFound && await aCarte()) resultFound = true
         if (!resultFound) {
-          // CAS 3 — toujours rien : échec technique. On lève pour déclencher le retry global.
+          // Toujours rien, mais PAS d'absence confirmée → échec TECHNIQUE.
+          // On lève pour déclencher le retry global (on ne dit JAMAIS "introuvable" ici).
           await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
-          throw new Error(`Aucun résultat ni message d'absence pour ${numeroDossier} (échec technique)`)
+          throw new Error(`Aucun résultat ni absence confirmée pour ${numeroDossier} (échec technique, retry)`)
         }
       }
 

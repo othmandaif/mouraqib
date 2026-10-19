@@ -208,6 +208,8 @@ interface Dossier {
   echeances: { id: string }[]
   _count: { evenements: number; echeances: number }
   updatedAt: string
+  // Dernier événement réel (dernière nouveauté du tribunal) — fourni par l'API.
+  dernierEvenement?: { texteArabe: string; datePublicationGreffe: string } | null
 }
 
 interface SearchResult {
@@ -838,7 +840,11 @@ export default function DossiersPage() {
                   tribunal={tribunalAr(d.tribunal)}
                   typeAffaire={d.titreAffaire || labelProcedure(d.typeProcedure)}
                   statut={d.echeances.length > 0 ? 'critique' : d._count.evenements > 0 ? 'en_cours' : 'nouveau'}
-                  updatedAt={new Date(d.updatedAt).toLocaleDateString('ar-MA')}
+                  derniereNouveaute={d.dernierEvenement?.datePublicationGreffe ?? d.updatedAt}
+                  dernierEvenement={d.dernierEvenement?.texteArabe ?? null}
+                  nbEvenements={d._count.evenements}
+                  nbEcheances={d._count.echeances}
+                  estCourAppel={d.estCourAppel}
                 />
                 {/* Actions : en RTL, on les place en haut à GAUCHE */}
                 <div className="absolute top-3 left-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
@@ -881,20 +887,6 @@ export default function DossiersPage() {
                     )}
                   </button>
                 </div>
-                {/* Badge "استئناف" : en haut à droite (RTL) */}
-                {d.estCourAppel && (
-                  <div className="absolute top-3 right-3 z-10">
-                    <Badge variant="accent">استئناف</Badge>
-                  </div>
-                )}
-                {/* Badge délais : en bas à gauche (RTL) */}
-                {d.echeances.length > 0 && (
-                  <div className="absolute bottom-3 left-3 z-10">
-                    <Badge variant="danger">
-                      {d.echeances.length} {d.echeances.length > 1 ? 'آجال' : 'أجل'}
-                    </Badge>
-                  </div>
-                )}
               </motion.div>
             ))}
           </AnimatePresence>

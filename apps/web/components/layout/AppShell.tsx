@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { ToastProvider } from '@/components/Toast'
 import Image from 'next/image'
+import { FileText } from 'lucide-react'
 import {
   Home, FolderOpen, Clock, Bell, Settings, Calendar, Menu, X, Sparkles,
 } from 'lucide-react'
@@ -37,6 +38,8 @@ const NAV = [
   ] },
   { section: 'الذكاء الاصطناعي', items: [
     { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },
+    { href: '/documents', label: 'محرّر الوثائق', Icon: FileText },
+    { href: '/documents/mes', label: 'وثائقي', Icon: FileText },
   ] },
   { section: 'المتابعة والتقارير', items: [
     { href: '/alertes', label: 'التنبيهات', Icon: Bell },

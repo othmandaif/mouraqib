@@ -32,6 +32,9 @@ model User {
   updatedAt DateTime @updatedAt
   messagesChat MessageChat[]  
   conversations Conversation[]
+  modelesDocument ModeleDocument[]
+  documents       Document[]
+
   @@index([email])
   @@index([cabinetId])
 }
@@ -53,6 +56,9 @@ model Cabinet {
   membres    User[]
   dossiers   Dossier[]
   abonnement Abonnement?
+
+  modelesDocument ModeleDocument[]
+  documents       Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -91,10 +97,14 @@ model Dossier {
   analyseIA  Json?                            // { resume, prochainesEcheances[], conseils[] }
   analyseAt  DateTime?                        // dernière analyse IA (cache anti-rappel)
 
+
   // Suivi
   estActif       Boolean   @default(true)
   derniereVerif  DateTime?
   prochaineVerif DateTime?
+
+
+
 
   // Relations
   userId    String
@@ -105,6 +115,7 @@ model Dossier {
   evenements Evenement[]
   echeances  Echeance[]
   alertes    Alerte[]
+  documents       Document[]
 
   // Données brutes du scraping mahakim.ma
   rawData Json?
@@ -411,3 +422,91 @@ model Conversation {
 
   @@index([userId])
 }
+
+model ModeleDocument {
+  id          String          @id @default(cuid())
+  // null = modèle global (fourni par la plateforme) ; sinon = modèle privé du cabinet/user
+  userId      String?
+  user        User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cabinetId   String?
+  cabinet     Cabinet?        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  typeActe    String          // clé du registre (ex: "BAIL_HABITATION", "CDI", "MISE_EN_DEMEURE")
+  categorie   CategorieActe   @default(AUTRE)
+  titre       String          // ex: "عقد كراء سكني"
+  langue      LangueDocument  @default(AR)
+  description String?
+
+  // Contenu du modèle avec variables {{nom}}. Peut être vide (modèle "libre" piloté par prompt).
+  contenu     String          @db.Text
+  // Variables attendues : [{ cle, label, type, requis }]
+  variables   Json?
+
+  estActif    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  documents   Document[]
+
+  styleResume       String?  @db.Text
+  importeParAvocat  Boolean  @default(false)
+
+  @@index([typeActe])
+  @@index([userId])
+  @@index([cabinetId])
+}
+
+model Document {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cabinetId   String?
+  cabinet     Cabinet?        @relation(fields: [cabinetId], references: [id], onDelete: SetNull)
+  // Dossier lié (optionnel) : permet de pré-remplir depuis les données du client
+  dossierId   String?
+  dossier     Dossier?        @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  // Modèle utilisé (optionnel : null = génération libre sans modèle)
+  modeleId    String?
+  modele      ModeleDocument? @relation(fields: [modeleId], references: [id], onDelete: SetNull)
+
+  typeActe    String
+  categorie   CategorieActe   @default(AUTRE)
+  titre       String
+  langue      LangueDocument  @default(AR)
+
+  contenu     String          @db.Text   // texte final (éditable par l'avocat)
+  variables   Json?                       // valeurs des variables utilisées
+  promptLibre String?         @db.Text    // si génération libre : la demande de l'avocat
+
+  statut      StatutDocument  @default(BROUILLON)
+  version     Int             @default(1)
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([dossierId])
+  @@index([typeActe])
+}
+
+
+enum CategorieActe {
+  CONTRAT          // عقود
+  REQUETE          // مقالات ومذكرات قضائية
+  CORRESPONDANCE   // مراسلات وإنذارات
+  SOCIETE          // عقود ووثائق الشركات
+  AUTRE
+}
+
+enum LangueDocument {
+  AR
+  FR
+}
+
+enum StatutDocument {
+  BROUILLON   // généré, en cours d'édition
+  FINALISE    // validé par l'avocat
+  ARCHIVE
+}
+
+

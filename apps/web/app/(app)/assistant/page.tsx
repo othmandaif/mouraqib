@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, Send, Loader2, Plus, MessageSquare, Trash2, Menu } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { Markdown } from './Markdown'
 
 interface Msg { role: 'user' | 'assistant'; contenu: string }
 interface Conv { id: string; titre: string; dossierId: string | null; updatedAt: string }
@@ -19,6 +20,13 @@ function token(): string {
 }
 const authHeaders = () => ({ Authorization: `Bearer ${token()}` })
 
+const ETAPES: Record<string, string> = {
+  thinking: 'أفكّر…',
+  searching: 'أبحث في القوانين…',
+  analyzing: 'أحلّل المواد…',
+  writing: 'أحرّر الجواب…',
+}
+
 export default function AssistantPage() {
   const isMobile = useMediaQuery('(max-width: 900px)')
   const [convs, setConvs] = useState<Conv[]>([])
@@ -27,6 +35,7 @@ export default function AssistantPage() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [listOpen, setListOpen] = useState(false)
+  const [etape, setEtape] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const chargerConvs = useCallback(async () => {
@@ -40,7 +49,7 @@ export default function AssistantPage() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, streaming])
+  }, [messages, streaming, etape])
 
   const ouvrirConv = async (id: string) => {
     setActiveId(id)
@@ -77,6 +86,7 @@ export default function AssistantPage() {
     setInput('')
     setMessages((m) => [...m, { role: 'user', contenu: texte }, { role: 'assistant', contenu: '' }])
     setStreaming(true)
+    setEtape('thinking')
 
     try {
       const res = await fetch('/api/assistant/chat', {
@@ -103,7 +113,9 @@ export default function AssistantPage() {
           try {
             const p = JSON.parse(t.slice(5).trim())
             if (p.conversationId && !activeId) { setActiveId(p.conversationId); convCreated = true }
+            if (p.etape) { setEtape(p.etape) }
             if (p.delta) {
+              setEtape(null) // le texte commence : on retire l'indicateur d'étape
               setMessages((m) => {
                 const copy = [...m]
                 copy[copy.length - 1] = { role: 'assistant', contenu: copy[copy.length - 1].contenu + p.delta }
@@ -123,6 +135,7 @@ export default function AssistantPage() {
       })
     } finally {
       setStreaming(false)
+      setEtape(null)
     }
   }
 
@@ -188,19 +201,34 @@ export default function AssistantPage() {
               <p style={{ fontSize: 16, fontWeight: 600, color: C.ink2, marginBottom: 8 }}>كيف يمكنني مساعدتك اليوم؟</p>
               <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.8 }}>اسألني عن ملفاتك، آجالك، أو آخر المستجدات. أعرف محفظتك كاملةً وأجيب وفق القانون المغربي.</p>
             </div>
-          ) : messages.map((m, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-start' : 'flex-end' }}>
-              <div style={{
-                maxWidth: '80%', padding: '12px 16px', borderRadius: 16, fontSize: 14, lineHeight: 1.85,
-                whiteSpace: 'pre-wrap', textAlign: 'right',
-                ...(m.role === 'user'
-                  ? { background: C.userBg, color: '#fff', borderTopRightRadius: 4 }
-                  : { background: C.goldSubtle, color: C.ink2, border: `1px solid ${C.border}`, borderTopLeftRadius: 4 }),
-              }}>
-                {m.contenu || (streaming && i === messages.length - 1 ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : '')}
+          ) : messages.map((m, i) => {
+            const estDernier = i === messages.length - 1
+            const estAssistant = m.role === 'assistant'
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-start' : 'flex-end' }}>
+                <div style={{
+                  maxWidth: '80%', padding: '12px 16px', borderRadius: 16, fontSize: 14, lineHeight: 1.85,
+                  textAlign: 'right',
+                  ...(m.role === 'user'
+                    ? { background: C.userBg, color: '#fff', borderTopRightRadius: 4, whiteSpace: 'pre-wrap' as const }
+                    : { background: C.goldSubtle, color: C.ink2, border: `1px solid ${C.border}`, borderTopLeftRadius: 4 }),
+                }}>
+                  {estAssistant ? (
+                    m.contenu ? (
+                      <Markdown texte={m.contenu} />
+                    ) : (streaming && estDernier ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: C.muted }}>
+                        <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                        {etape ? ETAPES[etape] ?? 'لحظة…' : 'لحظة…'}
+                      </span>
+                    ) : '')
+                  ) : (
+                    m.contenu
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <p style={{ fontSize: 10.5, color: C.faint, textAlign: 'center', margin: '10px 0 8px' }}>

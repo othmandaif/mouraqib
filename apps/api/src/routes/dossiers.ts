@@ -59,16 +59,24 @@ router.patch('/:id/restaurer', requireAuth, async (req: AuthRequest, res: Respon
  
 // GET /api/v1/dossiers/archives  → liste des dossiers archivés
 router.get('/archives', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/archives', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const dossiers = await prisma.dossier.findMany({
     where: { userId: req.userId!, estActif: false },
     include: {
       echeances: { where: { estExpire: false, estComplete: false }, orderBy: { dateLimite: 'asc' }, take: 3 },
-      evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1 },
-      _count: { select: { evenements: true } },
+      evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1, select: { texteArabe: true, datePublicationGreffe: true } },
+      _count: { select: { evenements: true, echeances: true } },
     },
     orderBy: { updatedAt: 'desc' },
   })
-  res.json(dossiers)
+  // Transforme evenements[0] → dernierEvenement (ce que la carte attend)
+  const resultat = dossiers.map((d) => ({
+    ...d,
+    dernierEvenement: d.evenements[0] ?? null,
+    evenements: undefined,
+  }))
+  res.json(resultat)
+})
 })
  
 router.get('/ping', (_req, res) => {
@@ -91,7 +99,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
     where.tribunal = { contains: tribunal, mode: 'insensitive' }
   }
 
-  const dossiers = await prisma.dossier.findMany({
+const dossiers = await prisma.dossier.findMany({
     where,
     include: {
       _count: { select: { evenements: true, echeances: true } },
@@ -99,10 +107,21 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<vo
         where: { estCritique: true, estComplete: false, estExpire: false },
         select: { id: true },
       },
+      evenements: {
+        orderBy: { datePublicationGreffe: 'desc' },
+        take: 1,
+        select: { texteArabe: true, datePublicationGreffe: true },
+      },
     },
     orderBy: { updatedAt: 'desc' },
   })
-  res.json(dossiers)
+  // Transforme evenements[0] → dernierEvenement (ce que la carte attend)
+  const resultat = dossiers.map((d) => ({
+    ...d,
+    dernierEvenement: d.evenements[0] ?? null,
+    evenements: undefined,
+  }))
+  res.json(resultat)
 })
 
 /**
