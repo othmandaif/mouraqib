@@ -1,108 +1,160 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
+import { CheckCircle2, MessageCircle } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { erreurAr } from '@/lib/erreurs'
+import { useAuth } from '@/hooks/useAuth'
+import { normaliserMaroc } from '@/components/legal/VerifWhatsApp'
+import { AuthSplit, PasswordInput, FormAlert, submitStyle } from '@/components/auth/AuthSplit'
+import { EnCours } from '@/components/ui/Chargement'
 
-const C = {
-  pageA: '#E7D9A6', pageB: '#EFE7D0', pageC: '#ECE2C2',
-  card: '#FBF9F2', ink: '#2C2A24', muted: '#A39C8B',
-  goldD: '#9A7820', border: '#EEE7D6', red: '#DB6A52', redBg: '#FCE8E2',
+const ETAPES = ['املؤوا طلب التسجيل', 'نتصل بكم لتقديم الخدمة واختيار العرض', 'نفعّل حسابكم وتبدأ المتابعة']
+
+// Indicateur simple : longueur + variété de caractères (0 → 4).
+function force(p: string) {
+  return [p.length >= 8, p.length >= 12, /[A-Z]/.test(p) && /[a-z]/.test(p), /[\d\W]/.test(p)].filter(Boolean).length
 }
+const FORCE_AR = ['', 'ضعيفة', 'مقبولة', 'جيدة', 'قوية']
+const CONTACT_TEL = process.env.NEXT_PUBLIC_CONTACT_TEL || '+212607167594'
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ email: '', password: '', nom: '', prenom: '', telephone: '' })
+  const [form, setForm] = useState({ email: '', password: '', nom: '', prenom: '', telephone: '', barreau: '', ville: '', structure: '', nbDossiers: '', message: '' })
+  const [envoye, setEnvoye] = useState(false)
   const [error, setError] = useState('')
+  // Erreur rattachée au champ concerné (affichée dessous, focus dessus) plutôt qu'en bas du formulaire
+  const [erreurEmail, setErreurEmail] = useState('')
+  const champEmail = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
+  const [invitation, setInvitation] = useState('')
+  const [accepte, setAccepte] = useState(false)
+  const { login } = useAuth()
   const router = useRouter()
 
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  useEffect(() => { setInvitation(new URLSearchParams(window.location.search).get('invitation') ?? '') }, [])
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+    setError(''); setErreurEmail('')
+    // Contrôles en arabe (les bulles du navigateur s'affichent dans sa langue)
+    const manque = form.prenom.trim().length < 2 || form.nom.trim().length < 2 ? 'اكتبوا الاسم الشخصي والعائلي.'
+      : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) ? 'اكتبوا بريداً إلكترونياً صحيحاً.'
+      : !/^\+?\d{9,15}$/.test(form.telephone.replace(/[\s.\-()]/g, '')) ? 'اكتبوا رقم هاتف صحيحاً، مثلاً 06 61 23 45 67.'
+      : form.password.length < 8 ? 'كلمة المرور يجب أن تتضمن 8 أحرف على الأقل.'
+      : !accepte ? 'وافقوا على شروط الاستعمال وسياسة الخصوصية للمتابعة.' : ''
+    if (manque) { setError(manque); return }
     setLoading(true)
     try {
-      await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify(form) })
-      router.push('/login?registered=1')
+      // Champs vides non envoyés (l'API attend des valeurs précises pour la structure et le nombre de dossiers)
+      const extras = Object.fromEntries(Object.entries({ barreau: form.barreau, ville: form.ville, structure: form.structure, nbDossiers: form.nbDossiers, message: form.message }).filter(([, v]) => v.trim()))
+      const body = { email: form.email, password: form.password, nom: form.nom, prenom: form.prenom, telephone: normaliserMaroc(form.telephone), ...extras, ...(invitation ? { invitation } : {}) }
+      const r = await apiFetch<{ enAttente?: boolean }>('/auth/register', { method: 'POST', body: JSON.stringify(body) })
+      if (r.enAttente) { setEnvoye(true); window.scrollTo({ top: 0 }); return }
+      // Membre invité par un cabinet : compte actif, connexion directe puis parcours de bienvenue
+      const s = await login(form.email, form.password, true).catch(() => null)
+      router.push(s && !('ticket' in s) ? '/onboarding' : '/login?registered=1')
     } catch (err: any) {
-      setError(err.message)
+      const msg = erreurAr(err?.message)
+      if (/Email|e-mail/i.test(err?.message ?? '')) { setErreurEmail(msg); champEmail.current?.focus() } else setError(msg)
     } finally {
       setLoading(false)
     }
   }
 
+  const f = force(form.password)
+
   return (
-    <div dir="rtl" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: `linear-gradient(155deg, ${C.pageA} 0%, ${C.pageB} 38%, ${C.pageC} 100%)`, fontFamily: "'IBM Plex Sans Arabic','IBM Plex Sans',sans-serif" }}>
-      <div style={{ width: '100%', maxWidth: 460 }}>
-        <Brand subtitle="أنشئوا حسابكم — مجاناً" />
-
-        <form onSubmit={handleSubmit} style={{ background: C.card, borderRadius: 24, boxShadow: '0 30px 80px -30px rgba(120,95,30,.35)', padding: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {error && (
-            <div style={{ background: C.redBg, border: `1px solid ${C.red}33`, color: C.red, padding: '11px 14px', borderRadius: 11, fontSize: 13, textAlign: 'right' }}>{error}</div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <Field label="الاسم الشخصي">
-              <input value={form.prenom} onChange={set('prenom')} required minLength={2} style={inputStyle} />
-            </Field>
-            <Field label="الاسم العائلي">
-              <input value={form.nom} onChange={set('nom')} required minLength={2} style={inputStyle} />
-            </Field>
-          </div>
-
-          <Field label="البريد الإلكتروني">
-            <input type="email" value={form.email} onChange={set('email')} required dir="ltr" style={inputStyle} />
-          </Field>
-
-          <Field label="رقم الهاتف (واتساب)">
-            <input type="tel" value={form.telephone} onChange={set('telephone')} required placeholder="+212 6XX XXX XXX" dir="ltr" style={inputStyle} />
-          </Field>
-
-          <Field label="كلمة المرور">
-            <input type="password" value={form.password} onChange={set('password')} required minLength={8} dir="ltr" style={inputStyle} />
-            <p style={{ fontSize: 11, color: C.muted, marginTop: 4, textAlign: 'right' }}>8 أحرف على الأقل</p>
-          </Field>
-
-          <button type="submit" disabled={loading} style={submitStyle(loading)}>
-            {loading ? 'جارٍ الإنشاء...' : 'إنشاء حسابي المجاني'}
-          </button>
-
-          <p style={{ textAlign: 'center', fontSize: 13, color: C.muted }}>
-            لديكم حساب؟{' '}
-            <Link href="/login" style={{ color: C.goldD, fontWeight: 600, textDecoration: 'none' }}>تسجيل الدخول</Link>
+    <AuthSplit pied="لا نشارك بياناتكم مع أي طرف" aside={<>
+      <h2 style={{ margin: 0, fontSize: 38, fontWeight: 600, lineHeight: 1.35, color: '#FFFFFF' }}>{invitation ? 'دقيقتان، ثم يعمل ملفاتي من أجلكم.' : 'اطلبوا حسابكم، ونتكفل بالباقي.'}</h2>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 16 }}>
+        {ETAPES.map((t, i) => (
+          <li key={t} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span className="num" style={{ flex: 'none', width: 32, height: 32, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, ...(i === 0 ? { background: '#F5F3EE', color: '#083B34' } : { border: '1.5px solid #6E9C90' }) }}>{i + 1}</span>{t}
+          </li>
+        ))}
+      </ol>
+    </>}>
+      {envoye ? (
+        <div role="status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16 }}>
+          <span aria-hidden style={{ width: 56, height: 56, borderRadius: '50%', background: '#0E5A4E', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle2 size={30} /></span>
+          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600 }}>شكراً ذ. {form.prenom}، وصلنا طلبكم.</h1>
+          <p style={{ margin: 0, fontSize: 16, color: '#3B4A47', lineHeight: 1.8 }}>
+            سنتصل بكم على الرقم <span className="num">{normaliserMaroc(form.telephone)}</span> خلال يوم عمل لتقديم الخدمة وتفعيل حسابكم.
+            بعد التفعيل، تدخلون بالبريد وكلمة المرور اللذين اخترتموهما.
           </p>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function Brand({ subtitle }: { subtitle: string }) {
-  return (
-    <div style={{ textAlign: 'center', marginBottom: 36 }}>
-      <div style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #E5D9B0', borderRadius: 24, padding: 8, background: '#fff', boxShadow: '0 8px 24px -8px rgba(150,115,20,.3)' }}>
-        <Image src="/logo.png" alt="Mouraqib" width={120} height={120} />
-      </div>
-      <p style={{ color: C.muted, fontSize: 14 }}>{subtitle}</p>
-    </div>
-  )
-}
-
-const inputStyle: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: 11, padding: '12px 14px', fontSize: 14, background: '#fff', fontFamily: "'IBM Plex Sans',sans-serif", outline: 'none', boxSizing: 'border-box' }
-
-function submitStyle(loading: boolean): React.CSSProperties {
-  return { width: '100%', background: 'linear-gradient(140deg,#CBAE55,#9A7820)', color: '#fff', fontWeight: 700, fontSize: 14.5, padding: 13, borderRadius: 12, border: 'none', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1, fontFamily: "'IBM Plex Sans Arabic',sans-serif", boxShadow: '0 8px 18px -8px rgba(150,115,20,.6)' }
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#5B5544', marginBottom: 6, textAlign: 'right' }}>{label}</label>
-      {children}
-    </div>
+          <a href={`https://wa.me/${CONTACT_TEL.replace(/[^\d]/g, '')}`} target="_blank" rel="noopener noreferrer" className="mp-action" style={{ ...submitStyle(false), width: 'auto', padding: '0 22px', display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+            <MessageCircle size={18} aria-hidden />مستعجلون؟ راسلونا على واتساب
+          </a>
+          <Link href="/" style={{ fontSize: 15, fontWeight: 600, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>العودة إلى الصفحة الرئيسية</Link>
+        </div>
+      ) : (
+      <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 600 }}>{invitation ? 'إنشاء حساب' : 'طلب التسجيل'}</h1>
+          <p style={{ margin: 0, fontSize: 16, color: '#3B4A47', lineHeight: 1.7 }}>{invitation ? 'للمحامين وأعضاء المكاتب.' : 'املؤوا الاستمارة: نتصل بكم خلال يوم عمل لتقديم الخدمة وتفعيل حسابكم.'}</p>
+        </div>
+        {invitation && <FormAlert tone="success">تمت دعوتكم للانضمام إلى مكتب على ملفاتي. أنشئوا حسابكم بالبريد الذي وصلته الدعوة.</FormAlert>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+          <label className="mp-field">الاسم الشخصي<input className="mp-input" autoComplete="given-name" value={form.prenom} onChange={set('prenom')} required minLength={2} maxLength={80} /></label>
+          <label className="mp-field">الاسم العائلي<input className="mp-input" autoComplete="family-name" value={form.nom} onChange={set('nom')} required minLength={2} maxLength={80} /></label>
+        </div>
+        <label className="mp-field">البريد الإلكتروني
+          <input ref={champEmail} className="mp-input" type="email" autoComplete="email" value={form.email} onChange={(e) => { setErreurEmail(''); set('email')(e) }} required dir="ltr"
+            aria-invalid={!!erreurEmail} aria-describedby={erreurEmail ? 'err-email' : undefined} style={{ textAlign: 'right', ...(erreurEmail ? { borderColor: '#C0392B' } : {}) }} />
+          {erreurEmail && <span id="err-email" role="alert" style={{ fontSize: 13, fontWeight: 600, color: '#9B2C20' }}>{erreurEmail}</span>}
+          {!erreurEmail && <span style={{ fontSize: 13, fontWeight: 400, color: '#5E6B67' }}>بريد من مزوّد معروف: Gmail، Outlook، Hotmail، Yahoo، iCloud…</span>}
+        </label>
+        <label className="mp-field">رقم الهاتف (واتساب)
+          <span dir="ltr" style={{ display: 'flex', gap: 8 }}>
+            <span className="num" style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', padding: '0 14px', border: '1px solid #CFCAC0', borderRadius: 10, background: '#F5F3EE', fontSize: 15, fontWeight: 400 }}>+212</span>
+            <input className="mp-input num" type="tel" inputMode="tel" autoComplete="tel-national" value={form.telephone} onChange={set('telephone')} required pattern="[\d\s+]{9,16}" placeholder="6 61 23 45 67" />
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 400, color: '#5E6B67' }}>سنرسل رمز تحقق على واتساب قبل أي تنبيه.</span>
+        </label>
+        <label className="mp-field">كلمة المرور
+          <PasswordInput autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={8} aria-describedby="pw-hint" />
+          <span aria-hidden style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}>
+            {[0, 1, 2, 3].map((i) => <span key={i} style={{ height: 4, borderRadius: 2, background: i < f ? (f <= 1 ? '#C0392B' : '#0E5A4E') : '#E4E0D6' }} />)}
+          </span>
+          <span id="pw-hint" style={{ fontSize: 13, fontWeight: 400, color: f >= 3 ? '#0B4A40' : '#3B4A47' }}>{form.password ? <>{FORCE_AR[f] || 'ضعيفة'} · </> : null}<span className="num">8</span> أحرف على الأقل، و<span className="num">12</span> مستحسنة</span>
+        </label>
+        {!invitation && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12 }}>
+              <label className="mp-field">هيئة المحامين<input className="mp-input" value={form.barreau} onChange={set('barreau')} maxLength={120} placeholder="هيئة الدار البيضاء" /></label>
+              <label className="mp-field">المدينة<input className="mp-input" value={form.ville} onChange={set('ville')} maxLength={80} autoComplete="address-level2" /></label>
+              <label className="mp-field">الهيكلة
+                <select className="mp-input" value={form.structure} onChange={set('structure')}>
+                  <option value="">اختاروا…</option><option value="SEUL">محامٍ بمفرده</option><option value="CABINET">مكتب (عدة محامين)</option>
+                </select>
+              </label>
+              <label className="mp-field">عدد الملفات تقريباً
+                <select className="mp-input" value={form.nbDossiers} onChange={set('nbDossiers')}>
+                  <option value="">اختاروا…</option><option value="MOINS_50">أقل من 50</option><option value="50_200">من 50 إلى 200</option><option value="200_500">من 200 إلى 500</option><option value="PLUS_500">أكثر من 500</option>
+                </select>
+              </label>
+            </div>
+            <label className="mp-field"><span>رسالة <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
+              <textarea className="mp-input" rows={3} maxLength={1000} value={form.message} onChange={set('message')} placeholder="مثال: أفضّل الاتصال بعد الساعة 17:00" style={{ padding: 12, minHeight: 84, resize: 'vertical' }} />
+            </label>
+          </>
+        )}
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, lineHeight: 1.7, color: '#3B4A47' }}>
+          <input type="checkbox" required checked={accepte} onChange={(e) => setAccepte(e.target.checked)} style={{ flex: 'none', width: 22, height: 22, marginTop: 3, accentColor: '#0E5A4E' }} />
+          <span>أوافق على شروط الاستعمال وسياسة الخصوصية، بما فيها معالجة المعطيات وفق القانون <span className="num">09.08</span>.</span>
+        </label>
+        {error && <FormAlert>{error}</FormAlert>}
+        <button type="submit" disabled={loading} aria-busy={loading} className="mp-action" style={submitStyle(loading)}>{loading ? <EnCours texte="جارٍ الإرسال…" /> : invitation ? 'إنشاء الحساب' : 'إرسال الطلب'}</button>
+        <p style={{ margin: 0, textAlign: 'center', fontSize: 15, color: '#3B4A47' }}>
+          لديكم حساب؟ <Link href="/login" style={{ fontWeight: 600, padding: '8px 4px', display: 'inline-block', textDecoration: 'none' }}>الدخول</Link>
+        </p>
+      </form>
+      )}
+    </AuthSplit>
   )
 }

@@ -1,240 +1,434 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ChevronRight, ChevronLeft, Calendar as CalIcon, Clock, AlertTriangle, Gavel } from 'lucide-react'
+import {
+  ChevronLeft, ChevronRight, Plus, X, CalendarDays, CalendarRange, List, Scale, Clock, Eye, CalendarCheck, CheckCircle2, Lightbulb, ListChecks,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { apiFetch } from '@/lib/api'
+import { useTribunaux } from '@/hooks/useTribunaux'
+import { useToast, useActionAnnulable } from '@/components/Toast'
+import { IconeRonde, EtatVide, IllusCalendrier } from '@/components/ui/Visuels'
+import { ErreurChargement, useEnvoi, Attente } from '@/components/ui/Chargement'
+import { joursRestants, fmtJM, heure, unitJours, JOURS, JOUR_MS } from '@/components/legal/DeadlineCard'
 
-interface CalItem {
-  id: string
-  type: 'audience' | 'echeance'
-  date: string
-  titre: string
-  numeroDossier: string
-  tribunal: string
-  titreAffaire: string | null
-  dossierId: string
-  critique: boolean
+type Dossier = { id: string; numeroDossier: string; tribunal?: string; titreAffaire: string | null }
+interface Mois {
+  debut: string
+  fin: string
+  audiences: { id: string; date: string; titre: string; dossier: Dossier & { tribunal: string } }[]
+  echeances: { id: string; date: string; titre: string; typeDelai: string; camp: 'AGIR' | 'SURVEILLER'; estComplete: boolean; estExpire: boolean; dossier: Dossier }[]
+  rendezVous: { id: string; date: string; titre: string; lieu: string | null; dossier: Dossier | null }[]
+  prochains?: {
+    audience: { id: string; date: string; dossier: Dossier & { tribunal: string } } | null
+    delai: { id: string; date: string; titre: string; dossier: Dossier } | null
+  }
 }
-interface SemaineData { debut: string; fin: string; offset: number; items: CalItem[] }
+type Genre = 'audience' | 'agir' | 'surveiller' | 'rdv' | 'fait'
+type Item = { id: string; date: string; genre: Genre; court: string; texte: string; sous: string; dossierId?: string; rdvId?: string }
+type Vue = 'mois' | 'semaine' | 'liste'
 
-const C = {
-  card: '#fff', ink: '#2C2A24', ink2: '#3A3322', muted: '#A39C8B', faint: '#BDB6A4',
-  goldD: '#9A7820', goldM: '#CBAE55', goldChip: '#F4EFDF', goldSubtle: '#FBF6E7',
-  green: '#3F9E6B', greenBg: '#E6F3EB', red: '#DB6A52', redBg: '#FCE8E2',
-  border: '#EEE7D6', borderL: '#F1EBDC', surfaceAlt: '#F4EFDF',
+const MOIS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر']
+const ENTETES = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
+const cle = (d: Date | string) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}` }
+// Heure affichée seulement pour les jalons horaires : un délai court jusqu'à 23:59, son heure n'apporte rien
+const hItem = (it: Item) => (it.genre === 'audience' || it.genre === 'rdv' ? heure(it.date) : '')
+const dateLongue = (d: string | Date) => { const x = new Date(d); return <><span className="num">{x.getDate()}</span> {MOIS_AR[x.getMonth()]} <span className="num">{x.getFullYear()}</span></> }
+
+// Conseils pratiques (un par jour, toujours le même pour une date donnée)
+const CONSEILS = [
+  'عندما يصادف آخر أجل يوم عطلة، تحققوا من التاريخ الذي يُعتمد في الحساب قبل الإيداع.',
+  'سجّلوا تاريخ التبليغ فور توصلكم به: هو الذي يحدد بداية أجل الطعن في أغلب الحالات.',
+  'أودعوا قبل آخر يوم بيوم على الأقل، تحسباً لأي طارئ في كتابة الضبط.',
+  'أجل الاستئناف في القضايا الاستعجالية أقصر من القضايا العادية: راجعوا نوع المسطرة.',
+  'راجعوا الأجندة كل صباح: الجلسات والآجال تُحدَّث تلقائياً من محاكم.',
+]
+
+// Style de chaque type d'élément (discipline du signal : rouge ≤ 48 h, ambre ≤ 7 j, seulement pour « عليكم »)
+function styleEv(it: Item): { cls: string; Icon: LucideIcon } {
+  if (it.genre === 'fait') return { cls: 'ev fait', Icon: CheckCircle2 }
+  if (it.genre === 'surveiller') return { cls: 'ev surv', Icon: Eye }
+  if (it.genre === 'rdv') return { cls: 'ev rdv', Icon: CalendarCheck }
+  if (it.genre === 'agir') { const j = joursRestants(it.date); return { cls: j <= 2 ? 'ev rouge' : j <= 7 ? 'ev ambre' : 'ev agir', Icon: Clock } }
+  return { cls: new Date(it.date).getTime() < Date.now() - JOUR_MS / 2 ? 'ev aud passe' : 'ev aud', Icon: Scale }
 }
 
-const JOURS_AR = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
-const HEURE_DEBUT = 8
-const HEURE_FIN = 18
-
-const fmtHeure = (d: Date) => d.toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })
-const fmtCourt = (d: Date) => d.toLocaleDateString('ar-MA', { day: 'numeric', month: 'short' })
+const CSS = `
+.cal-wd,.cal-wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.cal-wd{background:#F7F5F0;border-bottom:1px solid #EEEAE1}
+.cal-wd span{padding:12px 14px;font-size:14px;font-weight:600;color:#15201E}
+.cal-wk{border-bottom:1px solid #EEEAE1}
+.cal-wk:last-child{border-bottom:0}
+.cal-d{min-height:106px;padding:10px 8px 8px;border-left:1px solid #EEEAE1;display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;box-sizing:border-box;cursor:pointer;position:relative;transition:background .15s}
+.cal-d:last-child{border-left:0}
+.cal-d:hover{background:#FAF8F4}
+.cal-d b{align-self:flex-start;font-size:14px;font-weight:600;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#15201E}
+.cal-d.out b{color:#9A958B;font-weight:400}
+.cal-d.today{background:#F1F8F5}
+.cal-d.today b{background:#0E5A4E;color:#FFFFFF}
+.cal-d.sel::after{content:'';position:absolute;inset:3px;border:2px solid var(--mp-choix-bord);border-radius:12px;pointer-events:none}
+.cal-d:focus-visible{outline:none;box-shadow:inset 0 0 0 3px #CDE5DD}
+.ev-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.ev{max-width:100%;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;line-height:1.3;border-radius:8px;padding:4px 8px;text-decoration:none;overflow:hidden;white-space:nowrap}
+.ev span{overflow:hidden;text-overflow:ellipsis}
+.ev svg{flex:none}
+.ev-h{font-size:11px;color:#5E6B67}
+.ev.aud{background:#EAF0F5;color:#22476A}
+.ev.aud.passe,.ev.fait{background:#F1EFEA;color:#5E6B67}
+.ev.agir{background:#F1F8F5;color:#0B4A40;border:1px solid #CDE5DD}
+.ev.ambre{background:#FDF1DC;color:#7A4E06}
+.ev.rouge{background:#FBEAE7;color:#9B2C20}
+.ev.surv{background:#FFFFFF;color:#4D5B57;border:1px dashed #8C877C}
+.ev.rdv{background:#E3F0EC;color:#0B4A40}
+.cal-leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:#3B4A47}
+.cal-leg span{display:inline-flex;align-items:center;gap:6px}
+.cal-leg i{width:10px;height:10px;border-radius:50%;flex:none}
+.cal-seg{display:inline-flex;background:#EEEAE1;border-radius:999px;padding:4px;gap:4px}
+.cal-seg button{font-family:inherit;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:transparent;color:#3B4A47;border:0;border-radius:999px;padding:0 14px;min-height:40px;cursor:pointer}
+.cal-seg button[aria-selected="true"]{background:var(--mp-choix-fond);color:var(--mp-choix-texte);border-color:var(--mp-choix-bord);box-shadow:inset 0 0 0 1px var(--mp-choix-bord)}
+.cal-cartes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px}
+.cal-carte{background:#FFFFFF;border:1px solid #E4E0D6;border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cal-carte h2{margin:0;font-size:17px;font-weight:600;flex:1}
+.cal-carte a.lien{font-size:14px;font-weight:600;color:#0E5A4E;text-decoration:none;display:inline-flex;align-items:center;gap:4px;min-height:36px}
+.cal-mob{display:none}
+@media (max-width: 760px){.cal-grid{display:none !important}.cal-mob{display:flex !important}.cal-illus{display:none !important}.cal-leg{display:none}}
+@media (prefers-reduced-motion: reduce){.cal-d{transition:none}}
+`
+const BTN: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: '#FFFFFF', color: '#15201E', border: '1px solid #CFCAC0', borderRadius: 999, padding: '0 16px', minHeight: 44, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }
+const ROND: React.CSSProperties = { width: 40, height: 40, borderRadius: '50%', border: '1px solid #E4E0D6', background: '#FFFFFF', color: '#15201E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }
 
 export default function CalendrierPage() {
-  const [offset, setOffset] = useState(0)
-  const { data, loading, error } = useApi<SemaineData>(`/calendrier/semaine?offset=${offset}`)
-  const { data: ov } = useApi<{ evenements: { semaine: number; evolutionPct: number | null; heatmap: number[] } }>('/dashboard/overview')
-  const isMobile = useMediaQuery('(max-width: 768px)')
+  const { toast } = useToast()
+  const { tribunalAr } = useTribunaux()
+  const now = new Date()
+  const [vue, setVue] = useState<Vue>('mois')
+  const [annee, setAnnee] = useState(now.getFullYear())
+  const [mois, setMois] = useState(now.getMonth())
+  const [jourSel, setJourSel] = useState<Date>(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
+  const [semaine, setSemaine] = useState(0) // décalage en semaines (vue semaine)
+  const [form, setForm] = useState(false)
+  const { data, error, refetch } = useApi<Mois>(`/calendrier/mois?annee=${annee}&mois=${mois + 1}`)
+  const { masques, differer } = useActionAnnulable()
+  const { data: dossiers } = useApi<Dossier[]>(form ? '/dossiers' : null)
 
-  const debut = data?.debut ? new Date(data.debut) : null
-  const items = Array.isArray(data?.items) ? data!.items : []
+  const items: Item[] = useMemo(() => {
+    if (!data) return []
+    return [
+      ...data.audiences.map((a) => ({ id: `a${a.id}`, date: a.date, genre: 'audience' as const, court: 'جلسة', texte: `جلسة · ${tribunalAr(a.dossier.tribunal)}`, sous: a.dossier.titreAffaire ?? a.dossier.numeroDossier, dossierId: a.dossier.id })),
+      ...data.echeances.map((e) => {
+        const titre = e.titre.split(' - ')[0]
+        const genre: Genre = e.estComplete ? 'fait' : e.camp === 'SURVEILLER' ? 'surveiller' : 'agir'
+        return {
+          id: `e${e.id}`, date: e.date, genre,
+          court: genre === 'fait' ? 'منجز' : genre === 'surveiller' ? 'أجل الخصم' : 'آخر أجل',
+          texte: genre === 'fait' ? `منجز · ${titre}` : genre === 'surveiller' ? `${titre} (الخصم)` : `آخر أجل · ${titre}`,
+          sous: e.dossier.titreAffaire ?? e.dossier.numeroDossier, dossierId: e.dossier.id,
+        }
+      }),
+      ...data.rendezVous.map((r) => ({ id: `r${r.id}`, rdvId: r.id, date: r.date, genre: 'rdv' as const, court: r.titre, texte: r.titre, sous: [r.lieu, r.dossier?.titreAffaire ?? r.dossier?.numeroDossier].filter(Boolean).join(' · '), dossierId: r.dossier?.id })),
+    ].filter((x) => !masques.has(x.id)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [data, tribunalAr, masques])
 
-  const jours = useMemo(() => {
-    if (!debut) return []
-    return Array.from({ length: 7 }, (_, i) => { const d = new Date(debut); d.setDate(d.getDate() + i); return d })
-  }, [debut])
-
-  const grille = useMemo(() => {
-    const map = new Map<string, CalItem[]>()
-    for (const item of items) {
-      const d = new Date(item.date)
-      const key = `${(d.getDay() + 6) % 7}-${d.getHours()}`
-      const arr = map.get(key) ?? []; arr.push(item); map.set(key, arr)
-    }
-    return map
+  const parJour = useMemo(() => {
+    const m = new Map<string, Item[]>()
+    for (const it of items) { const k = cle(it.date); m.set(k, [...(m.get(k) ?? []), it]) }
+    return m
   }, [items])
 
-  const journee = useMemo(() => {
-    const map = new Map<number, CalItem[]>()
-    for (const item of items) {
-      const d = new Date(item.date)
-      if (d.getHours() === 0 && d.getMinutes() === 0) {
-        const ji = (d.getDay() + 6) % 7; const arr = map.get(ji) ?? []; arr.push(item); map.set(ji, arr)
-      }
+  // Grille lundi → dimanche couvrant le mois
+  const semaines = useMemo(() => {
+    const premier = new Date(annee, mois, 1)
+    const dernier = new Date(annee, mois + 1, 0)
+    const d = new Date(annee, mois, 1 - ((premier.getDay() + 6) % 7)) // lundi de la 1re semaine
+    const out: Date[][] = []
+    while (d <= dernier) {
+      out.push(Array.from({ length: 7 }, () => { const x = new Date(d); d.setDate(d.getDate() + 1); return x }))
     }
-    return map
-  }, [items])
+    return out
+  }, [annee, mois])
 
-  const heures = Array.from({ length: HEURE_FIN - HEURE_DEBUT + 1 }, (_, i) => HEURE_DEBUT + i)
-  const total = items.length
-  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0)
-  const libelle = offset === 0 ? 'هذا الأسبوع' : offset === 1 ? 'الأسبوع المقبل' : offset === -1 ? 'الأسبوع الماضي' : `${offset > 0 ? '+' : ''}${offset} أسابيع`
+  const changerMois = (delta: number) => {
+    const d = new Date(annee, mois + delta, 1)
+    setAnnee(d.getFullYear()); setMois(d.getMonth())
+  }
+  const allerAujourdhui = () => { setAnnee(now.getFullYear()); setMois(now.getMonth()); setJourSel(new Date(now.getFullYear(), now.getMonth(), now.getDate())); setSemaine(0) }
 
-  // Mini-heatmap (façon dashboard) — données réelles sur 7 jours glissants
-  const heat = ov?.evenements.heatmap ?? [0, 0, 0, 0, 0, 0, 0]
-  const heatPalArr = ['#F7F1E1', '#EFE6C8', '#F2D7C2', '#E2C77C', '#D9C06A']
-  const heatLevel = (n: number) => (n === 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4)
-  const evtSemaine = ov?.evenements.semaine ?? 0
-  const evolutionPct = ov?.evenements.evolutionPct ?? null
-  const heatJours = (() => {
-    const names = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
-    const t = new Date()
-    return Array.from({ length: 7 }, (_, i) => { const d = new Date(t); d.setDate(d.getDate() - (6 - i)); return names[d.getDay()] })
-  })()
+  // Vue semaine : 7 jours à partir du lundi courant (+ décalage)
+  const lundi = useMemo(() => { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + semaine * 7); return d }, [semaine]) // eslint-disable-line react-hooks/exhaustive-deps
+  const joursSemaine = Array.from({ length: 7 }, (_, i) => new Date(lundi.getTime() + i * JOUR_MS))
+  const allerSemaine = (delta: number) => {
+    const s = semaine + delta
+    setSemaine(s)
+    const l = new Date(lundi.getTime() + delta * 7 * JOUR_MS)
+    if (l.getMonth() !== mois || l.getFullYear() !== annee) { setAnnee(l.getFullYear()); setMois(l.getMonth()) }
+  }
+
+  const duJour = parJour.get(cle(jourSel)) ?? []
+  const estAujourdhui = cle(jourSel) === cle(now)
+  const conseil = CONSEILS[Math.floor(Date.now() / JOUR_MS) % CONSEILS.length]
+  const aud = data?.prochains?.audience
+  const delai = data?.prochains?.delai
+  const jDelai = delai ? joursRestants(delai.date) : 0
+  const couleurDelai = jDelai <= 2 ? '#9B2C20' : jDelai <= 7 ? '#7A4E06' : '#0B4A40'
+
+  const { cle: envoi, lancer } = useEnvoi()
+  const ajouterRdv = (ev: React.FormEvent<HTMLFormElement>) => {
+    ev.preventDefault()
+    const f = new FormData(ev.currentTarget)
+    return lancer('rdv', () => enregistrerRdv(f))
+  }
+  const enregistrerRdv = async (f: FormData) => {
+    const date = String(f.get('date')); const h = String(f.get('heure') || '09:00')
+    try {
+      await apiFetch('/calendrier/rendez-vous', { method: 'POST', body: JSON.stringify({
+        titre: String(f.get('titre')), lieu: String(f.get('lieu') || '') || undefined,
+        debut: new Date(`${date}T${h}:00`).toISOString(), dossierId: String(f.get('dossierId') || '') || undefined,
+      }) })
+      toast('أُضيف الموعد إلى الأجندة.', 'success')
+      await refetch(); setForm(false)
+    } catch { toast('تعذّر إضافة الموعد. تحققوا من الحقول.', 'error') }
+  }
+  const supprimerRdv = (id: string) => differer([`r${id}`], 'حُذف الموعد.', () => apiFetch(`/calendrier/rendez-vous/${id}`, { method: 'DELETE' }), refetch)
+
+  // Pastille d'un élément dans la grille : icône + libellé court, heure dessous
+  const Pastille = ({ it }: { it: Item }) => {
+    const { cls, Icon } = styleEv(it)
+    const h = hItem(it)
+    return (
+      <span className="ev-wrap">
+        <Link href={it.dossierId ? `/dossiers/${it.dossierId}` : '#'} className={cls} title={`${it.texte} — ${it.sous}`} onClick={(e) => e.stopPropagation()}>
+          <Icon size={13} strokeWidth={2} aria-hidden /><span>{it.court}</span>
+        </Link>
+        {h && <span className="ev-h num">{h}</span>}
+      </span>
+    )
+  }
+
+  const navPrec = vue === 'semaine' ? () => allerSemaine(-1) : () => changerMois(-1)
+  const navSuiv = vue === 'semaine' ? () => allerSemaine(1) : () => changerMois(1)
 
   return (
-    <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/* En-tête */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ textAlign: 'right' }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.ink }}>الأجندة الأسبوعية</h1>
-          <p style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>جلساتكم وآجالكم القادمة لهذا الأسبوع</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <NavBtn onClick={() => setOffset((o) => o - 1)} title="الأسبوع الماضي"><ChevronRight size={16} /></NavBtn>
-          {offset !== 0 && (
-            <button onClick={() => setOffset(0)} style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: C.ink, cursor: 'pointer' }}>اليوم</button>
-          )}
-          <NavBtn onClick={() => setOffset((o) => o + 1)} title="الأسبوع المقبل"><ChevronLeft size={16} /></NavBtn>
-        </div>
-      </div>
+    <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <style>{CSS}</style>
 
-      {/* Bandeau résumé + légende */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.ink2 }}>
-          <CalIcon size={15} stroke={C.goldD} />
-          <span style={{ fontWeight: 600 }}>{libelle}</span>
-          {debut && <span dir="ltr" style={{ color: C.muted, fontFamily: "'IBM Plex Sans',sans-serif" }}>{fmtCourt(jours[0])} — {fmtCourt(jours[6])}</span>}
+      {/* En-tête : titre + vues + action principale */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CalendarDays size={28} strokeWidth={1.8} color="#0E5A4E" aria-hidden />الأجندة
+          </h1>
+          <p style={{ margin: 0, fontSize: 16, color: '#3B4A47' }}>الجلسات والآجال في مكان واحد، تُحدَّث من محاكم تلقائياً.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Legend color={C.goldD} txt="جلسة" /><Legend color={C.goldM} txt="أجل" /><Legend color={C.red} txt="أجل عاجل" />
-        </div>
-      </div>
-
-      {/* Mini-heatmap (façon dashboard) — activité réelle 7 jours */}
-      {!error && !loading && (
-        <Shell pad={isMobile ? 16 : 20}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.border}`, borderRadius: 10, padding: '6px 11px' }}>
-              <Clock size={13} stroke={C.goldD} />
-              <span style={{ fontSize: 11.5, color: '#7A7461', fontFamily: "'IBM Plex Sans',sans-serif" }}>آخر 7 أيام</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>الأحداث حسب اليوم</h3>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={14} stroke={C.goldD} /></div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              {evolutionPct !== null && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: evolutionPct >= 0 ? C.green : C.red, background: evolutionPct >= 0 ? C.greenBg : C.redBg, borderRadius: 6, padding: '2px 7px' }}>{evolutionPct >= 0 ? '+' : ''}{evolutionPct}%</span>
-              )}
-              <span style={{ fontSize: 10.5, color: C.muted }}>عن الأسبوع الماضي</span>
-            </div>
-            <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 30, fontWeight: 700, color: C.ink }}>{evtSemaine}</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {heat.map((v, i) => (
-              <div key={i} title={`${v}`} style={{ flex: 1, height: 40, borderRadius: 8, background: heatPalArr[heatLevel(v)], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: v === 0 ? C.faint : C.ink2, fontFamily: "'IBM Plex Sans',sans-serif" }}>{v > 0 ? v : ''}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <div className="cal-seg" role="tablist" aria-label="طريقة العرض">
+            {([['mois', 'شهر', CalendarDays], ['semaine', 'أسبوع', CalendarRange], ['liste', 'قائمة', List]] as const).map(([k, l, Icon]) => (
+              <button key={k} type="button" role="tab" aria-selected={vue === k} onClick={() => setVue(k)}><Icon size={16} strokeWidth={1.8} aria-hidden />{l}</button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            {heatJours.map((j, i) => <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10.5, color: C.muted }}>{j}</div>)}
+          <button className="mp-action" type="button" onClick={() => setForm(true)} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 20px', minHeight: 46 }}><Plus size={18} aria-hidden />إضافة موعد</button>
+        </div>
+      </div>
+
+      {form && (
+        <form onSubmit={ajouterRdv} style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, fontWeight: 600, gridColumn: '1 / -1' }}>الموعد<input name="titre" required minLength={2} placeholder="مثال: موعد مع موكل" style={INPUT} /></label>
+          <label style={LBL}>التاريخ<input name="date" type="date" required defaultValue={`${jourSel.getFullYear()}-${String(jourSel.getMonth() + 1).padStart(2, '0')}-${String(jourSel.getDate()).padStart(2, '0')}`} style={INPUT} /></label>
+          <label style={LBL}>الساعة<input name="heure" type="time" defaultValue="09:00" style={INPUT} /></label>
+          <label style={LBL}>المكان <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span><input name="lieu" style={INPUT} /></label>
+          <label style={LBL}>الملف <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span>
+            <select name="dossierId" style={INPUT}><option value="">بدون ملف</option>{(dossiers ?? []).map((d) => <option key={d.id} value={d.id}>{d.titreAffaire ?? d.numeroDossier}</option>)}</select>
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="mp-action" type="submit" disabled={envoi === 'rdv'} aria-busy={envoi === 'rdv'} style={{ ...BTN, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0 }}><Attente actif={envoi === 'rdv'} texte="جارٍ الحفظ…">حفظ</Attente></button>
+            <button type="button" onClick={() => setForm(false)} style={BTN}>إلغاء</button>
           </div>
-        </Shell>
+        </form>
       )}
 
-      {error ? (
-        <Shell><div style={{ padding: 18, textAlign: 'center' }}><p style={{ color: C.red, fontWeight: 600, fontSize: 14 }}>تعذّر تحميل الأجندة</p></div></Shell>
-      ) : loading ? (
-        <Shell><div style={{ height: 320 }} /></Shell>
-      ) : total === 0 ? (
-        <Shell>
-          <div style={{ padding: '56px 0', textAlign: 'center' }}>
-            <CalIcon size={36} color={C.muted} style={{ margin: '0 auto 14px' }} />
-            <p style={{ fontSize: 18, fontWeight: 600, color: C.ink2 }}>لا توجد جلسات أو آجال هذا الأسبوع</p>
-            <p style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>تُحدَّث الأجندة تلقائياً كل مساء بعد فحص ملفاتكم</p>
+      {/* Calendrier */}
+      <section aria-label={`${MOIS_AR[mois]} ${annee}`} style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 18, overflow: 'hidden', boxShadow: '0 10px 30px -24px rgba(8,59,52,.35)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button type="button" aria-label={vue === 'semaine' ? 'الأسبوع السابق' : 'الشهر السابق'} onClick={navPrec} style={ROND}><ChevronRight size={18} aria-hidden /></button>
+            <h2 style={{ margin: '0 4px', fontSize: 19, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CalendarDays size={18} strokeWidth={1.8} color="#0E5A4E" aria-hidden />
+              {vue === 'semaine' ? <><span className="num">{fmtJM(joursSemaine[0])}</span> — <span className="num">{fmtJM(joursSemaine[6])}</span></> : <>{MOIS_AR[mois]} <span className="num">{annee}</span></>}
+            </h2>
+            <button type="button" aria-label={vue === 'semaine' ? 'الأسبوع التالي' : 'الشهر التالي'} onClick={navSuiv} style={ROND}><ChevronLeft size={18} aria-hidden /></button>
+            <button type="button" onClick={allerAujourdhui} style={{ ...BTN, color: '#0E5A4E', minHeight: 40, marginInlineStart: 4 }}>اليوم</button>
           </div>
-        </Shell>
-      ) : (
-        <Shell pad={isMobile ? 10 : 14}>
-          <div style={{ overflowX: 'auto' }}>
-            <div style={{ minWidth: 780 }}>
-              {/* En-tête jours */}
-              <div style={{ display: 'grid', gridTemplateColumns: '64px repeat(7,1fr)', borderBottom: `1px solid ${C.border}` }}>
-                <div />
-                {jours.map((j, i) => {
-                  const today = j.getTime() === aujourdhui.getTime()
+          <div className="cal-leg" aria-label="دليل الألوان">
+            <span><i style={{ background: '#22476A' }} />جلسة</span>
+            <span><i style={{ background: '#C0392B' }} />أجل عليكم ≤ <span className="num">48</span> س</span>
+            <span><i style={{ background: '#F2A93B' }} />أجل عليكم ≤ <span className="num">7</span> أيام</span>
+            <span><i style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C' }} />أجل الخصم</span>
+            <span><i style={{ background: '#2E8B6E' }} />موعد</span>
+          </div>
+        </div>
+
+        {!data && error && <div style={{ padding: 16, borderTop: '1px solid #EEEAE1' }}><ErreurChargement quoi="الأجندة" onReessayer={refetch} /></div>}
+        {vue === 'mois' && (
+          <div className="cal-grid" role="grid" aria-label="أيام الشهر" style={{ borderTop: '1px solid #EEEAE1' }}>
+            <div className="cal-wd" role="row">{ENTETES.map((j) => <span key={j} role="columnheader">{j}</span>)}</div>
+            {semaines.map((sem, si) => (
+              <div key={si} className="cal-wk" role="row">
+                {sem.map((d) => {
+                  const dansMois = d.getMonth() === mois
+                  const it = parJour.get(cle(d)) ?? []
+                  const cls = ['cal-d', !dansMois ? 'out' : '', cle(d) === cle(now) ? 'today' : '', cle(d) === cle(jourSel) ? 'sel' : ''].join(' ')
                   return (
-                    <div key={i} style={{ padding: 8, textAlign: 'center', borderRight: `1px solid ${C.borderL}`, background: today ? C.goldChip : 'transparent' }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: today ? C.goldD : C.ink2 }}>{JOURS_AR[i]}</div>
-                      <div dir="ltr" style={{ fontSize: 17, fontWeight: 700, color: today ? C.goldD : C.ink, fontFamily: "'IBM Plex Sans',sans-serif" }}>{j.getDate()}</div>
+                    <div key={cle(d)} className={cls} role="gridcell" tabIndex={0} aria-selected={cle(d) === cle(jourSel)} aria-current={cle(d) === cle(now) ? 'date' : undefined}
+                      aria-label={`${JOURS[d.getDay()]} ${d.getDate()} ${MOIS_AR[d.getMonth()]}${it.length ? `، ${it.length} عناصر` : ''}`}
+                      onClick={() => setJourSel(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setJourSel(d) } }}>
+                      <b className="num">{d.getDate()}</b>
+                      {it.slice(0, 2).map((x) => <Pastille key={x.id} it={x} />)}
+                      {it.length > 2 && <span style={{ fontSize: 12, color: '#5E6B67', textAlign: 'center' }}>+<span className="num">{it.length - 2}</span></span>}
                     </div>
                   )
                 })}
               </div>
-
-              {/* Toute la journée */}
-              {Array.from(journee.values()).some((a) => a.length > 0) && (
-                <div style={{ display: 'grid', gridTemplateColumns: '64px repeat(7,1fr)', borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-                  <div style={{ padding: 8, fontSize: 10, color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>طوال اليوم</div>
-                  {Array.from({ length: 7 }, (_, ji) => (
-                    <div key={ji} style={{ padding: 4, borderRight: `1px solid ${C.borderL}`, minHeight: 40, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(journee.get(ji) ?? []).map((it) => <Chip key={it.id} item={it} />)}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Grille horaire */}
-              {heures.map((h) => (
-                <div key={h} style={{ display: 'grid', gridTemplateColumns: '64px repeat(7,1fr)', borderBottom: `1px solid ${C.borderL}` }}>
-                  <div dir="ltr" style={{ padding: 8, fontSize: 11, color: C.muted, fontFamily: "'IBM Plex Sans',sans-serif" }}>{String(h).padStart(2, '0')}:00</div>
-                  {Array.from({ length: 7 }, (_, ji) => (
-                    <div key={ji} style={{ padding: 4, borderRight: `1px solid ${C.borderL}`, minHeight: 48, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(grille.get(`${ji}-${h}`) ?? []).map((it) => <Chip key={it.id} item={it} showTime />)}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
-        </Shell>
-      )}
+        )}
+
+        {vue === 'semaine' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(110px, 1fr))', minHeight: 420, overflowX: 'auto', borderTop: '1px solid #EEEAE1' }}>
+            {joursSemaine.map((d, i) => {
+              const it = parJour.get(cle(d)) ?? []
+              const auj = cle(d) === cle(now)
+              return (
+                <div key={i} style={{ borderLeft: i < 6 ? '1px solid #EEEAE1' : 0, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: auj ? '#F1F8F5' : '#FFFFFF' }}>
+                  <span style={{ textAlign: 'center', fontSize: 12, color: '#3B4A47', padding: '6px 0', borderRadius: 10, background: auj ? '#0E5A4E' : '#F7F5F0', ...(auj ? { color: '#FFFFFF', fontWeight: 600 } : {}) }}>
+                    <span className="num" style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{d.getDate()}</span>{ENTETES[(d.getDay() + 6) % 7]}
+                  </span>
+                  {it.length === 0 ? <span style={{ fontSize: 12, color: '#6B665C', textAlign: 'center' }}>—</span> : it.map((x) => {
+                    const { cls, Icon } = styleEv(x)
+                    return (
+                      <Link key={x.id} href={x.dossierId ? `/dossiers/${x.dossierId}` : '#'} className={cls} style={{ whiteSpace: 'normal', alignItems: 'flex-start', display: 'flex' }}>
+                        <Icon size={13} strokeWidth={2} aria-hidden style={{ marginTop: 2 }} />
+                        <span style={{ display: 'flex', flexDirection: 'column' }}>
+                          {hItem(x) && <span className="num">{hItem(x)}</span>}{x.texte}<span style={{ fontWeight: 400, opacity: 0.85 }}>{x.sous}</span>
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {(vue === 'liste' || vue === 'mois') && (() => {
+          const debutAuj = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+          const liste = items.filter((x) => new Date(x.date).getMonth() === mois && (vue === 'liste' || new Date(x.date).getTime() >= debutAuj))
+          return (
+            <ol className={vue === 'mois' ? 'cal-mob' : ''} aria-label="مواعيد الشهر" style={{ listStyle: 'none', margin: 0, padding: '4px 16px 16px', borderTop: '1px solid #EEEAE1', display: vue === 'liste' ? 'flex' : undefined, flexDirection: 'column', gap: 4 }}>
+              {liste.length === 0 && <li><EtatVide Icon={CalendarDays} texte="لا مواعيد في هذه الفترة." /></li>}
+              {liste.map((x, i) => {
+                const { cls, Icon } = styleEv(x)
+                return (
+                  <li key={x.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: i < liste.length - 1 ? '1px solid #EEEAE1' : 0 }}>
+                    <span style={{ flex: 'none', width: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <span className="num" style={{ fontWeight: 700, fontSize: 15 }}>{fmtJM(x.date)}</span>
+                      {hItem(x) && <span className="num" style={{ fontSize: 12, color: '#5E6B67' }}>{hItem(x)}</span>}
+                    </span>
+                    <span className={cls} aria-hidden style={{ padding: 6, flex: 'none' }}><Icon size={16} strokeWidth={2} /></span>
+                    <Link href={x.dossierId ? `/dossiers/${x.dossierId}` : '#'} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, textDecoration: 'none', color: '#15201E' }}>
+                      <span style={{ fontSize: 14, fontWeight: x.genre === 'agir' ? 600 : 400 }}>{x.texte}</span>
+                      {x.sous && <span style={{ fontSize: 12, color: '#5E6B67' }}>{x.sous}</span>}
+                    </Link>
+                    {x.rdvId && <button type="button" aria-label="حذف الموعد" onClick={() => supprimerRdv(x.rdvId!)} style={{ ...ROND, width: 36, height: 36 }}><X size={14} aria-hidden /></button>}
+                  </li>
+                )
+              })}
+            </ol>
+          )
+        })()}
+      </section>
+
+      {/* Cartes : prochaine audience, délai le plus proche, jour sélectionné */}
+      <div className="cal-cartes">
+        <section className="cal-carte" aria-labelledby="c-aud">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 id="c-aud">الجلسة القادمة</h2>
+            <IconeRonde Icon={Scale} ton="bleu" taille={40} />
+          </div>
+          {aud ? (
+            <>
+              <strong style={{ fontSize: 16, fontWeight: 600 }}>{JOURS[new Date(aud.date).getDay()]} {dateLongue(aud.date)}</strong>
+              <span style={{ fontSize: 15 }}>ملف رقم <span className="num">{aud.dossier.numeroDossier}</span></span>
+              <span style={{ fontSize: 14, color: '#3B4A47' }}>{aud.dossier.titreAffaire ? `${aud.dossier.titreAffaire} · ` : ''}{tribunalAr(aud.dossier.tribunal)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: '#22476A' }}>
+                  <Clock size={15} aria-hidden />{heure(aud.date) ? <span className="num">{heure(aud.date)}</span> : 'الساعة غير محددة'}
+                </span>
+                <Link href={`/dossiers/${aud.dossier.id}`} className="lien">فتح الملف<ChevronLeft size={16} aria-hidden /></Link>
+              </div>
+            </>
+          ) : <EtatVide Icon={Scale} texte="لا جلسة مبرمجة حالياً." />}
+        </section>
+
+        <section className="cal-carte" aria-labelledby="c-delai">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 id="c-delai">أقرب أجل عليكم</h2>
+            <IconeRonde Icon={Clock} taille={40} />
+          </div>
+          {delai ? (
+            <>
+              <strong style={{ fontSize: 16, fontWeight: 600, color: couleurDelai }}>{JOURS[new Date(delai.date).getDay()]} {dateLongue(delai.date)}</strong>
+              <span style={{ fontSize: 15 }}>ملف رقم <span className="num">{delai.dossier.numeroDossier}</span></span>
+              <span style={{ fontSize: 14, color: '#3B4A47' }}>{delai.titre.split(' - ')[0]}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: couleurDelai }}>
+                  {jDelai <= 0 ? 'آخر يوم: اليوم' : <>بعد <span className="num">{jDelai}</span> {unitJours(jDelai)}</>}
+                </span>
+                <Link href="/echeances" className="lien">كل الآجال<ChevronLeft size={16} aria-hidden /></Link>
+              </div>
+            </>
+          ) : <EtatVide Icon={CheckCircle2} texte="لا أجل مفتوح عليكم." />}
+        </section>
+
+        <section className="cal-carte" aria-labelledby="c-jour">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 id="c-jour">{estAujourdhui ? 'اليوم' : JOURS[jourSel.getDay()]} · <span className="num">{fmtJM(jourSel)}</span></h2>
+            <IconeRonde Icon={ListChecks} taille={40} />
+          </div>
+          {duJour.length === 0 ? (
+            <EtatVide Icon={CalendarDays} texte="لا جلسة ولا أجل في هذا اليوم." action={<button type="button" onClick={() => setForm(true)} style={{ ...BTN, minHeight: 40, color: '#0E5A4E' }}><Plus size={16} aria-hidden />إضافة موعد</button>} />
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {duJour.map((x) => {
+                const { cls, Icon } = styleEv(x)
+                return (
+                  <li key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className={cls} aria-hidden style={{ padding: 6, flex: 'none' }}><Icon size={14} strokeWidth={2} /></span>
+                    <Link href={x.dossierId ? `/dossiers/${x.dossierId}` : '#'} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', textDecoration: 'none', color: '#15201E' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.texte}</span>
+                      {x.sous && <span style={{ fontSize: 12, color: '#5E6B67', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.sous}</span>}
+                    </Link>
+                    {hItem(x) && <span className="num" style={{ fontSize: 13, color: '#3B4A47', flex: 'none' }}>{hItem(x)}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* Conseil du jour */}
+      <section aria-label="معلومة اليوم" style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'linear-gradient(90deg, #E3F0EC, #F1F8F5)', border: '1px solid #CDE5DD', borderRadius: 16, padding: '14px 20px' }}>
+        <IconeRonde Icon={Lightbulb} ton="vert" taille={42} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <strong style={{ fontSize: 16, fontWeight: 600, color: '#0B4A40' }}>معلومة اليوم</strong>
+          <span style={{ fontSize: 14, color: '#23443C', lineHeight: 1.7 }}>{conseil}</span>
+        </div>
+        <span className="cal-illus" style={{ flex: 'none', display: 'inline-flex' }}><IllusCalendrier taille={84} /></span>
+      </section>
     </div>
   )
 }
 
-function Shell({ children, pad = 22 }: { children: React.ReactNode; pad?: number }) {
-  return <div style={{ background: C.card, borderRadius: 22, padding: pad, boxShadow: '0 14px 34px -22px rgba(110,90,30,.4)' }}>{children}</div>
-}
-function NavBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title: string }) {
-  return <button onClick={onClick} title={title} style={{ border: `1px solid ${C.border}`, background: '#fff', borderRadius: 10, padding: 8, color: C.ink2, cursor: 'pointer', display: 'flex' }}>{children}</button>
-}
-function Legend({ color, txt }: { color: string; txt: string }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.ink2 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />{txt}</span>
-}
-function Chip({ item, showTime }: { item: CalItem; showTime?: boolean }) {
-  const d = new Date(item.date)
-  const isAud = item.type === 'audience'
-  const sty = item.critique
-    ? { bg: C.redBg, bd: `${C.red}66`, fg: C.red }
-    : isAud ? { bg: 'rgba(154,120,32,.10)', bd: `${C.goldD}4D`, fg: C.goldD }
-            : { bg: C.goldChip, bd: `${C.goldM}66`, fg: C.goldD }
-  const Icon = item.critique ? AlertTriangle : isAud ? Gavel : Clock
-  return (
-    <Link href={`/dossiers/${item.dossierId}`} style={{ textDecoration: 'none' }}>
-      <div style={{ borderRadius: 8, border: `1px solid ${sty.bd}`, background: sty.bg, color: sty.fg, padding: '6px 8px', textAlign: 'right' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-          <Icon size={12} />
-          {showTime && <span dir="ltr" style={{ fontSize: 10, fontWeight: 700, fontFamily: "'IBM Plex Sans',sans-serif" }}>{fmtHeure(d)}</span>}
-        </div>
-        <div dir="ltr" style={{ fontSize: 11, fontWeight: 700, fontFamily: "'IBM Plex Sans',sans-serif" }}>{item.numeroDossier}</div>
-        <div style={{ fontSize: 10, opacity: 0.9, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.titre}</div>
-      </div>
-    </Link>
-  )
-}
+const INPUT: React.CSSProperties = { fontSize: 15, color: '#15201E', background: '#FFFFFF', border: '1px solid #CFCAC0', borderRadius: 10, minHeight: 46, padding: '0 12px', boxSizing: 'border-box', width: '100%' }
+const LBL: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, fontWeight: 600 }

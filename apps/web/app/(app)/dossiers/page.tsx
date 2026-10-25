@@ -1,896 +1,332 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, RotateCw, Trash2, X, Loader2, CheckCircle2, Lock, ArrowRight, Archive, ArchiveRestore } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, Search, X } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
-import { apiFetch, rechercherDossier } from '@/lib/api'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { Separator } from '@/components/ui/Separator'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { CaseCard } from '@/components/legal/CaseCard'
+import { apiFetch } from '@/lib/api'
 import { useTribunaux } from '@/hooks/useTribunaux'
+import { useToast, useActionAnnulable } from '@/components/Toast'
+import { useRestaurerDefilement } from '@/hooks/useDefilement'
 import { labelProcedure } from '@/lib/labels'
-import { InfoGrid } from '@/components/legal/InfoGrid'
-import { EventsTimeline } from '@/components/legal/EventsTimeline'
-import { PartiesTable } from '@/components/legal/PartiesTable'
-import { AppealsTable } from '@/components/legal/AppealsTable'
-import { RelatedFilesTable } from '@/components/legal/RelatedFilesTable'
-
-const COURS_APPEL = [
-  {
-    nomAr: 'محكمة الاستئناف بالرباط',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالرباط', 'المحكمة الابتدائية بسلا', 'المحكمة الابتدائية بتمارة',
-      'المحكمة الابتدائية بالخميسات', 'المحكمة الإبتدائية بتيفلت', 'المحكمة الابتدائية بالرماني',
-      'المحكمة الابتدائية بالرباط - قسم قضاء الأسرة', 'المحكمة الابتدائية بسلا - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بالخميسات - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالدار البيضاء',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية المدنية بالدار البيضاء', 'المحكمة الابتدائية الاجتماعية بالدار البيضاء',
-      'المحكمة الابتدائية الزجرية بالدار البيضاء', 'المحكمة الابتدائية بالمحمدية',
-      'المحكمة الابتدائية ببنسليمان', 'المحكمة الابتدائية ببنسليمان - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بأكادير',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بأكادير', 'المحكمة الابتدائية بانزكان', 'المحكمة الابتدائية بأولاد تايمة',
-      'المحكمة الابتدائية بتيزنيت', 'المحكمة الابتدائية بطاطا', 'المحكمة الابتدائية بتارودانت',
-      'المحكمة الابتدائية ببيوكرى', 'المحكمة الابتدائية بتارودانت - قسم قضاء الأسرة',
-      'المحكمة الإبتدائية بتزنيت - قسم قضاء الأسرة', 'المحكمة الابتدائية بانزكان - قسم قضاء الأسرة',
-      'المحكمة الابتدائية ببيوكرى - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بورزازات',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بورزازات', 'المحكمة الإبتدائية بتنغير', 'المحكمة الابتدائية بزاكورة',
-      'المحكمة الابتدائية بورزازات - قسم قضاء الأسرة', 'المحكمة الابتدائية بزاكورة - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف ببني ملال',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية ببني ملال', 'المحكمة الابتدائية بقصبة تادلة', 'المحكمة الابتدائية بالفقيه بن صالح',
-      'المحكمة الإبتدائية بسوق السبت أولاد النمة', 'المحكمة الابتدائية بخنيفرة', 'المحكمة الابتدائية بأزيلال',
-      'المحكمة الابتدائية ببني ملال - قسم قضاء الأسرة', 'المحكمة الابتدائية بالفقيه بن صالح - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بخنيفرة - قسم قضاء الأسرة', 'المحكمة الابتدائية بقصبة تادلة - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بمراكش',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بمراكش', 'المحكمة الابتدائية بامنتانوت', 'المحكمة الابتدائية بقلعة السراغنة',
-      'المحكمة الابتدائية بابن جرير', 'المحكمة الابتدائية بمراكش - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بقلعة السراغنة - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بكلميم',
-    tribunauxPrimaires: [
-      'المحكمةالابتدائية بسيدي افني', 'المحكمة الابتدائية بكلميم', 'المحكمة الابتدائية بآسا الزاك',
-      'المحكمة الابتدائية بطانطان', 'المحكمة الابتدائية بكلميم - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بطانطان - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالحسيمة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالحسيمة', 'المحكمة الإبتدائية بتارجيست',
-      'المحكمة الابتدائية بتارجيست - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بتازة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بتازة', 'المحكمة الابتدائية بجرسيف', 'المحكمة الابتدائية بتازة - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بجرسيف - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بمكناس',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بمكناس', 'المحكمة الابتدائية بالحاجب', 'المحكمة الابتدائية بآزرو',
-      'المحكمة الابتدائية بمكناس - قسم قضاء الأسرة', 'المحكمة الابتدائية بآزرو - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالرشيدية',
-    tribunauxPrimaires: ['المحكمة الابتدائية بالرشيدية', 'المحكمة الابتدائية بميدلت'],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالناضور',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالناضور', 'المحكمة الإبتدائية بالدريوش',
-      'المحكمة الابتدائية بالناضور - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بآسفي',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بآسفي', 'المحكمة الابتدائية باليوسفية', 'المحكمة الابتدائية بالصويرة',
-      'المحكمة الابتدائية بآسفي - قسم قضاء الأسرة', 'المحكمة الابتدائية باليوسفية - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بخريبكة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بخريبكة', 'المحكمة الابتدائية بواد زم', 'المحكمة الابتدائية بأبي الجعد',
-      'المحكمة الابتدائية بخريبكة - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بتطوان',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بتطوان', 'المحكمة الابتدائية بشفشاون', 'المحكمة الابتدائية بوزان',
-      'المحكمة الابتدائية بوزان - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بفاس',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بفاس', 'المحكمة الابتدائية بصفرو', 'المحكمة الإبتدائية لبولمان بميسور',
-      'المحكمة الابتدائية بتاونات', 'المحكمة الابتدائية بفاس - قسم قضاء الأسرة',
-      'المحكمة الابتدائية لبولمان بميسور - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بتاونات - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بطنجة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بطنجة', 'المحكمة الابتدائية بأصيلة', 'المحكمة الابتدائية بالعرائش',
-      'المحكمة الابتدائية بالقصر الكبير', 'المحكمة الابتدائية بطنجة - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بالعرائش - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بالقصر الكبير - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالقنيطرة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالقنيطرة', 'المحكمة الابتدائية بسيدي سليمان',
-      'المحكمة الابتدائي بسوق الأريعاء', 'المحكمة الابتدائية بسيدي قاسم',
-      'المحكمة الإبتدائية بمشرع بلقصيري', 'المحكمة الابتدائية بالقنيطرة - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بسيدي قاسم - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالعيون',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالعيون', 'المحكمة الابتدائية ببوجدور', 'المحكمة الابتدائية بالسمارة',
-      'المحكمة الابتدائية بالداخلة', 'المحكمة الابتدائية بالسمارة - قسم قضاء الأسرة',
-      'المحكمة الابتدائية بالعيون - قسم قضاء الأسرة', 'المحكمة الابتدائية بالداخلة - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بالجديدة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بالجديدة', 'المحكمة الابتدائية بسيدي بنور',
-      'المحكمة الابتدائية بالجديدة - قسم قضاء الأسرة', 'المحكمة الابتدائية بسيدي بنور - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بسطات',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بسطات', 'المحكمة الابتدائية ببرشيد', 'المحكمة الابتدائية ببن أحمد',
-      'المحكمة الابتدائية ببرشيد - قسم قضاء الأسرة', 'المحكمة الإبتدائية ببن أحمد - قسم قضاء الأسرة',
-    ],
-  },
-  {
-    nomAr: 'محكمة الاستئناف بوجدة',
-    tribunauxPrimaires: [
-      'المحكمة الابتدائية بوجدة', 'المحكمة الابتدائية بجرادة', 'المحكمة الابتدائية ببركان',
-      'المحكمة الإبتدائية لفجيج ببوعرفة', 'المحكمة الابتدائية بتاوريرت',
-      'المحكمة الإبتدائية بوجدة - قسم قضاء الأسرة', 'المحكمة الإبتدائية بتاوريرت - قسم قضاء الأسرة',
-      'المحكمة الإبتدائية ببركان - قسم قضاء الأسرة', 'المحكمة الإبتدائية بجرادة - قسم قضاء الأسرة',
-    ],
-  },
-]
+import { AjoutDossier } from '@/components/legal/AjoutDossier'
+import { joursRestants, tone, fmtJM, jourSemaine, heure, titreDelai, JOUR_MS } from '@/components/legal/DeadlineCard'
+import { SqueletteListe, Nombre, ErreurChargement, useEnvoi, Attente } from '@/components/ui/Chargement'
 
 interface Dossier {
   id: string
   numeroDossier: string
-  anneeDossier: string
-  codeRole: string
   tribunal: string
   typeProcedure?: string
-  titreAffaire?: string
-  estCourAppel: boolean
-  estActif: boolean
-  echeances: { id: string }[]
-  _count: { evenements: number; echeances: number }
+  titreAffaire?: string | null
+  statutIA?: string
   updatedAt: string
-  // Dernier événement réel (dernière nouveauté du tribunal) — fourni par l'API.
   dernierEvenement?: { texteArabe: string; datePublicationGreffe: string } | null
+  prochaineEcheance?: { id: string; typeDelai: string; descriptionAr: string | null; description: string; dateLimite: string; camp: 'AGIR' | 'SURVEILLER' } | null
+  prochaineAudience?: { dateAudience: string } | null
 }
 
-interface SearchResult {
-  trouve: boolean
-  titreAffaire: string | null
-  evenements: {
-    texteArabe: string
-    dateAudience?: string | null
-    datePublication: string
-    rawHtml?: string | null
-  }[]
-  infosCarte: Record<string, string> | null
-  parties: { qualite: string; nom: string; avocats: string; delegues: string; agents: string; representants: string }[]
-  expertises: string[]
-  recours: { type: string; partie: string; dateDepot: string; numero: string; numeroEnvoi: string; dateEnvoi: string; tribunal: string }[]
-  dossiersLies: { type: string; numeroDossier: string; dateInscription: string; tribunal: string }[]
+type Onglet = 'tous' | 'agir' | 'surveiller' | 'semaine' | 'dormants' | 'archives'
+interface PageDossiers { total: number; compteurs: Record<Onglet, number>; tribunaux: string[]; procedures: string[]; items: Dossier[] }
+const TAILLE = 50
+const DELAI_COURT: Record<string, string> = { APPEL: 'استئناف', OPPOSITION: 'تعرّض', CASSATION: 'نقض', TIERCE_OPPOSITION: 'تعرّض الغير', REQUETE_CIVILE: 'إعادة النظر', EXECUTION_JUGEMENT: 'تنفيذ', EXPERTISE: 'خبرة', NOTIFICATION_JUGEMENT: 'تبليغ', AUTRE: 'أجل' }
+
+const CSS = `
+.ds-champ:focus-within{border-color:#0E5A4E !important;box-shadow:0 0 0 3px #CDE5DD}
+.ds-fab{display:none}
+@media (max-width: 900px){.ds-fab{display:inline-flex;position:fixed;left:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:45;width:56px;height:56px;border-radius:50%;border:0;background:var(--mp-action);color:var(--mp-action-texte);align-items:center;justify-content:center;box-shadow:0 12px 24px -10px rgba(156,82,10,.6);cursor:pointer}}
+.mp-tbl th{font-size:13px;font-weight:600;color:#5E6B67;text-align:right;padding:12px 14px;border-bottom:1px solid #E4E0D6;white-space:nowrap}
+.mp-tbl td{padding:14px;border-bottom:1px solid #EEEAE1;vertical-align:middle;font-size:14px}
+.mp-tbl tbody tr:hover{background:#FAF8F3}
+.mp-tbl tbody tr:last-child td{border-bottom:0}
+.mp-cards{display:none}
+@media (max-width: 760px){.mp-tblw{display:none !important}.mp-cards{display:flex !important}}
+`
+const CHIP: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: '#FFFFFF', color: '#15201E', border: '1px solid #E4E0D6', borderRadius: 999, padding: '0 16px', minHeight: 40, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }
+const CHIP_ON: React.CSSProperties = { ...CHIP, background: '#15201E', color: '#FFFFFF', border: 0 }
+const SELECT: React.CSSProperties = { fontSize: 14, background: '#FFFFFF', color: '#15201E', border: '1px solid #E4E0D6', borderRadius: 10, padding: '0 12px', minHeight: 44 }
+// Filtre appliqué = option choisie (orange clair, comme .mp-choix) : on voit d'un coup d'œil que la liste est filtrée
+const SELECT_ON: React.CSSProperties = { ...SELECT, background: 'var(--mp-choix-fond)', borderColor: 'var(--mp-choix-bord)', boxShadow: 'inset 0 0 0 1px var(--mp-choix-bord)', fontWeight: 600 }
+const BARRE_BTN: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: 'transparent', color: '#FFFFFF', border: '1px solid #5E6B67', borderRadius: 999, padding: '0 14px', minHeight: 40, cursor: 'pointer' }
+const sansMouvement = (d: Dossier) => Math.floor((Date.now() - new Date(d.dernierEvenement?.datePublicationGreffe ?? d.updatedAt).getTime()) / JOUR_MS)
+const resumeEvenement = (t: string) => (t.length > 42 ? `${t.slice(0, 40)}…` : t)
+
+/** Badge « الأجل أو الموعد القادم » (maquette Liste des dossiers) */
+function Prochain({ d }: { d: Dossier }) {
+  const e = d.prochaineEcheance
+  if (e) {
+    const j = Math.max(0, joursRestants(e.dateLimite))
+    const court = DELAI_COURT[e.typeDelai] ?? 'أجل'
+    if (e.camp === 'SURVEILLER') return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#FFFFFF', color: '#4D5B57', border: '1.5px dashed #8C877C', borderRadius: 999, padding: '3px 12px 3px 3px', fontSize: 13, fontWeight: 600 }}>
+        <span className="num" style={{ background: '#EEEAE1', borderRadius: 999, minWidth: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{j}</span>الخصم · {court}
+      </span>
+    )
+    if (j <= 2) return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#C0392B', color: '#FFFFFF', borderRadius: 999, padding: '4px 12px 4px 4px', fontSize: 13, fontWeight: 600 }}>
+        <span className="num" style={{ background: '#FFFFFF', color: '#C0392B', borderRadius: 999, minWidth: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{j}</span>عليكم · {court}
+      </span>
+    )
+    if (j <= 7) return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#FDF3E1', color: '#7A4E06', border: '1px solid #F2A93B', borderRadius: 999, padding: '3px 12px 3px 3px', fontSize: 13, fontWeight: 600 }}>
+        <span className="num" style={{ background: '#F2A93B', color: '#15201E', borderRadius: 999, minWidth: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{j}</span>عليكم · {court}
+      </span>
+    )
+    if (e.typeDelai === 'AUTRE') return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F5F3EE', color: '#3B4A47', borderRadius: 999, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}>{titreDelai(e).replace('مراقبة تاريخ ', '')} <span className="num">{fmtJM(e.dateLimite)}</span></span>
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E3F0EC', color: '#0B4A40', borderRadius: 999, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}>عليكم · {court} <span className="num">{fmtJM(e.dateLimite)}</span></span>
+  }
+  if (d.prochaineAudience) {
+    const a = d.prochaineAudience.dateAudience
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#EAF0F5', color: '#22476A', borderRadius: 999, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}>جلسة {jourSemaine(a)} <span className="num">{fmtJM(a)}{heure(a) ? ` · ${heure(a)}` : ''}</span></span>
+  }
+  const n = sansMouvement(d)
+  if (n >= 90) return <span style={{ fontSize: 13, color: '#4D5B57' }}>بلا حركة منذ <span className="num">{n}</span> يوماً</span>
+  return <span style={{ fontSize: 13, color: '#5E6B67' }}>—</span>
 }
 
 export default function DossiersPage() {
-  const [showForm, setShowForm] = useState(false)
-  const [annee, setAnnee] = useState('')
-  const [codeRole, setCodeRole] = useState('')
-  const [numero, setNumero] = useState('')
-  const [courAppel, setCourAppel] = useState('')
-  const [recherchePrimaire, setRecherchePrimaire] = useState(false)
-  const [tribunalPrimaire, setTribunalPrimaire] = useState('')
-  const [titreAffaire, setTitreAffaire] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [formError, setFormError] = useState('')
-  const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
-  const [filterQuery, setFilterQuery] = useState('')
-  const [vue, setVue] = useState<'actifs' | 'archives'>('actifs')
-  const { data: dossiers, loading, refetch } = useApi<Dossier[]>(vue === 'archives' ? '/dossiers/archives' : '/dossiers')
-  const { tribunalAr } = useTribunaux()
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const router = useRouter()
+  const { toast } = useToast()
+  const { tribunalAr, map: tribunauxMap } = useTribunaux()
+  const [onglet, setOnglet] = useState<Onglet>('tous')
+  const [q, setQ] = useState('')
+  const [tribunal, setTribunal] = useState('')
+  const [procedure, setProcedure] = useState('')
+  const [tri, setTri] = useState<'urgence' | 'recent'>('urgence')
+  const [selection, setSelection] = useState<Set<string>>(new Set())
+  const [ajout, setAjout] = useState(false)
+  const champ = useRef<HTMLInputElement>(null)
+  const { masques, differer } = useActionAnnulable()
 
-  // Contrôleur d'annulation de la recherche en cours (polling).
-  // Annulé au démontage du composant (changement de page) et au clic "Annuler".
-  const searchAbortRef = useRef<AbortController | null>(null)
-
-  // Au démontage : on coupe toute recherche en cours pour éviter le travail
-  // en arrière-plan et les mises à jour d'état sur composant démonté.
+  // ?q=…  ?ajouter=1  ?focus=1 (liens du tableau de bord et de l'en-tête mobile)
+  // Filtres gardés dans l'adresse (?onglet=agir&tribunal=…) : retour arrière, lien partagé ou rechargement
+  // retrouvent la même vue.
+  const [filtresLus, setFiltresLus] = useState(false)
   useEffect(() => {
-    return () => {
-      searchAbortRef.current?.abort()
-    }
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('q')) setQ(p.get('q')!)
+    const o = p.get('onglet') as Onglet | null
+    if (o && ['tous', 'agir', 'surveiller', 'semaine', 'dormants', 'archives'].includes(o)) setOnglet(o)
+    if (p.get('tribunal')) setTribunal(p.get('tribunal')!)
+    if (p.get('procedure')) setProcedure(p.get('procedure')!)
+    if (p.get('tri') === 'recent') setTri('recent')
+    if (p.get('ajouter')) setAjout(true)
+    if (p.get('focus')) champ.current?.focus()
+    setFiltresLus(true)
   }, [])
+  useEffect(() => {
+    if (!filtresLus) return
+    const p = new URLSearchParams()
+    if (onglet !== 'tous') p.set('onglet', onglet)
+    if (q.trim()) p.set('q', q.trim())
+    if (tribunal) p.set('tribunal', tribunal)
+    if (procedure) p.set('procedure', procedure)
+    if (tri !== 'urgence') p.set('tri', tri)
+    const url = `${window.location.pathname}${p.toString() ? `?${p}` : ''}`
+    if (url !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(window.history.state, '', url)
+  }, [filtresLus, onglet, q, tribunal, procedure, tri])
+  // Liste paginée côté serveur : onglets, recherche, filtres et tri sont calculés en base ; un grand cabinet
+  // (des milliers de dossiers) ne charge que 50 lignes à la fois, « عرض المزيد » ajoute les suivantes.
+  const [qServeur, setQServeur] = useState('')
+  useEffect(() => { const t = setTimeout(() => setQServeur(q.trim()), 300); return () => clearTimeout(t) }, [q])
+  const params = new URLSearchParams({ onglet, tri, taille: String(TAILLE) })
+  if (qServeur) params.set('q', qServeur)
+  if (tribunal) params.set('tribunal', tribunal)
+  if (procedure) params.set('procedure', procedure)
+  const cle = params.toString()
+  const { data: page1, error, refetch } = useApi<PageDossiers>(filtresLus ? `/dossiers/liste?${cle}&page=1` : null)
+  const [suite, setSuite] = useState<{ cle: string; pages: number; items: Dossier[] }>({ cle: '', pages: 1, items: [] })
+  const enPlus = suite.cle === cle ? suite.items : []
+  // Nouveau filtre : on repart de la 1re page (les pages déjà chargées pourraient être périmées ou en double)
+  useEffect(() => { setSuite({ cle: '', pages: 1, items: [] }) }, [cle])
+  const [chargeSuite, setChargeSuite] = useState(false)
+  const chargerPlus = async () => {
+    const pages = suite.cle === cle ? suite.pages : 1
+    setChargeSuite(true)
+    const p = await apiFetch<PageDossiers>(`/dossiers/liste?${cle}&page=${pages + 1}`).catch(() => null)
+    setChargeSuite(false)
+    if (!p) { toast('تعذّر تحميل المزيد. أعيدوا المحاولة.', 'error'); return }
+    setSuite({ cle, pages: pages + 1, items: [...enPlus, ...p.items] })
+  }
+  const actualiser = () => { setSuite({ cle: '', pages: 1, items: [] }); refetch() }
+  const compteurs = page1?.compteurs
+  const total = page1?.total ?? 0
+  const charges = (page1?.items.length ?? 0) + enPlus.length
+  const liste = [...(page1?.items ?? []), ...enPlus].filter((d) => !masques.has(d.id))
+  useRestaurerDefilement('/dossiers', !!page1 && filtresLus)
 
-  const filteredDossiers = useMemo(() => {
-    let list = dossiers ?? []
-    if (filterQuery.trim()) {
-      const q = filterQuery.toLowerCase()
-      list = list.filter((d) =>
-        d.numeroDossier.toLowerCase().includes(q) ||
-        d.tribunal.toLowerCase().includes(q) ||
-        (d.titreAffaire?.toLowerCase() ?? '').includes(q),
-      )
-    }
-    return list
-  }, [dossiers, filterQuery])
+  const tribunauxPresents = page1?.tribunaux ?? []
+  const proceduresPresentes = page1?.procedures ?? []
+  const tousCoches = liste.length > 0 && liste.every((d) => selection.has(d.id))
+  const basculer = (id: string) => setSelection((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const ids = Array.from(selection)
+  const { cle: envoi, occupe, lancer } = useEnvoi()
 
-  const caCourant = useMemo(
-    () => COURS_APPEL.find((ca) => ca.nomAr === courAppel),
-    [courAppel],
-  )
-
-  // UX : le numéro est-il complètement saisi ? (gate la prévisualisation + le bouton)
-  const numeroComplet = annee.length === 4 && codeRole.length > 0 && numero.length > 0
-  const peutRechercher = numeroComplet && !!courAppel && (!recherchePrimaire || !!tribunalPrimaire)
-  const estCA = !recherchePrimaire
-
-  // Champ unique "السنة / الرمز / العدد".
-  // Année = 4 chiffres, Code (الرمز) = 4 chiffres, Numéro = le reste.
-  // Comme les deux premiers segments ont une longueur fixe, on peut insérer les
-  // DEUX "/" automatiquement : l'utilisateur tape uniquement des chiffres.
-  // On garde annee/codeRole/numero séparés en interne (attendu par le backend).
-  const numeroAffiche = (() => {
-    let out = annee
-    if (annee.length === 4 && (codeRole !== '' || numero !== '')) out += '/' + codeRole
-    if (codeRole.length === 4 && numero !== '') out += '/' + numero
-    return out
-  })()
-
-  const handleNumeroChange = (raw: string) => {
-    const d = raw.replace(/\D/g, '') // on ignore les "/" : seuls les chiffres comptent
-    setAnnee(d.slice(0, 4))
-    setCodeRole(d.slice(4, 8))
-    setNumero(d.slice(8))
+  const rafraichir = () => lancer('sync', async () => {
+    const r = await apiFetch<{ lances: number }>('/dossiers/scraper-lot', { method: 'POST', body: JSON.stringify({ ids }) }).catch(() => null)
+    toast(r ? `بدأ تحديث ${r.lances} ${r.lances === 1 ? 'ملف' : 'ملفات'} من محاكم.` : 'تعذّر بدء التحديث.', r ? 'success' : 'error')
+  })
+  const archiver = () => lancer('archiver', async () => {
+    const choisis = ids
+    const ok = await apiFetch('/dossiers/archiver-lot', { method: 'POST', body: JSON.stringify({ ids: choisis }) }).then(() => true).catch(() => false)
+    if (!ok) { toast('تعذّرت الأرشفة. أعيدوا المحاولة.', 'error'); return }
+    // Réversible : « تراجع » restaure tout de suite les dossiers archivés
+    toast(`أُرشف ${choisis.length} ${choisis.length === 1 ? 'ملف' : 'ملفات'}.`, 'success', {
+      label: 'تراجع',
+      onClick: async () => { await Promise.all(choisis.map((id) => apiFetch(`/dossiers/${id}/restaurer`, { method: 'PATCH' }).catch(() => null))); actualiser() },
+    })
+    setSelection(new Set()); actualiser()
+  })
+  const restaurer = () => lancer('restaurer', async () => {
+    await Promise.all(ids.map((id) => apiFetch(`/dossiers/${id}/restaurer`, { method: 'PATCH' }).catch(() => null)))
+    setSelection(new Set()); actualiser()
+  })
+  const supprimer = () => {
+    const choisis = ids
+    setSelection(new Set())
+    differer(choisis, `سيُحذف ${choisis.length} ${choisis.length === 1 ? 'ملف' : 'ملفات'} نهائياً.`,
+      () => Promise.all(choisis.map((id) => apiFetch(`/dossiers/${id}`, { method: 'DELETE' }))), actualiser)
+  }
+  const exporter = () => {
+    const lignes = (liste.filter((d) => selection.has(d.id))).map((d) => [d.numeroDossier, d.titreAffaire ?? '', tribunalAr(d.tribunal), d.dernierEvenement?.texteArabe ?? '', d.prochaineEcheance ? `${titreDelai(d.prochaineEcheance)} ${fmtJM(d.prochaineEcheance.dateLimite)}` : ''])
+    const csv = '﻿' + [['الملف', 'الموضوع', 'المحكمة', 'آخر مستجد', 'الأجل القادم'], ...lignes].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `malafipro-dossiers-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
-  const handleSearch = async () => {
-    if (!annee || !codeRole || !numero || !courAppel) {
-      setFormError('يرجى ملء جميع الحقول المطلوبة')
-      return
-    }
-    setFormError('')
-    setSearching(true)
-    setSearchResult(null)
-
-    // Annule une éventuelle recherche précédente, puis ouvre un nouveau contrôleur.
-    searchAbortRef.current?.abort()
-    const controller = new AbortController()
-    searchAbortRef.current = controller
-
-    try {
-      const res = await rechercherDossier(
-        {
-          anneeDossier: annee,
-          codeRole,
-          numeroDossier: numero,
-          courAppel,
-          tribunalPrimaire: recherchePrimaire ? tribunalPrimaire : undefined,
-        },
-        { intervalMs: 2000, timeoutMs: 120000, signal: controller.signal },
-      )
-      if (controller.signal.aborted) return // annulée entre-temps : on ignore
-      setSearchResult(res)
-      if (res.trouve && res.titreAffaire && !titreAffaire) {
-        setTitreAffaire(res.titreAffaire)
-      }
-    } catch (err: any) {
-      // Une annulation volontaire ne doit pas afficher d'erreur.
-      if (controller.signal.aborted || err?.message === 'Recherche annulée') return
-      setFormError(err?.message || 'حدث خطأ أثناء البحث في mahakim.ma')
-    } finally {
-      if (searchAbortRef.current === controller) searchAbortRef.current = null
-      setSearching(false)
-    }
+  if (ajout) {
+    return (
+      <div dir="rtl" style={{ maxWidth: 860, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 20, padding: 32 }}>
+        <AjoutDossier titre="إضافة ملف" onAjoute={(id) => router.push(`/dossiers/${id}`)} onAnnuler={() => setAjout(false)} />
+      </div>
+    )
   }
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!searchResult?.trouve) return
-    setFormError('')
-    setSubmitting(true)
-    try {
-      const dossier = await apiFetch<{ id: string }>('/dossiers', {
-        method: 'POST',
-        body: JSON.stringify({
-          anneeDossier: annee,
-          codeRole,
-          numeroDossier: numero,
-          courAppel,
-          tribunalPrimaire: recherchePrimaire ? tribunalPrimaire : undefined,
-          titreAffaire: titreAffaire || undefined,
-          evenements: searchResult.evenements,
-          rawData: {
-            infosCarte: searchResult.infosCarte,
-            parties: searchResult.parties,
-            expertises: searchResult.expertises,
-            recours: searchResult.recours,
-            dossiersLies: searchResult.dossiersLies,
-          },
-        }),
-      })
-      window.location.href = `/dossiers/${dossier.id}`
-    } catch (err: any) {
-      setFormError(err.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const resetForm = () => {
-    setAnnee('')
-    setCodeRole('')
-    setNumero('')
-    setCourAppel('')
-    setRecherchePrimaire(false)
-    setTribunalPrimaire('')
-    setTitreAffaire('')
-    setSearchResult(null)
-    setFormError('')
-  }
-
-  const handleCancel = () => {
-    searchAbortRef.current?.abort() // stoppe le polling en cours
-    searchAbortRef.current = null
-    setSearching(false)
-    setShowForm(false)
-    resetForm()
-  }
-
-  // "Nouvelle recherche" / réinitialiser : coupe aussi le polling en cours.
-  const resetSearch = () => {
-    searchAbortRef.current?.abort()
-    searchAbortRef.current = null
-    setSearchResult(null)
-    setSearching(false)
-  }
-
-  const handleScrape = async (id: string) => {
-    await apiFetch(`/dossiers/${id}/scraper`, { method: 'POST' }).catch(() => {})
-  }
-
-  const handleArchiver = async (id: string) => {
-    await apiFetch(`/dossiers/${id}/archiver`, { method: 'PATCH' }).catch(() => {})
-    refetch()
-  }
-  const handleRestaurer = async (id: string) => {
-    await apiFetch(`/dossiers/${id}/restaurer`, { method: 'PATCH' }).catch(() => {})
-    refetch()
-  }
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('هل تريد حذف هذا الملف وجميع بياناته؟')) return
-    setDeleting(id)
-    try {
-      await apiFetch(`/dossiers/${id}`, { method: 'DELETE' })
-      refetch()
-    } catch {
-      alert('حدث خطأ أثناء الحذف')
-    } finally {
-      setDeleting(null)
-    }
-  }
-
-  const numComplet = `${annee}/${codeRole}/${numero}`
-
-  const infoGridItems = searchResult?.infosCarte
-    ? Object.entries(searchResult.infosCarte).map(([label, value]) => ({
-        label,
-        value: value || '—',
-        arabic: true,
-      }))
-    : []
-
-  const eventsForTimeline = searchResult?.evenements?.map((ev) => ({
-    date: new Date(ev.datePublication).toLocaleDateString('fr-MA'),
-    time: ev.dateAudience
-      ? new Date(ev.dateAudience).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' })
-      : undefined,
-    titreAr: ev.texteArabe,
-    titreFr: ev.dateAudience ? `الجلسة: ${new Date(ev.dateAudience).toLocaleDateString('ar-MA')}` : undefined,
-  })) ?? []
+  const ONGLETS: { k: Onglet; label: string; dot?: boolean }[] = [
+    { k: 'tous', label: 'الكل' },
+    { k: 'agir', label: 'أجل عليكم', dot: true },
+    { k: 'surveiller', label: 'تحت المراقبة' },
+    { k: 'semaine', label: 'جلسة هذا الأسبوع' },
+    { k: 'dormants', label: 'بلا حركة' },
+  ]
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="ملفاتي"
-        subtitle={`${dossiers?.length ?? 0} ملف قيد المراقبة`}
-      >
-        <Button onClick={() => { showForm ? handleCancel() : setShowForm(true) }}>
-          {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {showForm ? 'إغلاق' : 'إضافة ملف'}
-        </Button>
-      </PageHeader>
-
-      {/* Barre de filtres : recherche + filtres rapides */}
-      <div dir="rtl" className="space-y-3">
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" />
-          <input
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder="ابحث برقم الملف أو المحكمة أو الموضوع..."
-            className="w-full rounded-[10px] border border-border bg-white pr-10 pl-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
-          />
+    <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <style>{CSS}</style>
+      {/* Mobile : « إضافة ملف » toujours à portée du pouce */}
+      <button type="button" className="ds-fab mp-action" onClick={() => setAjout(true)} aria-label="إضافة ملف"><Plus size={24} aria-hidden /></button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600 }}>الملفات</h1>
+          <span style={{ fontSize: 15, color: '#3B4A47' }}><Nombre v={compteurs?.tous} /> ملفاً قيد المتابعة · مرتبة حسب {tri === 'urgence' ? 'الاستعجال' : 'آخر مستجد'}</span>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          {([
-            { key: 'actifs', label: 'النشطة' },
-            { key: 'archives', label: 'المؤرشفة' },
-          ] as const).map((chip) => {
-            const active = vue === chip.key
-            return (
-              <button
-                key={chip.key}
-                onClick={() => setVue(chip.key)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-colors border ${
-                  active
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-white text-text-secondary border-border hover:border-primary/40'
-                }`}
-              >
-                {chip.label}
-              </button>
-            )
-          })}
-        </div>
+        <button className="mp-action" type="button" onClick={() => setAjout(true)} style={{ ...CHIP_ON, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', padding: '0 20px', minHeight: 46 }}><Plus size={18} aria-hidden />إضافة ملف</button>
       </div>
 
-      <AnimatePresence>
-        {showForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-          >
-            <form onSubmit={handleAdd} className="space-y-5">
-              <Card padding="lg">
-                {/* En-tête — façon maquette : titre + sous-titre + gage de sécurité */}
-                <div className="text-center mb-6">
-                  <h2 className="font-display text-2xl font-semibold text-primary mb-2" dir="rtl">
-                    تتبع ملفات المحاكم المغربية برقم الملف
-                  </h2>
-                  <p className="text-sm font-sans text-text-muted mb-3" dir="rtl">
-                    أدخل رقم الملف للبحث في بيانات المحاكم المتاحة عبر mahakim.ma
-                  </p>
-                  <span className="inline-flex items-center gap-1.5 text-xs font-sans text-accent">
-                    <Lock className="h-3.5 w-3.5" />
-                    بحث آمن ومشفر
-                  </span>
-                </div>
+      <div role="tablist" aria-label="تصفية الملفات" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {ONGLETS.map((o) => (
+          <button key={o.k} type="button" role="tab" className="mp-choix" aria-selected={onglet === o.k} onClick={() => { setOnglet(o.k); setSelection(new Set()) }} style={onglet === o.k ? CHIP_ON : CHIP}>
+            {o.dot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#C0392B' }} />}{o.label} <Nombre v={compteurs ? compteurs[o.k] : null} />
+          </button>
+        ))}
+        <button type="button" role="tab" className="mp-choix" aria-selected={onglet === 'archives'} onClick={() => { setOnglet('archives'); setSelection(new Set()) }} style={onglet === 'archives' ? CHIP_ON : { ...CHIP, background: 'transparent', color: '#3B4A47', border: 0, padding: '0 12px' }}>المؤرشفة{compteurs?.archives ? <> <span className="num">{compteurs.archives}</span></> : null}</button>
+      </div>
 
-                {formError && (
-                  <div className="bg-danger-bg border border-danger/30 text-danger text-sm font-sans px-4 py-3 rounded-sm mb-4">
-                    {formError}
-                  </div>
-                )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+        <label className="ds-champ" style={{ flex: '1 1 240px', display: 'flex', alignItems: 'center', gap: 10, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 10, padding: '0 14px', minHeight: 44, color: '#5E6B67' }}>
+          <Search size={18} strokeWidth={1.8} aria-hidden />
+          <span className="sr-only-ar">بحث في الملفات</span>
+          <input ref={champ} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="رقم الملف أو اسم طرف" style={{ flex: 1, minWidth: 0, minHeight: 42, border: 0, outline: 0, boxShadow: 'none', background: 'transparent', fontSize: 15, color: '#15201E' }} />
+          {q && <button type="button" onClick={() => setQ('')} aria-label="مسح البحث" style={{ width: 40, height: 40, border: 0, background: 'transparent', color: '#5E6B67', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} aria-hidden /></button>}
+        </label>
+        <label><span className="sr-only-ar">المحكمة</span>
+          <select value={tribunal} onChange={(e) => setTribunal(e.target.value)} style={tribunal ? SELECT_ON : SELECT}>
+            <option value="">كل المحاكم</option>
+            {tribunauxPresents.map((t) => <option key={t} value={t}>{(tribunauxMap as any)?.[t]?.nomAr ?? tribunalAr(t)}</option>)}
+          </select>
+        </label>
+        <label><span className="sr-only-ar">نوع المسطرة</span>
+          <select value={procedure} onChange={(e) => setProcedure(e.target.value)} style={procedure ? SELECT_ON : SELECT}>
+            <option value="">كل المساطر</option>
+            {proceduresPresentes.map((p) => <option key={p} value={p}>{labelProcedure(p)}</option>)}
+          </select>
+        </label>
+        <label><span className="sr-only-ar">الترتيب</span>
+          <select value={tri} onChange={(e) => setTri(e.target.value as 'urgence' | 'recent')} style={SELECT}>
+            <option value="urgence">حسب الاستعجال</option>
+            <option value="recent">حسب آخر مستجد</option>
+          </select>
+        </label>
+      </div>
 
-                {/* Le formulaire de saisie disparaît pendant la recherche et quand un résultat est trouvé */}
-                {!searching && !(searchResult && searchResult.trouve) && (
-                  <div className="space-y-5">
-                    <div>
-                      <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted mb-2">
-                        رقم الملف *
-                      </p>
-                      <Input
-                        value={numeroAffiche}
-                        onChange={(e) => handleNumeroChange(e.target.value)}
-                        placeholder="2024 / 8101 / 1234"
-                        inputMode="numeric"
-                        dir="ltr"
-                        className="text-center tabular-nums text-lg tracking-wide"
-                      />
-                      <p className="text-[11px] text-text-muted font-sans mt-1 text-center">
-                        أدخل الأرقام فقط، تُضاف العلامات «/» تلقائياً
-                      </p>
-
-                      {/* Aperçu "قرأنا الرقم هكذا" — confirme la lecture du numéro saisi */}
-                      <AnimatePresence>
-                        {numeroComplet && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="mt-3 rounded-md border border-accent/30 bg-accent-subtle p-3" dir="rtl">
-                              <div className="flex items-center gap-2 mb-3">
-                                <CheckCircle2 className="h-4 w-4 text-accent shrink-0" />
-                                <span className="text-sm font-sans font-medium text-text-secondary">
-                                  قرأنا الرقم هكذا
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {[
-                                  { label: 'السنة', value: annee },
-                                  { label: 'الرمز', value: codeRole },
-                                  { label: 'العدد', value: numero },
-                                  { label: 'نوع المحكمة', value: estCA ? 'استئنافي' : 'ابتدائي' },
-                                ].map((item) => (
-                                  <div key={item.label} className="rounded-sm bg-white border border-border px-3 py-2 text-center">
-                                    <p className="text-[10px] font-sans text-text-muted mb-0.5">{item.label}</p>
-                                    <p className="text-sm font-semibold text-text-primary tabular-nums">{item.value}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <p className="text-xs text-text-muted font-sans mt-2 text-center" dir="rtl">
-                        مثال : <span className="font-semibold tabular-nums">2024 / 8101/ 1234</span>
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted">
-                        محكمة الاستئناف *
-                      </p>
-                      <select
-                        value={courAppel}
-                        onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire(''); setRecherchePrimaire(false) }}
-                        required
-                        className="w-full rounded-sm border border-border bg-white px-3 py-2 text-sm font-sans text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
-                        dir="rtl"
-                      >
-                        <option value="">-- اختر محكمة الاستئناف --</option>
-                        {COURS_APPEL.map((ca) => (
-                          <option key={ca.nomAr} value={ca.nomAr}>{ca.nomAr}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {courAppel && caCourant && caCourant.tribunauxPrimaires.length > 0 && (
-                      <div>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={recherchePrimaire}
-                            onChange={(e) => { setRecherchePrimaire(e.target.checked); setTribunalPrimaire('') }}
-                            className="h-4 w-4 rounded border-border text-accent focus:ring-accent/30"
-                          />
-                          <span className="text-sm font-sans font-medium text-text-secondary">
-                            هل تريد البحث بالمحاكم الابتدائية؟
-                          </span>
-                        </label>
-                      </div>
-                    )}
-
-                    <AnimatePresence>
-                      {recherchePrimaire && caCourant && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="space-y-1 overflow-hidden"
-                        >
-                          <p className="text-[11px] font-medium font-sans tracking-wide uppercase text-text-muted pt-1">
-                            المحكمة الابتدائية *
-                          </p>
-                          <select
-                            value={tribunalPrimaire}
-                            onChange={(e) => setTribunalPrimaire(e.target.value)}
-                            required
-                            className="w-full rounded-sm border border-border bg-white px-3 py-2 text-sm font-sans text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
-                            dir="rtl"
-                          >
-                            <option value="">-- اختر المحكمة الابتدائية --</option>
-                            {caCourant.tribunauxPrimaires.map((tp) => (
-                              <option key={tp} value={tp}>{tp}</option>
-                            ))}
-                          </select>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* État de chargement plein — façon maquette image 3 */}
-                {searching && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex flex-col items-center justify-center text-center py-16 px-6"
-                    dir="rtl"
-                  >
-                    <RotateCw className="h-10 w-10 text-accent animate-spin mb-5" />
-                    <p className="font-display text-2xl font-semibold text-primary mb-2">
-                      جار البحث في سجلات المحكمة...
-                    </p>
-                    <p className="text-sm font-sans text-text-muted">
-                      تجهيز الملف...
-                    </p>
-                  </motion.div>
-                )}
-
-                {/* Boutons de recherche — visibles seulement avant le résultat */}
-                {!searchResult && !searching && (
-                  <>
-                    <Separator className="my-5" />
-                    <div className="flex gap-3">
-                      <Button type="button" variant="secondary" onClick={handleCancel}>
-                        إلغاء
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={handleSearch}
-                        disabled={!peutRechercher}
-                        className="flex-1"
-                      >
-                        <Search className="h-4 w-4" />
-                        ابحث عن الملف
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {/* Dossier non trouvé */}
-                {searchResult && !searchResult.trouve && (
-                  <div className="space-y-4">
-                    <Separator className="my-5" />
-                    <Card padding="md" className="border-danger/30 bg-danger-bg">
-                      <p className="font-medium text-danger font-sans">لم يتم العثور على الملف في mahakim.ma</p>
-                      <p className="text-sm text-danger font-sans mt-1">Vérifiez le numéro, l'année et le tribunal saisis.</p>
-                    </Card>
-                    <Button type="button" variant="secondary" onClick={resetSearch}>
-                      تعديل المعلومات وإعادة المحاولة
-                    </Button>
-                  </div>
-                )}
-
-                {/* Dossier trouvé */}
-                {searchResult && searchResult.trouve && (
-                  <div className="space-y-5">
-                    {/* Bannière de succès — façon maquette image 4 */}
-                    <div className="rounded-md border border-success/30 bg-success-bg p-4 text-center" dir="rtl">
-                      <div className="flex items-center justify-center gap-2 mb-1">
-                        <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
-                        <p className="font-display text-lg font-semibold text-success">تم العثور على الملف</p>
-                      </div>
-                      <p className="text-xl font-bold text-text-primary tabular-nums">{numComplet}</p>
-                    </div>
-
-                    <div dir="rtl">
-                      <p className="text-[11px] font-medium font-sans text-text-muted mb-1 text-right">
-                        موضوع القضية
-                      </p>
-                      <Input
-                        value={titreAffaire}
-                        onChange={(e) => setTitreAffaire(e.target.value)}
-                        placeholder="مثال: شركة س ضد شركة ص"
-                        dir="rtl"
-                        className="text-right font-arabic"
-                      />
-                    </div>
-
-                    {infoGridItems.length > 0 && (
-                      <InfoGrid title="بطاقة الملف" items={infoGridItems} columns={3} />
-                    )}
-
-                    <EventsTimeline events={eventsForTimeline} />
-
-                    <PartiesTable
-                      parties={(searchResult.parties ?? []).map((p) => ({
-                        nom: p.nom,
-                        qualite: p.qualite,
-                        avocats: p.avocats,
-                        delegues: p.delegues,
-                        agents: p.agents,
-                        representants: p.representants,
-                      }))}
-                    />
-
-                    {searchResult.expertises && searchResult.expertises.length > 0 && (
-                      <Card padding="md">
-                        <div dir="rtl">
-                          <h3 className="font-display text-xl font-semibold text-primary mb-3">لائحة الخبرات</h3>
-                          <div className="space-y-2">
-                            {searchResult.expertises.map((exp, i) => (
-                              <div key={i} className="rounded-sm bg-surface-alt p-3">
-                                <p className="text-base font-sans text-text-primary font-arabic">{exp}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </Card>
-                    )}
-
-                    <AppealsTable
-                      recours={(searchResult.recours ?? []).map((r) => ({
-                        type: r.type,
-                        partie: r.partie,
-                        dateDepot: r.dateDepot,
-                        numero: r.numero,
-                        numeroEnvoi: r.numeroEnvoi,
-                        dateEnvoi: r.dateEnvoi,
-                        tribunal: r.tribunal,
-                      }))}
-                    />
-
-                    <RelatedFilesTable
-                      dossiers={(searchResult.dossiersLies ?? []).map((d) => ({
-                        numero: d.numeroDossier,
-                        tribunal: d.tribunal,
-                        type: d.type,
-                        dateInscription: d.dateInscription,
-                      }))}
-                    />
-
-                    <Separator className="my-2" />
-
-                    <div className="flex gap-3 pt-2">
-                      <Button type="submit" loading={submitting} className="flex-1">
-                        {!submitting && <CheckCircle2 className="h-4 w-4" />}
-                        {submitting ? 'جارٍ الإضافة...' : 'إضافة ومتابعة'}
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={resetSearch}>
-                        بحث جديد
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Liste des dossiers */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} padding="md">
-              <Skeleton className="h-4 w-20 mb-3" />
-              <Skeleton className="h-6 w-40 mb-2" />
-              <Skeleton className="h-4 w-32 mb-4" />
-              <Skeleton className="h-4 w-24" />
-            </Card>
-          ))}
+      {selection.size > 0 && (
+        <div role="region" aria-label="إجراءات جماعية" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, background: '#15201E', color: '#FFFFFF', borderRadius: 14, padding: '8px 8px 8px 16px' }}>
+          <strong style={{ fontSize: 14, fontWeight: 600, paddingInlineStart: 6 }}>{selection.size === 1 ? 'ملف واحد محدد' : selection.size === 2 ? 'ملفان محددان' : <><span className="num">{selection.size}</span> ملفات محددة</>}</strong>
+          <span style={{ flex: 1 }} />
+          {onglet === 'archives' ? <>
+            <button type="button" onClick={restaurer} disabled={occupe} aria-busy={envoi === 'restaurer'} style={BARRE_BTN}><Attente actif={envoi === 'restaurer'} texte="جارٍ الاسترجاع…">استرجاع</Attente></button>
+            <button type="button" onClick={supprimer} disabled={occupe} style={{ ...BARRE_BTN, background: '#C0392B', border: 0 }}>حذف نهائي</button>
+          </> : <>
+            <button type="button" onClick={rafraichir} disabled={occupe} aria-busy={envoi === 'sync'} style={BARRE_BTN}><Attente actif={envoi === 'sync'} texte="جارٍ الطلب…">تحديث من محاكم</Attente></button>
+            <button type="button" onClick={exporter} style={BARRE_BTN}>تصدير</button>
+            <button type="button" onClick={archiver} disabled={occupe} aria-busy={envoi === 'archiver'} style={{ ...BARRE_BTN, background: '#F5F3EE', color: '#15201E', border: 0 }}><Attente actif={envoi === 'archiver'} texte="جارٍ الأرشفة…" sombre>أرشفة</Attente></button>
+          </>}
         </div>
-      ) : filteredDossiers.length === 0 ? (
-        <Card padding="lg" className="text-center">
-          <div className="py-12" dir="rtl">
-            <p className="text-xl font-semibold text-text-secondary mb-2">
-              {filterQuery ? 'لا يوجد ملف يطابق بحثك' : 'لا يوجد ملف قيد المراقبة'}
-            </p>
-            <p className="text-sm text-text-muted mb-5">
-              {filterQuery ? 'جرّب كلمة بحث أو تصنيفاً آخر' : 'أضف ملفك الأول لبدء المراقبة'}
-            </p>
-            {!filterQuery && vue === 'actifs' && !showForm && (
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="h-4 w-4" />
-                أضف ملفك الأول
-              </Button>
-            )}
-          </div>
-        </Card>
+      )}
+
+      {!page1 && error ? (
+        <ErreurChargement quoi="الملفات" onReessayer={refetch} />
+      ) : !page1 ? (
+        <SqueletteListe n={6} label="جارٍ تحميل الملفات" />
+      ) : liste.length === 0 ? (
+        <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '40px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+          <strong style={{ fontSize: 18, fontWeight: 600 }}>{q || tribunal || procedure ? 'لا ملف يطابق البحث' : (compteurs?.tous ?? 0) === 0 && onglet === 'tous' ? 'لا ملفات بعد' : 'لا ملفات في هذا القسم'}</strong>
+          <span style={{ fontSize: 15, color: '#3B4A47' }}>{(compteurs?.tous ?? 0) === 0 && onglet === 'tous' ? 'أضيفوا أول ملف، وسنجلب مساره من محاكم خلال دقائق.' : 'جرّبوا كلمة بحث أو تصفية أخرى.'}</span>
+          {(compteurs?.tous ?? 0) === 0 && onglet === 'tous' && <button className="mp-action" type="button" onClick={() => setAjout(true)} style={{ ...CHIP_ON, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', minHeight: 46, padding: '0 20px' }}><Plus size={18} aria-hidden />إضافة ملف</button>}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <AnimatePresence>
-            {filteredDossiers.map((d, i) => (
-              <motion.div
-                key={d.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03, duration: 0.25 }}
-                className="relative group"
-              >
-                <CaseCard
-                  id={d.id}
-                  dossierNumber={d.numeroDossier}
-                  tribunal={tribunalAr(d.tribunal)}
-                  typeAffaire={d.titreAffaire || labelProcedure(d.typeProcedure)}
-                  statut={d.echeances.length > 0 ? 'critique' : d._count.evenements > 0 ? 'en_cours' : 'nouveau'}
-                  derniereNouveaute={d.dernierEvenement?.datePublicationGreffe ?? d.updatedAt}
-                  dernierEvenement={d.dernierEvenement?.texteArabe ?? null}
-                  nbEvenements={d._count.evenements}
-                  nbEcheances={d._count.echeances}
-                  estCourAppel={d.estCourAppel}
-                />
-                {/* Actions : en RTL, on les place en haut à GAUCHE */}
-                <div className="absolute top-3 left-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
-                  {vue === 'actifs' ? (
-                    <>
-                      <button
-                        onClick={(e) => { e.preventDefault(); handleScrape(d.id) }}
-                        title="تحديث الآن"
-                        className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-accent hover:border-accent transition-colors"
-                      >
-                        <RotateCw className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.preventDefault(); handleArchiver(d.id) }}
-                        title="أرشفة"
-                        className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-primary hover:border-primary transition-colors"
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.preventDefault(); handleRestaurer(d.id) }}
-                      title="استرجاع"
-                      className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-success hover:border-success transition-colors"
-                    >
-                      <ArchiveRestore className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => { e.preventDefault(); handleDelete(d.id) }}
-                    disabled={deleting === d.id}
-                    title="حذف"
-                    className="p-1.5 rounded-md bg-surface border border-border text-text-muted hover:text-danger hover:border-danger transition-colors"
-                  >
-                    {deleting === d.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
-              </motion.div>
+        <>
+          <div className="mp-tblw" style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, overflowX: 'auto' }}>
+            <table className="mp-tbl" style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={{ width: 44 }}><span className="sr-only-ar">تحديد</span><input type="checkbox" aria-label="تحديد الكل" checked={tousCoches} onChange={() => setSelection(tousCoches ? new Set() : new Set(liste.map((d) => d.id)))} style={{ width: 24, height: 24, margin: 0, accentColor: '#0E5A4E', cursor: 'pointer' }} /></th>
+                <th>الملف</th><th>المحكمة</th><th>آخر مستجد</th><th>الأجل أو الموعد القادم</th><th><span className="sr-only-ar">فتح</span></th>
+              </tr></thead>
+              <tbody>
+                {liste.map((d) => (
+                  <tr key={d.id}>
+                    <td><input type="checkbox" aria-label={`تحديد الملف ${d.numeroDossier}`} checked={selection.has(d.id)} onChange={() => basculer(d.id)} style={{ width: 24, height: 24, margin: 0, accentColor: '#0E5A4E', cursor: 'pointer' }} /></td>
+                    <td><Link href={`/dossiers/${d.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 2, color: '#15201E', textDecoration: 'none' }}><strong style={{ fontWeight: 600 }}>{d.titreAffaire || labelProcedure(d.typeProcedure)}</strong><span className="num" style={{ fontSize: 13, color: '#5E6B67', textAlign: 'right' }}>{d.numeroDossier}</span></Link></td>
+                    <td style={{ color: '#3B4A47' }}>{tribunalAr(d.tribunal)}</td>
+                    <td style={{ color: '#3B4A47' }}>{d.dernierEvenement ? <>{resumeEvenement(d.dernierEvenement.texteArabe)} · <span className="num">{fmtJM(d.dernierEvenement.datePublicationGreffe)}</span></> : '—'}</td>
+                    <td><Prochain d={d} /></td>
+                    <td><Link href={`/dossiers/${d.id}`} aria-label="فتح الملف" style={{ display: 'inline-flex', width: 40, height: 40, alignItems: 'center', justifyContent: 'center', color: '#3B4A47', textDecoration: 'none', fontSize: 20 }}>‹</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="mp-cards" aria-label="الملفات" style={{ listStyle: 'none', margin: 0, padding: 0, flexDirection: 'column', gap: 10 }}>
+            {liste.map((d) => (
+              <li key={d.id}>
+                <Link href={`/dossiers/${d.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '14px 16px', color: '#15201E', textDecoration: 'none' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><strong style={{ fontSize: 15, fontWeight: 600 }}>{d.titreAffaire || labelProcedure(d.typeProcedure)}</strong><span style={{ fontSize: 13, color: '#5E6B67' }}><span className="num">{d.numeroDossier}</span> · {tribunalAr(d.tribunal)}</span></div>
+                  {d.dernierEvenement && <span style={{ fontSize: 13, color: '#3B4A47' }}>{resumeEvenement(d.dernierEvenement.texteArabe)} · <span className="num">{fmtJM(d.dernierEvenement.datePublicationGreffe)}</span></span>}
+                  <span style={{ alignSelf: 'flex-start' }}><Prochain d={d} /></span>
+                </Link>
+              </li>
             ))}
-          </AnimatePresence>
-        </div>
+          </ul>
+          {charges < total && (
+            <button type="button" onClick={chargerPlus} disabled={chargeSuite} style={{ ...CHIP, alignSelf: 'center', minHeight: 46, padding: '0 22px' }}>
+              {chargeSuite ? 'جارٍ التحميل…' : <>عرض المزيد · <span className="num">{total - charges}</span> {total - charges === 1 ? 'ملف متبقٍ' : 'ملفات متبقية'}</>}
+            </button>
+          )}
+        </>
       )}
     </div>
   )

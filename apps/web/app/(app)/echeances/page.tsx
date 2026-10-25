@@ -1,142 +1,167 @@
 'use client'
 
+import { useState } from 'react'
+import { IconeRonde, EtatVide } from '@/components/ui/Visuels'
+import { Calculator } from 'lucide-react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
-import { CheckCircle2, Clock, CalendarClock } from 'lucide-react'
+import { Check, Eye } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
 import { apiFetch } from '@/lib/api'
+import { useTribunaux } from '@/hooks/useTribunaux'
+import { useToast } from '@/components/Toast'
+import { SqueletteCartes, Nombre, ErreurChargement, DepuisSynchro, useEnvoi } from '@/components/ui/Chargement'
+import {
+  DeadlineCard, WatchRow, EcheanceItem, EyeIcon, joursRestants, useCompleteWithUndo, fmtJM, heure, titreDelai, adversaire, lireTitre,
+} from '@/components/legal/DeadlineCard'
 
-interface Echeance {
-  id: string
-  description: string
-  descriptionAr?: string | null
-  typeDelai: string
-  dateLimite: string
-  estCritique: boolean
-  dossier: { numeroDossier: string; tribunal: string; titreAffaire?: string }
-}
-
-const C = {
-  card: '#fff', ink: '#2C2A24', ink2: '#3A3322', label: '#5B5544', muted: '#A39C8B',
-  goldD: '#9A7820', goldChip: '#F4EFDF', green: '#3F9E6B', greenBg: '#E6F3EB',
-  red: '#DB6A52', redBg: '#FCE8E2', warn: '#B8860B', warnBg: '#FBF6E9', border: '#EEE7D6',
-}
-
-const joursRestants = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000)
+type Onglet = 'agir' | 'surveiller' | 'faits'
+const SEG: React.CSSProperties = { fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: 'transparent', color: '#3B4A47', border: 0, borderRadius: 999, padding: '0 18px', minHeight: 42, cursor: 'pointer' }
+const SEG_ON: React.CSSProperties = { ...SEG, background: '#FFFFFF', color: '#15201E', boxShadow: '0 1px 2px rgba(8,59,52,.12)' }
+const nomCourt = (e: EcheanceItem) => lireTitre(e.dossier.titreAffaire).demandeur.split(' ').slice(0, 2).join(' ') || e.dossier.numeroDossier
 
 export default function EcheancesPage() {
-  const { data: echeances, loading, refetch } = useApi<Echeance[]>('/echeances')
+  const { toast } = useToast()
+  const { tribunalAr } = useTribunaux()
+  const [onglet, setOnglet] = useState<Onglet>('agir')
+  const { data: actives, loading, error, refetch } = useApi<EcheanceItem[]>('/echeances')
+  const { data: faits, refetch: refetchFaits } = useApi<EcheanceItem[]>('/echeances?statut=completees')
+  const { data: expirees } = useApi<EcheanceItem[]>('/echeances?statut=expirees')
+  const { data: sync } = useApi<{ derniereVerif: string | null }>('/dossiers/sync-statut')
+  const toutRafraichir = () => { refetch(); refetchFaits() }
+  const { hidden, complete, rouvrir } = useCompleteWithUndo(toutRafraichir)
+  const { cle, lancer } = useEnvoi()
 
-  const handleComplete = async (id: string) => {
-    await apiFetch(`/echeances/${id}/complete`, { method: 'PATCH' }).catch(() => {})
-    refetch()
-  }
+  const items = (actives ?? []).filter((e) => !hidden.has(e.id))
+  const aAgir = items.filter((e) => e.camp !== 'SURVEILLER')
+  const aSurveiller = items.filter((e) => e.camp === 'SURVEILLER')
+  const advExpires = (expirees ?? []).filter((e) => e.camp === 'SURVEILLER')
+  const groupes = [
+    { k: 'h48', titre: <>خلال <span className="num">48</span> ساعة</>, couleur: '#9B2C20', l: aAgir.filter((e) => joursRestants(e.dateLimite) <= 2) },
+    { k: 'sem', titre: 'هذا الأسبوع', couleur: '#7A4E06', l: aAgir.filter((e) => { const j = joursRestants(e.dateLimite); return j > 2 && j <= 7 }) },
+    { k: 'tard', titre: 'لاحقاً', couleur: '#0B4A40', l: aAgir.filter((e) => joursRestants(e.dateLimite) > 7) },
+  ]
+  const sous7 = groupes[0].l.length + groupes[1].l.length
+  const dans30 = aAgir.filter((e) => { const j = joursRestants(e.dateLimite); return j > 7 && j <= 30 }).length
 
-  const items = echeances ?? []
-  const groups = {
-    urgent: items.filter((e) => joursRestants(e.dateLimite) <= 3),
-    soon: items.filter((e) => { const j = joursRestants(e.dateLimite); return j > 3 && j <= 7 }),
-    later: items.filter((e) => joursRestants(e.dateLimite) > 7),
+  const basculer = (e: EcheanceItem) => lancer(e.id, async () => {
+    try {
+      await apiFetch(`/echeances/${e.id}/camp`, { method: 'PATCH', body: JSON.stringify({ camp: e.camp === 'SURVEILLER' ? 'AGIR' : 'SURVEILLER' }) })
+      toast(e.camp === 'SURVEILLER' ? 'نُقل الأجل إلى «عليكم».' : 'نُقل الأجل إلى «على الخصم».', 'success')
+      await refetch()
+    } catch { toast('تعذّر نقل الأجل.', 'error') }
+  })
+
+  const Fait = ({ e }: { e: EcheanceItem }) => {
+    const quand = e.completeAt ? new Date(e.completeAt) : null
+    const aujourdhui = quand && fmtJM(quand) === fmtJM(new Date())
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '14px 18px' }}>
+        <span style={{ width: 32, height: 32, borderRadius: '50%', background: '#0E5A4E', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Check size={16} strokeWidth={2.4} aria-hidden /></span>
+        <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>{titreDelai(e)}</span>
+          <span style={{ fontSize: 13, color: '#5E6B67' }}><span className="num">{e.dossier.numeroDossier}</span>{e.dossier.titreAffaire ? ` · ${e.dossier.titreAffaire.split(/\s+[—-]\s+/)[0]}` : ''}{quand && <> · سُجّل {aujourdhui ? 'اليوم' : <span className="num">{fmtJM(quand)}</span>} <span className="num">{heure(quand)}</span></>}</span>
+        </div>
+        <button type="button" onClick={() => rouvrir(e)} style={{ fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: 'transparent', color: '#0E5A4E', border: 0, padding: '0 8px', minHeight: 44, cursor: 'pointer' }}>إلغاء الإنجاز</button>
+      </div>
+    )
   }
 
   return (
     <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* En-tête de page */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ textAlign: 'right' }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.ink }}>الآجال</h1>
-          <p style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{items.length} أجل قيد المتابعة</p>
-        </div>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: C.goldChip, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <CalendarClock size={19} stroke={C.goldD} />
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600 }}>الآجال</h1>
+        <p style={{ margin: 0, fontSize: 16, color: '#3B4A47' }}>
+          {!actives ? (error ? 'تعذّر تحميل الآجال.' : 'جارٍ التحميل…') : <>{sous7 === 0 ? 'لا أجل عليكم' : sous7 === 1 ? 'أجل واحد عليكم' : sous7 === 2 ? 'أجلان عليكم' : <><span className="num">{sous7}</span> آجال عليكم</>} خلال <span className="num">7</span> أيام · {aSurveiller.length === 0 ? 'لا أجل للخصم' : aSurveiller.length === 2 ? 'أجلان للخصم' : <><span className="num">{aSurveiller.length}</span> {aSurveiller.length === 1 ? 'أجل للخصم' : 'آجال للخصم'}</>} تحت المراقبة</>}
+        </p>
+        {sync && <DepuisSynchro date={sync.derniereVerif} />}
       </div>
 
-      {loading ? (
-        <CardShell><div style={{ height: 160 }} /></CardShell>
-      ) : items.length === 0 ? (
-        <CardShell>
-          <div style={{ padding: '48px 0', textAlign: 'center' }}>
-            <CheckCircle2 size={34} color={C.green} style={{ margin: '0 auto 14px' }} />
-            <p style={{ fontSize: 18, fontWeight: 600, color: C.ink2 }}>لا توجد آجال قيد المتابعة</p>
-            <p style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>ستظهر هنا الآجال المحسوبة تلقائياً من ملفاتكم</p>
-          </div>
-        </CardShell>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
-          {groups.urgent.length > 0 && (
-            <Section title="عاجلة — أقل من 3 أيام" count={groups.urgent.length} color={C.red}>
-              {groups.urgent.map((e) => <EcheanceRow key={e.id} e={e} onComplete={handleComplete} />)}
-            </Section>
-          )}
-          {groups.soon.length > 0 && (
-            <Section title="قريباً — من 4 إلى 7 أيام" count={groups.soon.length} color={C.warn}>
-              {groups.soon.map((e) => <EcheanceRow key={e.id} e={e} onComplete={handleComplete} />)}
-            </Section>
-          )}
-          {groups.later.length > 0 && (
-            <Section title="قادمة — أكثر من 7 أيام" count={groups.later.length} color={C.label}>
-              {groups.later.map((e) => <EcheanceRow key={e.id} e={e} onComplete={handleComplete} />)}
-            </Section>
+      <div role="tablist" aria-label="نوع الآجال" style={{ display: 'inline-flex', alignSelf: 'flex-start', flexWrap: 'wrap', background: '#EEEAE1', borderRadius: 999, padding: 4, gap: 4 }}>
+        <button type="button" role="tab" className="mp-choix" aria-selected={onglet === 'agir'} onClick={() => setOnglet('agir')} style={onglet === 'agir' ? SEG_ON : SEG}>عليكم <Nombre v={actives ? aAgir.length : null} /></button>
+        <button type="button" role="tab" className="mp-choix" aria-selected={onglet === 'surveiller'} onClick={() => setOnglet('surveiller')} style={onglet === 'surveiller' ? SEG_ON : SEG}>على الخصم <Nombre v={actives ? aSurveiller.length : null} /></button>
+        <button type="button" role="tab" className="mp-choix" aria-selected={onglet === 'faits'} onClick={() => setOnglet('faits')} style={onglet === 'faits' ? SEG_ON : SEG}>منجزة <Nombre v={faits?.length} /></button>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {!actives && error ? <ErreurChargement quoi="الآجال" onReessayer={refetch} /> : loading ? <SqueletteCartes n={3} /> : onglet === 'agir' ? <>
+            {groupes.filter((g) => g.k !== 'tard' && g.l.length > 0).map((g) => (
+              <section key={g.k} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: g.couleur }}>{g.titre}</h2>
+                {g.l.map((e) => <DeadlineCard key={e.id} e={e} tribunalAr={tribunalAr} onComplete={complete} onBasculer={basculer} attente={cle === e.id} />)}
+              </section>
+            ))}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0B4A40' }}>لاحقاً</h2>
+              {groupes[2].l.length === 0 || dans30 === 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '16px 18px', color: '#3B4A47', fontSize: 15 }}>
+                  <span style={{ width: 32, height: 32, borderRadius: '50%', background: '#E3F0EC', color: '#0E5A4E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Check size={16} strokeWidth={2.4} aria-hidden /></span>
+                  لا أجل آخر عليكم خلال الثلاثين يوماً القادمة.
+                </div>
+              ) : null}
+              {groupes[2].l.map((e) => <DeadlineCard key={e.id} e={e} tribunalAr={tribunalAr} onComplete={complete} onBasculer={basculer} attente={cle === e.id} />)}
+            </section>
+            {(faits ?? []).length > 0 && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#3B4A47' }}>أُنجز مؤخراً</h2>
+                {(faits ?? []).slice(0, 2).map((e) => <Fait key={e.id} e={e} />)}
+              </section>
+            )}
+          </> : onglet === 'surveiller' ? <>
+            {aSurveiller.length === 0 ? (
+              <div style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C', borderRadius: 16 }}><EtatVide Icon={Eye} texte="لا آجال للخصم تحت المراقبة. تظهر هنا آجال الطعن المفتوحة للطرف الآخر." /></div>
+            ) : (
+              <section style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C', borderRadius: 16, padding: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><EyeIcon size={20} />آجال الخصم · لا إجراء عليكم</h2>
+                {aSurveiller.map((e) => (
+                  <div key={e.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Link href={e.dossier.id ? `/dossiers/${e.dossier.id}` : '#'} style={{ fontSize: 13, color: '#5E6B67', textDecoration: 'none' }}><span className="num">{e.dossier.numeroDossier}</span>{e.dossier.titreAffaire ? ` · ${e.dossier.titreAffaire.split(/\s+[—-]\s+/)[0]}` : ''}</Link>
+                    <WatchRow e={e} partie={adversaire(e.dossier.titreAffaire, e.dossier.roleClient) || undefined} onBasculer={basculer} attente={cle === e.id} />
+                  </div>
+                ))}
+              </section>
+            )}
+            {advExpires.length > 0 && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0B4A40' }}>انتهت دون أن يسجَّل طعن</h2>
+                {advExpires.map((e) => (
+                  <div key={e.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', background: '#E3F0EC', borderRadius: 14, padding: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <strong style={{ fontSize: 15, fontWeight: 600, color: '#0B4A40' }}>{titreDelai(e).split(' - ')[0]} الخصم انتهى <span className="num">{fmtJM(e.dateLimite)}</span>: الحكم يصبح نهائياً ← التنفيذ</strong>
+                      <span style={{ fontSize: 13, color: '#23443C' }}><span className="num">{e.dossier.numeroDossier}</span> · تحققوا من عدم تسجيل طعن على محاكم.</span>
+                    </div>
+                    <Link className="mp-action" href={e.dossier.id ? `/documents?dossier=${e.dossier.id}&acte=EXECUTION` : '/documents'} style={{ fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', borderRadius: 999, padding: '0 16px', minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>طلب التنفيذ</Link>
+                  </div>
+                ))}
+              </section>
+            )}
+          </> : (
+            (faits ?? []).length === 0
+              ? <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16 }}><EtatVide Icon={Check} texte="لا آجال منجزة خلال الثلاثين يوماً الماضية." /></div>
+              : <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{(faits ?? []).map((e) => <Fait key={e.id} e={e} />)}</section>
           )}
         </div>
-      )}
+
+        <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {onglet !== 'surveiller' && aSurveiller.length > 0 && (
+            <section style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}><EyeIcon />على الخصم</h2>
+              {aSurveiller.slice(0, 5).map((e, i) => (
+                <button key={e.id} type="button" onClick={() => setOnglet('surveiller')} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14, fontFamily: 'inherit', background: 'transparent', border: 0, borderTop: i ? '1px solid #EEEAE1' : 0, paddingTop: i ? 10 : 0, color: '#15201E', cursor: 'pointer', textAlign: 'right' }}>
+                  <span>{titreDelai(e).split(' - ')[0].replace('أجل ', '')} · ملف {nomCourt(e)}</span>
+                  <span className="num" style={{ color: '#4D5B57', fontWeight: 600 }}>{fmtJM(e.dateLimite)}</span>
+                </button>
+              ))}
+            </section>
+          )}
+          <section style={{ background: '#E3F0EC', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, lineHeight: 1.7, color: '#23443C' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0B4A40', display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={Calculator} ton="vert" taille={36} />كيف نحسب الأجل؟</h2>
+            <span>من تاريخ التبليغ المسجّل على محاكم، حسب نوع الإجراء وطبيعة الحكم وموقع موكلكم.</span>
+            <span>تحققوا دائماً من تاريخ التبليغ الفعلي.</span>
+            <span>إذا أخطأنا في التصنيف، انقلوا الأجل بزر ⇄ بين «عليكم» و«على الخصم».</span>
+          </section>
+        </aside>
+      </div>
     </div>
-  )
-}
-
-function CardShell({ children }: { children: React.ReactNode }) {
-  return <div style={{ background: C.card, borderRadius: 22, padding: '22px 24px', boxShadow: '0 14px 34px -22px rgba(110,90,30,.4)' }}>{children}</div>
-}
-
-function Section({ title, count, color, children }: { title: string; count: number; color: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h2 style={{ fontSize: 15, fontWeight: 700, color, marginBottom: 12, textAlign: 'right' }}>
-        {title} <span style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>({count})</span>
-      </h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
-    </section>
-  )
-}
-
-function EcheanceRow({ e, onComplete }: { e: Echeance; onComplete: (id: string) => void }) {
-  const j = joursRestants(e.dateLimite)
-  const tone = j <= 1
-    ? { bg: C.redBg, badge: C.red, badgeTxt: '#fff' }
-    : j <= 3
-      ? { bg: C.warnBg, badge: C.warn, badgeTxt: '#fff' }
-      : { bg: C.card, badge: '#F0EAD8', badgeTxt: C.ink2 }
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <div style={{ background: tone.bg, borderRadius: 16, padding: '14px 18px', boxShadow: '0 10px 26px -20px rgba(110,90,30,.4)', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 16, flexDirection: 'row-reverse' }}>
-        {/* Compteur de jours */}
-        <div style={{ flex: 'none', width: 52, height: 52, borderRadius: 13, background: tone.badge, color: tone.badgeTxt, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1, fontFamily: "'IBM Plex Sans',sans-serif" }}>متبقٍّ</span>
-          <span style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.1, fontFamily: "'IBM Plex Sans',sans-serif" }}>{j}</span>
-        </div>
-
-        {/* Texte */}
-        <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: C.ink, marginBottom: 3 }}>{e.descriptionAr || e.description || e.typeDelai}</p>
-          <Link href={`/dossiers/${e.dossier.numeroDossier}`} style={{ fontSize: 12, color: C.muted, textDecoration: 'none' }}>
-            <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>{e.dossier.numeroDossier}</span> — {e.dossier.tribunal}
-          </Link>
-        </div>
-
-        {/* Date */}
-        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 5, color: C.ink2, fontSize: 12 }}>
-          <Clock size={13} stroke={C.muted} />
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif" }}>{new Date(e.dateLimite).toLocaleDateString('fr-MA')}</span>
-        </div>
-
-        {/* Action */}
-        <button onClick={() => onComplete(e.id)} title="تمّ الإنجاز"
-          style={{ flex: 'none', width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <CheckCircle2 size={17} />
-        </button>
-      </div>
-    </motion.div>
   )
 }

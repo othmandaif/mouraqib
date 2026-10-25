@@ -1,0 +1,60 @@
+{
+  "name": "MalafiPro — ملفاتي",
+  "short_name": "MalafiPro",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#083B34",
+  "background_color": "#F5F3EE",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "description": "متابعة ملفات محاكم وآجال الطعن للمحامين في المغرب",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "id": "/",
+  "shortcuts": [
+    {
+      "name": "الآجال",
+      "short_name": "الآجال",
+      "url": "/echeances",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "إضافة ملف",
+      "short_name": "إضافة ملف",
+      "url": "/dossiers?ajouter=1",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "المفكرة",
+      "short_name": "المفكرة",
+      "url": "/calendrier",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

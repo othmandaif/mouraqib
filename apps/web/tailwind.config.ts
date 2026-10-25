@@ -1,62 +1,73 @@
 import type { Config } from 'tailwindcss'
 
+// Palette MalafiPro V2 « Agir ou surveiller » — voir claude/DESIGN_UI_MALAFIPRO.md
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
-        display: ['var(--font-display)', 'Georgia', 'serif'],
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
-        arabic: ['Noto Naskh Arabic', 'Arial', 'sans-serif'],
+        display: ['IBM Plex Sans Arabic', 'IBM Plex Sans', 'sans-serif'],
+        sans: ['IBM Plex Sans Arabic', 'IBM Plex Sans', 'sans-serif'],
+        arabic: ['IBM Plex Sans Arabic', 'sans-serif'],
+        num: ['IBM Plex Sans', 'sans-serif'],
       },
       colors: {
-        page: '#F7F4F0',
+        page: '#F5F3EE',
         surface: {
           DEFAULT: '#FFFFFF',
-          alt: '#F0ECE6',
+          alt: '#F1EFEA',
         },
         primary: {
-          DEFAULT: '#1B2A4A',
-          light: '#2D4373',
-          dark: '#0F1A30',
+          DEFAULT: '#0E5A4E',
+          light: '#1F6F61',
+          dark: '#083B34',
         },
+        // L'ancien « accent » or devient le vert d'action ; l'ambre est réservé au signal.
         accent: {
-          DEFAULT: '#B8943C',
-          light: '#D4B66A',
-          subtle: '#F5EDD6',
+          DEFAULT: '#0E5A4E',
+          light: '#9FC9BE',
+          subtle: '#E3F0EC',
         },
+        signal: {
+          DEFAULT: '#F2A93B',
+          text: '#7A4E06',
+          bg: '#FDF1DC',
+        },
+        watch: '#4D5B57',
+        mint: '#E3F0EC',
+        ink: '#15201E',
         text: {
-          primary: '#1C1814',
-          secondary: '#5C5348',
-          muted: '#9C9488',
+          primary: '#15201E',
+          secondary: '#3B4A47',
+          muted: '#5E6B67',
         },
         border: {
-          DEFAULT: '#E5DDD4',
-          light: '#F0EBE3',
+          DEFAULT: '#E4E0D6',
+          light: '#EEEAE1',
         },
         danger: {
-          DEFAULT: '#9B2C2C',
-          bg: '#FDF2F2',
+          DEFAULT: '#C0392B',
+          bg: '#FBEAE7',
         },
         success: {
-          DEFAULT: '#2D6A4F',
-          bg: '#F0F7F4',
+          DEFAULT: '#0E5A4E',
+          bg: '#E3F0EC',
         },
         warning: {
-          DEFAULT: '#B8860B',
-          bg: '#FFFBEB',
+          DEFAULT: '#7A4E06',
+          bg: '#FDF1DC',
         },
       },
       boxShadow: {
-        sm: '0 1px 2px rgba(28, 24, 20, 0.04)',
-        md: '0 4px 12px rgba(28, 24, 20, 0.06)',
-        lg: '0 8px 30px rgba(28, 24, 20, 0.08)',
+        sm: '0 1px 0 rgba(8, 59, 52, 0.04)',
+        md: '0 1px 0 rgba(8, 59, 52, 0.04), 0 14px 30px -18px rgba(8, 59, 52, 0.28)',
+        lg: '0 1px 0 rgba(8, 59, 52, 0.04), 0 14px 30px -18px rgba(8, 59, 52, 0.28)',
       },
       borderRadius: {
-        sm: '0.25rem',
-        DEFAULT: '0.375rem',
-        md: '0.5rem',
-        lg: '0.75rem',
+        sm: '0.375rem',
+        DEFAULT: '0.625rem',
+        md: '0.625rem',
+        lg: '1rem',
       },
     },
   },

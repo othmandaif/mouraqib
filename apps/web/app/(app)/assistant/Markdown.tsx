@@ -8,17 +8,20 @@ import React from 'react'
  * Pas de lib externe — suffisant pour le chat, et sûr (pas de HTML brut injecté).
  */
 
-const C = { ink2: '#3A3322', goldD: '#9A7820', goldSubtle: '#FBF6E7' }
+const C = { ink2: '#3B4A47', goldD: '#0E5A4E', goldSubtle: '#E3F0EC' }
 
 // Transforme le **gras** et *italique* et `code` d'une ligne en éléments React.
 function rendreInline(texte: string, keyBase: string): React.ReactNode[] {
   const noeuds: React.ReactNode[] = []
   // regex : **gras** | *italique* | `code`
-  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g
+  const regex = /(\*\*[^*]+\*\*|==[^=]+==|\*[^*]+\*|`[^`]+`)/g
   const morceaux = texte.split(regex)
   morceaux.forEach((m, i) => {
     if (!m) return
-    if (m.startsWith('**') && m.endsWith('**')) {
+    if (m.startsWith('==') && m.endsWith('==') && m.length > 4) {
+      // ==valeur== : champ issu du dossier (aperçu de l'éditeur de documents)
+      noeuds.push(<mark key={`${keyBase}-${i}`}>{m.slice(2, -2)}</mark>)
+    } else if (m.startsWith('**') && m.endsWith('**')) {
       noeuds.push(<strong key={`${keyBase}-${i}`} style={{ fontWeight: 700, color: C.ink2 }}>{m.slice(2, -2)}</strong>)
     } else if (m.startsWith('`') && m.endsWith('`')) {
       noeuds.push(
