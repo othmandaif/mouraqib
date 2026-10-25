@@ -1,7 +1,7 @@
 // Styles de la landing (tokens V2 : claude/DESIGN_UI_MALAFIPRO.md). Propriétés logiques (inline-start/end) : marche en RTL et LTR.
 export const CSS = `
 .lp a{text-decoration:none;color:inherit}
-.lp{overflow-x:clip}
+.lp{overflow-x:hidden;overflow-x:clip} /* hidden : Safari < 16 ne connaît pas clip */
 .lp *,.lp *::before,.lp *::after{box-sizing:border-box}
 .lp h3{color:inherit}
 .lp[lang=fr] h1,.lp[lang=fr] h2,.lp[lang=fr] h3{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif}
@@ -203,10 +203,10 @@ export const CSS = `
 @media (max-width:1080px){.lp-ia{grid-template-columns:repeat(2,minmax(0,1fr))}.lp-docs{grid-template-columns:1fr}}
 @media (max-width:760px){
   .lp-flux{grid-template-columns:1fr;padding:22px 16px;gap:4px}
-  .lp-liaison{height:56px;width:3px;margin:0 auto}
-  .lp-tirets{width:3px;height:100%;background:repeating-linear-gradient(180deg,#2E8B6E 0 10px,transparent 10px 18px);background-size:3px 18px;animation:none}
-  .lp-boucle{top:13px;inset-inline-start:14px}
-  .lp-liaison small{position:absolute;inset-inline-start:52px;top:4px;margin:0;width:200px;text-align:start}
+  .lp-liaison{padding:6px 0;gap:6px}
+  .lp-tirets{width:3px;height:28px;background:repeating-linear-gradient(180deg,#2E8B6E 0 8px,transparent 8px 14px);background-size:3px 14px;animation:none}
+  .lp-boucle{position:static}
+  .lp-liaison small{margin:0;max-width:100%}
   .lp-etapes,.lp-ia,.lp-ecrans{grid-template-columns:1fr}
   .lp-ecran img{height:260px}
 }
