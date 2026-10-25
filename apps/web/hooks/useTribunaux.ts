@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
+import { TRIBUNAL_AR } from '@/lib/labels'
 
 interface TribunalInfo {
   nomAr: string
@@ -20,7 +21,8 @@ export function useTribunaux() {
   }, [])
 
   const tribunalAr = useCallback(
-    (code?: string | null) => (code && map[code]?.nomAr) || code || '—',
+    // Codes absents du référentiel (TPI_CASA_CIVIL…) : nom de la liste locale plutôt que le code brut
+    (code?: string | null) => (code && (map[code]?.nomAr ?? TRIBUNAL_AR[code])) || code || '—',
     [map],
   )
 

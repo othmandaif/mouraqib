@@ -324,14 +324,17 @@ router.patch('/deux-facteurs', requireAuth, async (req: AuthRequest, res: Respon
 
 // Paramètres › تصدير بياناتي : tout ce que l'avocat a saisi ou que nous avons calculé
 router.get('/export', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const [user, dossiers, documents, conversations] = await Promise.all([
+  const [user, dossiers, documents, conversations, clients, factures, reglements] = await Promise.all([
     prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true, nom: true, prenom: true, telephone: true, whatsappNumero: true, createdAt: true, preferences: true } }),
     prisma.dossier.findMany({ where: { userId: req.userId! }, include: { evenements: true, echeances: true } }),
     prisma.document.findMany({ where: { userId: req.userId! } }),
     prisma.conversation.findMany({ where: { userId: req.userId! }, include: { messages: { select: { role: true, contenu: true, createdAt: true } } } }),
+    prisma.client.findMany({ where: { userId: req.userId! }, include: { interactions: true } }),
+    prisma.facture.findMany({ where: { userId: req.userId! } }),
+    prisma.reglement.findMany({ where: { userId: req.userId! } }),
   ])
   res.setHeader('Content-Disposition', `attachment; filename="malafipro-export-${new Date().toISOString().slice(0, 10)}.json"`)
-  res.json({ exporteLe: new Date(), compte: user, dossiers, documents, conversations })
+  res.json({ exporteLe: new Date(), compte: user, dossiers, documents, conversations, clients, factures, reglements })
 })
 
 // Paramètres › حذف الحساب : suppression définitive 30 jours plus tard (purge dans le job des délais)

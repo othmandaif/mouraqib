@@ -12,6 +12,8 @@ import { useTribunaux } from '@/hooks/useTribunaux'
 import { useToast } from '@/components/Toast'
 import { labelProcedure } from '@/lib/labels'
 import { SqueletteFiche, ErreurChargement, useEnvoi, Attente } from '@/components/ui/Chargement'
+import { PackDossier } from '@/components/legal/PackDossier'
+import { ClientDossier } from '@/components/legal/ClientDossier'
 import {
   EcheanceItem, RoleClient, DeadlineCard, WatchRow, EyeIcon, useCompleteWithUndo, joursRestants, fmtDate, fmtJM, jourSemaine,
   heure, titreDelai, lireTitre, BTN, JOUR_MS,
@@ -22,6 +24,9 @@ interface DossierDetail {
   id: string; numeroDossier: string; codeRole: string; tribunal: string; titreAffaire?: string | null; typeProcedure: string
   estActif?: boolean; statutIA?: string; resumeIA?: string | null; analyseAt?: string | null; derniereVerif?: string | null
   roleClient: RoleClient
+  client?: { id: string; nom: string; telephone?: string | null } | null
+  honorairesConvenusCentimes?: number | null
+  partieAdverse?: string | null
   evenements: Evenement[]
   echeances: (Omit<EcheanceItem, 'dossier'> & { estComplete: boolean })[]
   documents: { id: string; titre: string; statut: string; updatedAt: string }[]
@@ -34,7 +39,7 @@ interface DossierDetail {
     dossiersLies: { type: string; numeroDossier: string; dateInscription: string; tribunal: string }[]
   }
 }
-type Onglet = 'apercu' | 'procedures' | 'delais' | 'documents' | 'conversations'
+type Onglet = 'apercu' | 'procedures' | 'delais' | 'travail' | 'documents' | 'conversations'
 
 const STATUT: Record<string, { label: string; bg: string; fg: string }> = {
   OUVERT: { label: 'قضية جارية', bg: '#E3F0EC', fg: '#0B4A40' },
@@ -140,6 +145,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
     { k: 'apercu', label: 'نظرة عامة' },
     { k: 'procedures', label: 'الإجراءات', n: dossier.evenements.length },
     { k: 'delais', label: 'الآجال', n: ouvertes.length },
+    { k: 'travail', label: 'ملف العمل' },
     { k: 'documents', label: 'الوثائق', n: dossier.documents.length || undefined },
     { k: 'conversations', label: 'المحادثات', n: dossier.conversations.length || undefined },
   ]
@@ -310,6 +316,8 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
             {(dossier.rawData?.dossiersLies ?? []).length > 0 && <Tableau titre="الملفات المرتبطة" entetes={['نوع الملف', 'رقم الملف', 'تاريخ التسجيل', 'المحكمة']} lignes={dossier.rawData!.dossiersLies.map((d) => [d.type, d.numeroDossier, d.dateInscription, d.tribunal].map(val))} />}
           </>}
 
+          {onglet === 'travail' && <PackDossier key={`${dossier.client?.id ?? ''}-${dossier.honorairesConvenusCentimes ?? ''}-${dossier.partieAdverse ?? ''}`} dossierId={dossier.id} />}
+
           {onglet === 'documents' && (
             <section style={CARD}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 style={{ ...H2, display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={Files} taille={36} />وثائق الملف</h2><Link href={`/documents?dossier=${dossier.id}`} style={{ ...BTN, background: '#0E5A4E', color: '#FFFFFF', border: 0 }}>+ وثيقة</Link></div>
@@ -348,6 +356,9 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
               </button>
             </div>
           </section>
+
+          <ClientDossier dossierId={dossier.id} client={dossier.client ?? null} honorairesConvenusCentimes={dossier.honorairesConvenusCentimes ?? null}
+            partieAdverse={dossier.partieAdverse ?? null} nomSuggere={client} adversaireSuggere={adverse} onChange={refetch} />
 
           {parties.length > 0 && (
             <section style={{ ...CARD, padding: 20 }}>

@@ -15,9 +15,19 @@ const deadlineService = new DeadlineService()
 /** Comptes dont la suppression a été demandée il y a plus de 30 jours (Paramètres › حذف الحساب). */
 async function purgerComptesSupprimes(): Promise<void> {
   const limite = new Date(Date.now() - 30 * 86_400_000)
-  const users = await prisma.user.findMany({ where: { suppressionDemandeeAt: { lt: limite } }, select: { id: true } })
-  for (const { id } of users) {
+  const users = await prisma.user.findMany({ where: { suppressionDemandeeAt: { lt: limite } }, select: { id: true, cabinetId: true } })
+  for (const { id, cabinetId } of users) {
+    // CRM et facturation d'un avocat seul (dans un cabinet, ils restent au cabinet)
+    const crm = cabinetId ? [] : [
+      prisma.reglement.deleteMany({ where: { userId: id, cabinetId: null } }),
+      prisma.facture.deleteMany({ where: { espace: id, factureOrigineId: { not: null } } }), // avoirs d'abord (référence)
+      prisma.facture.deleteMany({ where: { espace: id } }),
+      prisma.client.deleteMany({ where: { userId: id, cabinetId: null } }), // journal : cascade
+      prisma.profilFacturation.deleteMany({ where: { espace: id } }),
+      prisma.sequenceFacture.deleteMany({ where: { espace: id } }),
+    ]
     await prisma.$transaction([
+      ...crm,
       prisma.alerte.deleteMany({ where: { OR: [{ userId: id }, { dossier: { userId: id } }] } }),
       prisma.paiement.deleteMany({ where: { abonnement: { userId: id } } }),
       prisma.abonnement.deleteMany({ where: { userId: id } }),

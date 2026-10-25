@@ -13,7 +13,7 @@ import { BarreProgression } from '@/components/layout/BarreProgression'
 import { useRaccourcis, AideRaccourcis } from '@/components/layout/Raccourcis'
 import { InviteInstallation } from '@/components/layout/InviteInstallation'
 import {
-  Home, FolderOpen, Clock, Bell, Calendar, Menu, X, Sparkles, FileText, Archive, SlidersHorizontal, LogOut, Search, Users, Inbox, Wallet, Activity, ShieldCheck,
+  Home, FolderOpen, Clock, Bell, Calendar, Menu, X, Sparkles, FileText, Archive, SlidersHorizontal, LogOut, Search, Users, Inbox, Wallet, Activity, ShieldCheck, Contact, Receipt,
 } from 'lucide-react'
 
 interface AppShellProps { children: React.ReactNode }
@@ -25,6 +25,10 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     { href: '/dossiers', label: 'الملفات', Icon: FolderOpen, badge: 'dossiers' },
     { href: '/echeances', label: 'الآجال', Icon: Clock, badge: 'deadlines' },
     { href: '/calendrier', label: 'الأجندة', Icon: Calendar },
+  ] },
+  { section: 'المكتب', items: [
+    { href: '/clients', label: 'الموكلون', Icon: Contact },
+    { href: '/facturation', label: 'الفوترة والأتعاب', Icon: Receipt },
   ] },
   { section: 'الذكاء الاصطناعي', items: [
     { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },

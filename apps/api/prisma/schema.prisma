@@ -138,6 +138,14 @@ model Dossier {
   cabinetId String?
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
 
+  // ─── CRM : موكل الملف et honoraires convenus (en centimes de dirham) ───
+  clientId                  String?
+  client                    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  honorairesConvenusCentimes Int?
+  factures                  Facture[]
+  reglements                Reglement[]
+  interactions              InteractionClient[]
+
   evenements Evenement[]
   echeances  Echeance[]
   alertes    Alerte[]
@@ -157,7 +165,8 @@ model Dossier {
   @@index([userId])
   @@index([numeroDossier])
   @@index([userId, estActif])
-} 
+  @@index([clientId])
+}
 
 
 enum RoleClient {
@@ -610,6 +619,194 @@ model RendezVous {
   createdAt DateTime @default(now())
 
   @@index([userId, debut])
+}
+
+// ─── CRM : الموكلون ─────────────────────────────────────────────────────────────
+// Visibles par toute l'équipe (`userId: { in: req.equipe }`), comme les dossiers.
+
+model Client {
+  id        String     @id @default(cuid())
+  userId    String     // créateur
+  cabinetId String?
+  type      TypeClient @default(PERSONNE)
+
+  nom               String  // nom complet ou raison sociale
+  cin               String? // بطاقة التعريف (personne)
+  ice               String? // 15 chiffres (société) : obligatoire sur une facture B2B
+  rc                String? // السجل التجاري
+  identifiantFiscal String?
+  representant      String? // ممثل الشركة (gérant)
+  telephone         String?
+  email             String?
+  adresse           String?
+  ville             String?
+  notes             String? @db.Text
+  estArchive        Boolean @default(false)
+
+  dossiers     Dossier[]
+  interactions InteractionClient[]
+  factures     Facture[]
+  reglements   Reglement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([cabinetId])
+  @@index([nom])
+}
+
+enum TypeClient {
+  PERSONNE // شخص ذاتي
+  SOCIETE  // شخص معنوي
+}
+
+/// Journal des échanges avec le client (سجل التواصل).
+model InteractionClient {
+  id        String          @id @default(cuid())
+  clientId  String
+  client    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?        @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  userId    String          // auteur
+  type      TypeInteraction @default(NOTE)
+  resume    String          @db.Text
+  date      DateTime        @default(now())
+  createdAt DateTime        @default(now())
+
+  @@index([clientId, date])
+}
+
+enum TypeInteraction {
+  APPEL
+  RENDEZ_VOUS
+  MESSAGE
+  EMAIL
+  NOTE
+}
+
+// ─── FACTURATION (فواتير ومذكرات الأتعاب) ──────────────────────────────────────
+// « espace » = cabinetId du compte, sinon son userId : une seule série de numéros par cabinet.
+// Montants en centimes (entiers) : aucun arrondi flottant sur les totaux.
+
+/// En-tête des factures (art. 145 CGI : ICE, IF, TP…).
+model ProfilFacturation {
+  id                  String   @id @default(cuid())
+  espace              String   @unique
+  nom                 String   // « الأستاذ … » ou nom du cabinet
+  barreau             String?
+  adresse             String?
+  ville               String?
+  telephone           String?
+  email               String?
+  ice                 String?
+  identifiantFiscal   String?
+  taxeProfessionnelle String?
+  rib                 String?
+  banque              String?
+  piedPage            String?  @db.Text
+  updatedAt           DateTime @updatedAt
+}
+
+/// Dernier numéro attribué par espace et par année (numérotation continue, sans trou).
+model SequenceFacture {
+  espace  String
+  annee   Int
+  dernier Int    @default(0)
+
+  @@id([espace, annee])
+}
+
+model Facture {
+  id        String        @id @default(cuid())
+  espace    String
+  userId    String        // créateur
+  cabinetId String?
+  type      TypeFacture   @default(NOTE_HONORAIRES)
+  statut    StatutFacture @default(BROUILLON)
+  numero    String?       // attribué à l'émission (« 2026-0007 ») ; null tant que brouillon
+
+  clientId  String
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  // Avoir : facture annulée qu'il compense
+  factureOrigineId String?   @unique
+  factureOrigine   Facture?  @relation("Avoir", fields: [factureOrigineId], references: [id], onDelete: Restrict)
+  avoir            Facture?  @relation("Avoir")
+
+  dateEmission DateTime?
+  dateEcheance DateTime?
+  lignes       Json          // [{ designation, quantite, prixUnitaireCentimes }]
+  tauxTva      Float         // en %, choisi sur chaque facture (0, 7, 10, 14, 20)
+  totalHtCentimes  Int       @default(0)
+  tvaCentimes      Int       @default(0)
+  totalTtcCentimes Int       @default(0)
+  modePaiement String?
+  notes        String?       @db.Text
+
+  // Copies figées à l'émission : la facture émise ne change plus si le profil ou le client changent
+  emetteur     Json?
+  destinataire Json?
+
+  emiseAt   DateTime?
+  annuleeAt DateTime?
+  reglements Reglement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([espace, numero])
+  @@index([espace, statut])
+  @@index([clientId])
+  @@index([dossierId])
+}
+
+enum TypeFacture {
+  FACTURE          // فاتورة
+  NOTE_HONORAIRES  // مذكرة الأتعاب
+  AVOIR            // فاتورة مضادة (annulation)
+}
+
+enum StatutFacture {
+  BROUILLON
+  EMISE
+  ANNULEE
+}
+
+/// Encaissement. Sans facture = provision (تسبيق), imputable plus tard.
+model Reglement {
+  id        String        @id @default(cuid())
+  userId    String
+  cabinetId String?
+  clientId  String
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  factureId String?
+  facture   Facture?      @relation(fields: [factureId], references: [id], onDelete: SetNull)
+
+  montantCentimes Int
+  date            DateTime
+  mode            ModeReglement
+  reference       String?   // n° de chèque, de virement…
+  note            String?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([dossierId])
+  @@index([factureId])
+  @@index([userId, date])
+}
+
+enum ModeReglement {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  EFFET
+  AUTRE
 }
 
 // ─── Comptabilité du service (panneau admin) ───────────────────────────────────

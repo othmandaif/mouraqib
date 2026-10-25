@@ -11,6 +11,8 @@ import adminRouter from './admin'
 import assistantRouter from './assistant'
 import tribunauxRouter from './tribunaux'
 import documentsRouter from './documents'
+import clientsRouter from './clients'
+import facturationRouter from './facturation'
 
 const router = Router()
 
@@ -26,5 +28,7 @@ router.use('/admin', adminRouter)
 router.use('/assistant', assistantRouter)
 router.use('/tribunaux', tribunauxRouter)
 router.use('/documents', documentsRouter)
+router.use('/clients', clientsRouter)
+router.use('/facturation', facturationRouter)
 
 export default router
