@@ -4,7 +4,7 @@ import Link from 'next/link'
 import {
   Bell, Plus, Search, Clock, CalendarDays, Phone, Wallet, FolderOpen, WifiOff, PenLine, Users, Sparkles, FileText, Laptop,
   UsersRound, ShieldCheck, Cloud, HardDrive, RefreshCw, Check, X, ArrowLeft, ArrowRight, UserRound, Mail, Globe, Eye,
-  Lock, ScanText, Bot, FileType2, AlertTriangle, type LucideIcon,
+  Lock, ScanText, Bot, FileType2, AlertTriangle, ListChecks, Landmark, Smartphone, Monitor, RefreshCcw, FileArchive, type LucideIcon,
 } from 'lucide-react'
 import { ANCRES, BIENTOT, type Contenu } from './contenu'
 import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
@@ -15,7 +15,7 @@ export const EMAIL = process.env.CONTACT_COMMERCIAL_EMAIL || 'contact@malafipro.
 
 const ICONES: Record<string, LucideIcon> = {
   search: Search, clock: Clock, calendar: CalendarDays, phone: Phone, wallet: Wallet, folder: FolderOpen, wifi: WifiOff, pen: PenLine,
-  bell: Bell, users: Users, sparkles: Sparkles, file: FileText, laptop: Laptop, team: UsersRound, shield: ShieldCheck,
+  bell: Bell, users: Users, sparkles: Sparkles, file: FileText, laptop: Laptop, team: UsersRound, shield: ShieldCheck, scan: ScanText, list: ListChecks,
 }
 
 function lienWa(texte: string) {
@@ -159,6 +159,53 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
           </div>
         </section>
 
+        {/* ── Comment ça marche : l'app consulte mahakim, l'avocat regarde son écran ── */}
+        <section aria-labelledby="t-flux" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
+          <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <Apparition className="lp-titre">
+              <span className="lp-pastille">{t.flux.pastille}</span>
+              <h2 id="t-flux" className="lp-h2">{t.flux.titre}</h2>
+              <p className="lp-lead">{t.flux.texte}</p>
+            </Apparition>
+            <Apparition>
+              <div className="lp-flux" role="img" aria-label={`${t.flux.mahakim} → ${t.flux.app} → ${t.flux.avocat}`}>
+                <div className="lp-noeud"><span className="lp-noeud-ico"><Landmark size={28} /></span><strong>{t.flux.mahakim}</strong></div>
+                <div className="lp-liaison"><span className="lp-tirets" /><span className="lp-boucle"><RefreshCcw size={16} /></span><small>{t.flux.frequence}</small></div>
+                <div className="lp-noeud app"><span className="lp-noeud-ico"><Sparkles size={28} /></span><strong>{t.flux.app}</strong></div>
+                <div className="lp-liaison"><span className="lp-tirets" /><span className="lp-boucle"><Bell size={16} /></span></div>
+                <div className="lp-noeud"><span className="lp-noeud-ico" style={{ gap: 4 }}><Smartphone size={22} /><Monitor size={22} /></span><strong>{t.flux.avocat}</strong><small>{t.flux.vous}</small></div>
+              </div>
+            </Apparition>
+            <ol className="lp-etapes">
+              {t.flux.etapes.map(([titre, texte], i) => (
+                <Apparition as="li" key={titre} delai={i * 0.1}><span className="lp-etape-n num">{i + 1}</span><span><strong>{titre}</strong><small>{texte}</small></span></Apparition>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        {/* ── Intelligence artificielle ── */}
+        <section aria-labelledby="t-ia" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
+          <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <Apparition className="lp-titre">
+              <span className="lp-pastille">{t.ia.pastille}</span>
+              <h2 id="t-ia" className="lp-h2">{t.ia.titre}</h2>
+              <p className="lp-lead">{t.ia.texte}</p>
+            </Apparition>
+            <div className="lp-ia">
+              {t.ia.cartes.map((c, i) => {
+                const Icon = ICONES[c.icone]
+                return (
+                  <Apparition key={c.titre} delai={i * 0.08}>
+                    <CarteLumiere className="lp-fn"><span className="lp-fn-ico sombre"><Icon size={22} aria-hidden /></span><h3>{c.titre}</h3><p>{c.texte}</p></CarteLumiere>
+                  </Apparition>
+                )
+              })}
+            </div>
+            <Apparition><p className="lp-garde"><ShieldCheck size={20} aria-hidden />{t.ia.garde}</p></Apparition>
+          </div>
+        </section>
+
         {/* ── Toutes les fonctions (grille bento, bordure lumineuse) ── */}
         <section id={a.fonctions} aria-labelledby="t-fn" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
           <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
@@ -226,6 +273,24 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
           </div>
         </section>
 
+        {/* ── Préparation des documents du dossier ── */}
+        <section aria-labelledby="t-docs" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
+          <div className="lp-wrap lp-docs">
+            <Apparition style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <span className="lp-pastille" style={{ alignSelf: 'flex-start' }}>{t.docs.pastille}</span>
+              <h2 id="t-docs" className="lp-h2">{t.docs.titre}</h2>
+              <p style={{ margin: 0, fontSize: 17, lineHeight: 1.8, color: '#3B4A47' }}>{t.docs.texte}</p>
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.8, color: '#0B4A40', fontWeight: 600 }}>{t.docs.ia}</p>
+            </Apparition>
+            <Apparition delai={0.1}>
+              <div className="lp-docs-liste" aria-hidden>
+                {t.docs.liste.map((d) => <div key={d}><FileText size={18} color="#22476A" /><span>{d}</span><span className="lp-doc-ext">.doc</span></div>)}
+                <div className="lp-docs-zip"><FileArchive size={18} />{ar ? 'ملف العمل.zip' : 'Dossier de travail.zip'}</div>
+              </div>
+            </Apparition>
+          </div>
+        </section>
+
         {/* ── Vos données : cloud / PC / les deux ─────────────────── */}
         <section id={a.donnees} aria-labelledby="t-don" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
           <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
@@ -262,6 +327,29 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
                   <div className="lp-synchro"><WifiOff size={15} />{t.donnees.synchro}</div>
                 </div>
               </Apparition>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Captures de l'application ── */}
+        <section aria-labelledby="t-ecr" className="lp-sec lp-bloc" style={{ paddingTop: 0 }}>
+          <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <Apparition className="lp-titre">
+              <span className="lp-pastille">{t.ecrans.pastille}</span>
+              <h2 id="t-ecr" className="lp-h2">{t.ecrans.titre}</h2>
+              <p className="lp-lead">{t.ecrans.texte}</p>
+            </Apparition>
+            <div className="lp-ecrans">
+              {t.ecrans.items.map((e, i) => (
+                <Apparition key={e.src} delai={(i % 2) * 0.1}>
+                  <figure className="lp-ecran">
+                    <div className="lp-mock-barre"><span /><span /><span /></div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={e.src} alt={e.alt} loading="lazy" decoding="async" />
+                    <figcaption>{e.titre}</figcaption>
+                  </figure>
+                </Apparition>
+              ))}
             </div>
           </div>
         </section>

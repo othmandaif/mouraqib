@@ -35,7 +35,7 @@ type Plan = 'SOLO' | 'CABINET' | 'SUR_MESURE'
 // Mêmes valeurs que apps/api/src/services/abonnements/offres.ts
 const OFFRES: Record<Plan, { nom: string; prix: number | null; fondateur: number | null }> = {
   SOLO: { nom: 'فردي', prix: 290, fondateur: 149 },
-  CABINET: { nom: 'مكتب', prix: 790, fondateur: 449 },
+  CABINET: { nom: 'مكتب', prix: 790, fondateur: 349 },
   SUR_MESURE: { nom: 'مكتب+ / تثبيت محلي', prix: null, fondateur: null },
 }
 const PLACES_FONDATEURS = 50

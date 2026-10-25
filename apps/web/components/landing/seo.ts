@@ -9,13 +9,13 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 const META = {
   ar: {
     titre: 'ملفاتي MalafiPro — برنامج المحامي في المغرب: متابعة محاكم، آجال الطعن، الموكلون والوثائق',
-    description: 'ملفاتي يتابع ملفاتكم على محاكم تلقائياً، يحسب آجال الاستئناف والتعرض والنقض، ينبّهكم على واتساب، ويجمع موكليكم وأتعابكم ووثائقكم. سحابة أو على حاسوبكم بدون إنترنت. تجربة مجانية 30 يوماً، من 149 درهماً في الشهر.',
+    description: 'ملفاتي يتابع ملفاتكم على محاكم تلقائياً، يحسب آجال الاستئناف والتعرض والنقض، ينبّهكم على واتساب، ويجمع موكليكم وأتعابكم ووثائقكم. سحابة أو على حاسوبكم بدون إنترنت. تجربة مجانية 20 يوماً، من 149 درهماً في الشهر.',
     keywords: ['برنامج للمحامين', 'برنامج مكتب المحاماة', 'محاكم', 'متابعة الملفات', 'آجال الطعن', 'أجل الاستئناف', 'إدارة الموكلين', 'أتعاب المحامي', 'تنبيهات واتساب', 'مساعد قانوني بالذكاء الاصطناعي'],
     alt: 'ملفاتي MalafiPro على حاسوب محامٍ في مكتبه', locale: 'ar_MA', autre: 'fr_MA', url: '/',
   },
   fr: {
     titre: 'MalafiPro — Logiciel pour avocats au Maroc : suivi mahakim, délais, clients et documents',
-    description: 'MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation, vous alerte sur WhatsApp et gère vos clients, honoraires et documents. Cloud ou sur votre PC, même hors ligne. Essai gratuit 30 jours, dès 149 DH/mois.',
+    description: 'MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation, vous alerte sur WhatsApp et gère vos clients, honoraires et documents. Cloud ou sur votre PC, même hors ligne. Essai gratuit 20 jours, dès 149 DH/mois.',
     keywords: ['logiciel avocat Maroc', 'logiciel cabinet d’avocats', 'suivi dossiers mahakim', 'délais de recours', 'CRM avocat', 'gestion honoraires avocat', 'logiciel avocat hors ligne', 'alertes WhatsApp avocat', 'IA juridique Maroc'],
     alt: 'MalafiPro sur l’ordinateur d’un avocat dans son cabinet', locale: 'fr_MA', autre: 'ar_MA', url: '/fr',
   },

@@ -5,14 +5,14 @@
 export type Langue = 'ar' | 'fr'
 
 /** Fonctions annoncées mais pas encore livrées : badge « قريباً / Bientôt ». Passer à false à la mise en ligne. */
-export const BIENTOT = { crm: true, horsLigne: true }
+export const BIENTOT = { crm: false, horsLigne: true }
 
 export const PRIX = {
   solo: { mois: 290, fondateur: 149 },
-  cabinet: { mois: 790, fondateur: 449, utilisateurs: 5 },
+  cabinet: { mois: 790, fondateur: 349, utilisateurs: 5 },
   moisPayesParAn: 10, // paiement annuel : 10 mois payés pour 12
-  essaiJours: 30,
-  essaiFondateurMois: 3,
+  essaiJours: 20,
+  essaiFondateurJours: 20,
   placesFondateurs: 50,
 }
 
@@ -36,6 +36,10 @@ export type Contenu = {
     parJour: (p: number) => string; surDevis: string; surDevisNote: string; offres: Offre[]
     tousInclus: string; garanties: string[]; utilisateurs: (n: number) => string
   }
+  flux: { pastille: string; titre: string; texte: string; mahakim: string; app: string; avocat: string; etapes: [string, string][]; vous: string; frequence: string }
+  ia: { pastille: string; titre: string; texte: string; cartes: { icone: string; titre: string; texte: string }[]; garde: string }
+  docs: { pastille: string; titre: string; texte: string; liste: string[]; ia: string }
+  ecrans: { pastille: string; titre: string; texte: string; items: { src: string; titre: string; alt: string }[] }
   compare: { titre: string; sans: string; avec: string; lignes: [string, string, string][] }
   faq: { titre: string; sousTitre: string; items: { q: string; r: string }[] }
   fin: { titre: string; texte: string }
@@ -52,7 +56,7 @@ export const AR: Contenu = {
     titre1: 'مكتبكم كاملاً في مكان واحد.',
     titre2: 'ولا أجل يفوتكم بعد اليوم.',
     sousTitre: 'ملفاتي يتابع ملفاتكم على محاكم، يحسب آجال الطعن، ينبّهكم على واتساب، ويجمع موكليكم ووثائقكم في مكان واحد. على الهاتف، على الحاسوب، وحتى بدون إنترنت.',
-    ctaEssai: 'جرّبوا مجاناً 30 يوماً',
+    ctaEssai: 'جرّبوا مجاناً 20 يوماً',
     ctaDemo: 'عرض مجاني على واتساب',
     confiance: ['بدون بطاقة بنكية', 'لا نطلب حسابكم على محاكم', 'بياناتكم ملككم، تصدّرونها متى شئتم'],
   },
@@ -110,7 +114,7 @@ export const AR: Contenu = {
     mensuel: 'شهري', annuel: 'سنوي', economie: 'شهران مجاناً',
     parMois: 'درهم / شهر', parAn: 'درهم / سنة', dh: 'درهم',
     fondateurBadge: (r) => r === null ? 'سعر الأعضاء المؤسسين' : `سعر المؤسسين · تبقّى ${r} من 50`,
-    fondateurNote: '3 أشهر مجاناً، ثم هذا السعر ثابت مدى الحياة',
+    fondateurNote: '20 يوماً مجاناً، ثم هذا السعر ثابت مدى الحياة',
     prixNormal: 'بدل',
     parJour: (p) => `أي حوالي ${p} دراهم في اليوم`,
     surDevis: 'حسب الطلب', surDevisNote: 'تثبيت على خوادم مكتبكم أو عدد كبير من المستعملين',
@@ -121,7 +125,37 @@ export const AR: Contenu = {
       { id: 'surMesure', nom: 'مكتب+ / تثبيت محلي', pour: 'للمكاتب الكبيرة', inclus: ['مستعملون بلا حد', 'تثبيت على خوادمكم داخل المكتب', 'نقل بياناتكم القديمة من Excel وغيره', 'تكوين الفريق في المكتب', 'دعم ذو أولوية'], cta: 'اطلبوا عرض سعر' },
     ],
     tousInclus: 'مشمول في كل العروض',
-    garanties: ['30 يوماً تجربة مجانية', 'بدون بطاقة بنكية', 'بدون التزام: توقفون متى شئتم', 'تصدير كل بياناتكم في أي وقت', 'الأداء بالتحويل أو الشيك'],
+    garanties: ['20 يوماً تجربة مجانية', 'بدون بطاقة بنكية', 'بدون التزام: توقفون متى شئتم', 'تصدير كل بياناتكم في أي وقت', 'الأداء بالتحويل أو الشيك'],
+  },
+  flux: {
+    pastille: 'كيف يشتغل', titre: 'ملفاتي يزور محاكم مكانكم. أنتم تنظرون فقط إلى هاتفكم.', texte: 'لا حاجة لفتح البوابة ملفاً ملفاً: البرنامج يتحقق باستمرار، وأنتم ترون النتيجة جاهزة.',
+    mahakim: 'بوابة محاكم', app: 'ملفاتي', avocat: 'المحامي',
+    etapes: [['يتحقق تلقائياً', 'من كل ملفاتكم، عدة مرات في اليوم'], ['يقرأ ويحسب', 'الذكاء الاصطناعي يصنّف الإجراء ويحسب الأجل'], ['ينبّهكم', 'واتساب + الأجندة على الهاتف والحاسوب']],
+    vous: 'أنتم: نظرة على الأجندة والمستجدات', frequence: 'كل ساعتين للملفات المستعجلة · كل 6 ساعات للباقي',
+  },
+  ia: {
+    pastille: 'الذكاء الاصطناعي', titre: 'ذكاء اصطناعي يعرف القانون المغربي وملفاتكم', texte: 'ليس روبوت محادثة عاماً: يشتغل على نصوص القانون المغربي وعلى معطيات ملفاتكم.',
+    cartes: [
+      { icone: 'scan', titre: 'يقرأ كل إجراء جديد', texte: 'حكم، تبليغ، تأجيل… يصنّفه ويستخرج الأجل الذي بدأ يسري.' },
+      { icone: 'sparkles', titre: 'مساعد قانوني بالعربية', texte: 'اسألوه كزميل: يجيب مع الإحالة على النصوص لتتحققوا بأنفسكم.' },
+      { icone: 'file', titre: 'يحرّر المقالات', texte: 'مقال استئنافي، مذكرة جوابية، طلب تنفيذ… من معطيات الملف مباشرة.' },
+      { icone: 'list', titre: 'يلخّص الملف', texte: 'أين وصل، آخر إجراء، وما المطلوب منكم: في سطرين قبل الجلسة.' },
+    ],
+    garde: 'الذكاء الاصطناعي يقترح، والمحامي يقرّر: كل جواب مع مراجعه، وكل مسودة للمراجعة قبل الإيداع.',
+  },
+  docs: {
+    pastille: 'تحضير ملف العمل', titre: 'كل وثائق الملف بنقرة واحدة، بصيغة Word', texte: 'معطيات الموكل والملف تُملأ تلقائياً. تحمّلون الكل في ملف مضغوط وتعدّلون في Word.',
+    liste: ['اتفاقية تحديد الأتعاب', 'وكالة خاصة', 'ورقة غلاف الملف وسجل الجلسات', 'وصل تسلّم تسبيق', 'حافظة مستندات', 'رسالة إخبار الموكل', 'مذكرة الأتعاب والفاتورة'],
+    ia: '+ الأعمال الإجرائية حسب مرحلة الملف: مقال استئنافي، طلب تبليغ، طلب تنفيذ… بالذكاء الاصطناعي.',
+  },
+  ecrans: {
+    pastille: 'من داخل التطبيق', titre: 'بسيط، بالعربية، على الحاسوب والهاتف', texte: 'هذه شاشات حقيقية من ملفاتي (بمعطيات تجريبية).',
+    items: [
+      { src: '/landing/ecran-pack.webp', titre: 'ملف العمل', alt: 'شاشة ملف العمل: وثائق المكتب والأعمال الإجرائية' },
+      { src: '/landing/ecran-client.webp', titre: 'بطاقة الموكل', alt: 'شاشة بطاقة الموكل: الملفات والفواتير والأداءات' },
+      { src: '/landing/ecran-facture.webp', titre: 'الفاتورة', alt: 'شاشة فاتورة مرقمة مع الأداءات' },
+      { src: '/landing/app-agenda-1200.webp', titre: 'الأجندة', alt: 'أجندة الجلسات والآجال على الحاسوب والهاتف' },
+    ],
   },
   compare: {
     titre: 'قبل ملفاتي وبعده', sans: 'اليوم', avec: 'مع ملفاتي',
@@ -137,17 +171,17 @@ export const AR: Contenu = {
   faq: {
     titre: 'الأسئلة الشائعة', sousTitre: 'أجوبة عن أكثر ما يسأل عنه المحامون قبل البدء.',
     items: [
-      { q: 'كم الثمن بالضبط؟', r: 'فردي 290 درهماً في الشهر، ومكتب 790 درهماً في الشهر حتى 5 مستعملين. الأعضاء المؤسسون (أول 50) يحصلون على 3 أشهر مجاناً ثم 149 أو 449 درهماً ثابتة مدى الحياة. الأداء السنوي: 10 أشهر بدل 12.' },
+      { q: 'كم الثمن بالضبط؟', r: 'فردي 290 درهماً في الشهر، ومكتب 790 درهماً في الشهر حتى 5 مستعملين. الأعضاء المؤسسون (أول 50) يحصلون على 20 يوماً مجاناً ثم 149 أو 349 درهماً ثابتة مدى الحياة. الأداء السنوي: 10 أشهر بدل 12.' },
       { q: 'هل تحتاجون إلى حسابي على محاكم؟', r: 'لا. يكفي رقم الملف والمحكمة: نقرأ المعطيات العمومية كما تظهر على بوابة محاكم.' },
       { q: 'كيف تُحسب الآجال؟', r: 'حسب قانون المسطرة المدنية، انطلاقاً من الإجراءات المنشورة (حكم، تبليغ…). نختار دائماً التاريخ الأقرب احتياطاً. التنبيه وسيلة مساعدة، ويبقى التحقق النهائي من الأجل للمحامي.' },
       { q: 'هل يعمل بدون إنترنت؟', r: 'تطبيق الحاسوب (قريباً) يحفظ ملفاتكم ووثائقكم على جهازكم ويعمل بدون إنترنت. تحتاجون الاتصال فقط لمتابعة محاكم وإرسال التنبيهات، والتزامن يتم وحده.' },
       { q: 'أين تُحفظ وثائقي؟', r: 'كما تختارون: في السحابة، أو في مجلد «ملفاتي» على سطح مكتب حاسوبكم (قريباً)، أو في الاثنين. ملف لكل قضية، مرتب تلقائياً.' },
       { q: 'هل بياناتي محمية؟', r: 'الاتصال مشفّر، كلمات المرور محفوظة بشكل آمن، والتحقق بخطوتين متاح. لا نشارك بياناتكم مع أي طرف، وتُعالَج وفق القانون 09.08. ولا ترسل تنبيهات واتساب أسماء الأطراف.' },
       { q: 'ماذا يحدث إذا توقفت عن الاشتراك؟', r: 'تصدّرون كل بياناتكم متى شئتم. وحتى عند انتهاء الاشتراك، تبقى تنبيهات الآجال تصلكم خلال مهلة السماح.' },
-      { q: 'كيف أبدأ؟', r: 'سجّلوا في دقيقة: نتصل بكم خلال يوم عمل، نفعّل الحساب، ويضيف معكم مستشارنا ملفاتكم الأولى. التجربة مجانية 30 يوماً.' },
+      { q: 'كيف أبدأ؟', r: 'سجّلوا في دقيقة: نتصل بكم خلال يوم عمل، نفعّل الحساب، ويضيف معكم مستشارنا ملفاتكم الأولى. التجربة مجانية 20 يوماً.' },
     ],
   },
-  fin: { titre: 'لا تتركوا أجلاً للصدفة.', texte: 'ملفاتكم تحت المراقبة من الليلة. التجربة مجانية 30 يوماً.' },
+  fin: { titre: 'لا تتركوا أجلاً للصدفة.', texte: 'ملفاتكم تحت المراقبة من الليلة. التجربة مجانية 20 يوماً.' },
   pied: { slogan: 'برنامج المحامي المغربي: متابعة محاكم، آجال الطعن، الموكلون والوثائق.', liens: [['#المشاكل', 'المشاكل والحلول'], ['#المزايا', 'المزايا'], ['#الأسعار', 'الأسعار'], ['#الأسئلة', 'الأسئلة'], ['/register', 'التسجيل'], ['/login', 'الدخول']], droits: 'كل الحقوق محفوظة' },
   wa: { demo: 'السلام عليكم، أنا محامٍ وأريد عرضاً مجانياً لملفاتي.', fondateur: 'السلام عليكم، أريد حجز مقعد ضمن الأعضاء المؤسسين في ملفاتي.', devis: 'السلام عليكم، أريد عرض سعر لعرض مكتب+ أو التثبيت المحلي.' },
   avertissement: 'ملفاتي أداة مساعدة: الحساب والتنبيه لا يعوّضان تحقق المحامي من الأجل.',
@@ -161,7 +195,7 @@ export const FR: Contenu = {
     titre1: 'Tout votre cabinet au même endroit.',
     titre2: 'Et plus aucun délai manqué.',
     sousTitre: 'MalafiPro suit vos dossiers sur mahakim, calcule vos délais de recours, vous prévient sur WhatsApp et réunit vos clients et vos documents. Sur mobile, sur ordinateur, et même sans internet.',
-    ctaEssai: 'Essai gratuit 30 jours',
+    ctaEssai: 'Essai gratuit 20 jours',
     ctaDemo: 'Démo gratuite sur WhatsApp',
     confiance: ['Sans carte bancaire', 'Pas besoin de votre compte mahakim', 'Vos données vous appartiennent, exportables à tout moment'],
   },
@@ -219,7 +253,7 @@ export const FR: Contenu = {
     mensuel: 'Mensuel', annuel: 'Annuel', economie: '2 mois offerts',
     parMois: 'DH / mois', parAn: 'DH / an', dh: 'DH',
     fondateurBadge: (r) => r === null ? 'Prix membres fondateurs' : `Prix fondateurs · ${r} places sur 50`,
-    fondateurNote: '3 mois offerts, puis ce prix bloqué à vie',
+    fondateurNote: '20 jours offerts, puis ce prix bloqué à vie',
     prixNormal: 'au lieu de',
     parJour: (p) => `soit environ ${p} DH par jour`,
     surDevis: 'Sur devis', surDevisNote: 'Installation sur les serveurs du cabinet ou nombreux utilisateurs',
@@ -230,7 +264,37 @@ export const FR: Contenu = {
       { id: 'surMesure', nom: 'Cabinet+ / installation locale', pour: 'Pour les grands cabinets', inclus: ['Utilisateurs illimités', 'Installation sur vos serveurs, au cabinet', 'Reprise de vos anciennes données (Excel…)', 'Formation de l’équipe sur place', 'Support prioritaire'], cta: 'Demander un devis' },
     ],
     tousInclus: 'Inclus dans toutes les offres',
-    garanties: ['30 jours d’essai gratuit', 'Sans carte bancaire', 'Sans engagement : arrêtez quand vous voulez', 'Export de toutes vos données à tout moment', 'Paiement par virement ou chèque'],
+    garanties: ['20 jours d’essai gratuit', 'Sans carte bancaire', 'Sans engagement : arrêtez quand vous voulez', 'Export de toutes vos données à tout moment', 'Paiement par virement ou chèque'],
+  },
+  flux: {
+    pastille: 'Comment ça marche', titre: 'MalafiPro consulte mahakim à votre place. Vous regardez juste votre téléphone.', texte: 'Plus besoin d’ouvrir le portail dossier par dossier : l’application vérifie en continu, vous voyez le résultat prêt.',
+    mahakim: 'Portail mahakim', app: 'MalafiPro', avocat: 'L’avocat',
+    etapes: [['Vérifie automatiquement', 'Tous vos dossiers, plusieurs fois par jour'], ['Lit et calcule', 'L’IA classe l’acte et calcule le délai'], ['Vous prévient', 'WhatsApp + agenda sur mobile et PC']],
+    vous: 'Vous : un coup d’œil à l’agenda et aux nouveautés', frequence: 'Toutes les 2 h pour les dossiers urgents · toutes les 6 h pour les autres',
+  },
+  ia: {
+    pastille: 'Intelligence artificielle', titre: 'Une IA qui connaît le droit marocain et vos dossiers', texte: 'Pas un chatbot générique : elle travaille sur les textes marocains et sur les données de vos dossiers.',
+    cartes: [
+      { icone: 'scan', titre: 'Lit chaque nouvel acte', texte: 'Jugement, notification, renvoi… elle le classe et en déduit le délai qui court.' },
+      { icone: 'sparkles', titre: 'Assistant juridique en arabe', texte: 'Posez vos questions comme à un confrère : réponses avec les textes cités.' },
+      { icone: 'file', titre: 'Rédige les actes', texte: 'Requête d’appel, mémoire en réponse, demande d’exécution… depuis le dossier.' },
+      { icone: 'list', titre: 'Résume le dossier', texte: 'Où il en est, le dernier acte, ce qu’on attend de vous : en deux lignes.' },
+    ],
+    garde: 'L’IA propose, l’avocat décide : chaque réponse cite ses sources, chaque brouillon se relit avant dépôt.',
+  },
+  docs: {
+    pastille: 'Préparer le dossier', titre: 'Tous les documents du dossier en un clic, en Word', texte: 'Les données du client et du dossier sont remplies automatiquement. Téléchargez tout en .zip et modifiez dans Word.',
+    liste: ['Convention d’honoraires', 'Procuration spéciale', 'Page de garde et registre des audiences', 'Reçu de provision', 'Bordereau de pièces', 'Lettre d’information au client', 'Note d’honoraires et facture'],
+    ia: '+ Les actes de procédure selon l’étape du dossier : appel, demande de notification, d’exécution… rédigés par l’IA.',
+  },
+  ecrans: {
+    pastille: 'Dans l’application', titre: 'Simple, en arabe, sur ordinateur et téléphone', texte: 'Captures réelles de MalafiPro (données de démonstration).',
+    items: [
+      { src: '/landing/ecran-pack.webp', titre: 'Dossier de travail', alt: 'Écran dossier de travail : documents et actes' },
+      { src: '/landing/ecran-client.webp', titre: 'Fiche client', alt: 'Écran fiche client : dossiers, factures, règlements' },
+      { src: '/landing/ecran-facture.webp', titre: 'Facture', alt: 'Écran facture numérotée avec règlements' },
+      { src: '/landing/app-agenda-1200.webp', titre: 'Agenda', alt: 'Agenda des audiences et délais sur PC et mobile' },
+    ],
   },
   compare: {
     titre: 'Avant et après MalafiPro', sans: 'Aujourd’hui', avec: 'Avec MalafiPro',
@@ -246,17 +310,17 @@ export const FR: Contenu = {
   faq: {
     titre: 'Questions fréquentes', sousTitre: 'Les réponses aux questions que posent les avocats avant de commencer.',
     items: [
-      { q: 'Combien ça coûte, exactement ?', r: 'Solo : 290 DH par mois. Cabinet : 790 DH par mois jusqu’à 5 utilisateurs. Les membres fondateurs (les 50 premiers) ont 3 mois offerts, puis 149 ou 449 DH bloqués à vie. En annuel : 10 mois payés au lieu de 12.' },
+      { q: 'Combien ça coûte, exactement ?', r: 'Solo : 290 DH par mois. Cabinet : 790 DH par mois jusqu’à 5 utilisateurs. Les membres fondateurs (les 50 premiers) ont 20 jours offerts, puis 149 ou 349 DH bloqués à vie. En annuel : 10 mois payés au lieu de 12.' },
       { q: 'Avez-vous besoin de mon compte mahakim ?', r: 'Non. Le numéro du dossier et le tribunal suffisent : nous lisons les informations publiques affichées sur mahakim.' },
       { q: 'Comment les délais sont-ils calculés ?', r: 'Selon le Code de procédure civile, à partir des actes publiés (jugement, notification…). Nous retenons toujours la date la plus prudente. L’alerte est une aide : la vérification finale du délai reste celle de l’avocat.' },
       { q: 'Ça marche sans internet ?', r: 'L’application PC (bientôt) garde vos dossiers et documents sur votre ordinateur et fonctionne hors ligne. La connexion sert seulement au suivi mahakim et à l’envoi des alertes ; la synchronisation est automatique.' },
       { q: 'Où sont stockés mes documents ?', r: 'Comme vous voulez : dans le cloud, dans un dossier « MalafiPro » sur le bureau de votre PC (bientôt), ou les deux. Un dossier par affaire, rangé automatiquement.' },
       { q: 'Mes données sont-elles protégées ?', r: 'Connexion chiffrée, mots de passe protégés, double authentification disponible. Aucune donnée partagée avec des tiers, traitement conforme à la loi 09-08. Les alertes WhatsApp ne contiennent jamais le nom des parties.' },
       { q: 'Et si j’arrête mon abonnement ?', r: 'Vous exportez toutes vos données quand vous voulez. Même après la fin de l’abonnement, les alertes de délais continuent pendant la période de grâce.' },
-      { q: 'Comment commencer ?', r: 'Inscrivez-vous en une minute : nous vous appelons sous un jour ouvré, nous activons le compte et notre conseiller ajoute vos premiers dossiers avec vous. Essai gratuit de 30 jours.' },
+      { q: 'Comment commencer ?', r: 'Inscrivez-vous en une minute : nous vous appelons sous un jour ouvré, nous activons le compte et notre conseiller ajoute vos premiers dossiers avec vous. Essai gratuit de 20 jours.' },
     ],
   },
-  fin: { titre: 'Ne laissez plus aucun délai au hasard.', texte: 'Vos dossiers surveillés dès ce soir. Essai gratuit de 30 jours.' },
+  fin: { titre: 'Ne laissez plus aucun délai au hasard.', texte: 'Vos dossiers surveillés dès ce soir. Essai gratuit de 20 jours.' },
   pied: { slogan: 'Le logiciel de l’avocat marocain : suivi mahakim, délais de recours, clients et documents.', liens: [['#problemes', 'Problèmes'], ['#fonctions', 'Fonctions'], ['#tarifs', 'Tarifs'], ['#faq', 'FAQ'], ['/register', 'Inscription'], ['/login', 'Connexion']], droits: 'Tous droits réservés' },
   wa: { demo: 'Bonjour, je suis avocat et je souhaite une démo gratuite de MalafiPro.', fondateur: 'Bonjour, je souhaite réserver une place de membre fondateur MalafiPro.', devis: 'Bonjour, je souhaite un devis pour l’offre Cabinet+ ou l’installation locale.' },
   avertissement: 'MalafiPro est un outil d’aide : le calcul et l’alerte ne remplacent pas la vérification du délai par l’avocat.',

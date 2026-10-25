@@ -166,6 +166,50 @@ export const CSS = `
 .lp-pied a{color:#E3F0EC;min-height:44px;display:inline-flex;align-items:center;gap:8px}
 .lp-flot{display:none}
 
+/* Flux mahakim → app → avocat */
+.lp-flux{display:grid;grid-template-columns:1fr 1.2fr 1fr 1.2fr 1fr;align-items:center;gap:8px;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:24px;padding:28px 20px}
+.lp-noeud{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.lp-noeud strong{font-size:16px}.lp-noeud small{font-size:13px;color:#5E6B67;line-height:1.5}
+.lp-noeud-ico{width:64px;height:64px;border-radius:18px;background:#F1EFEA;color:#4D5B57;display:inline-flex;align-items:center;justify-content:center}
+.lp-noeud.app .lp-noeud-ico{background:#0E5A4E;color:#FFFFFF;box-shadow:0 0 0 6px #E3F0EC}
+.lp-liaison{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px}
+.lp-tirets{width:100%;height:3px;background:repeating-linear-gradient(90deg,#2E8B6E 0 10px,transparent 10px 18px);background-size:18px 3px;animation:lp-defile 1s linear infinite}
+.lp[dir=rtl] .lp-tirets{animation-direction:reverse}
+@keyframes lp-defile{to{background-position:18px 0}}
+.lp-boucle{position:absolute;top:-14px;width:30px;height:30px;border-radius:50%;background:#E3F0EC;color:#0E5A4E;display:inline-flex;align-items:center;justify-content:center}
+.lp-liaison small{font-size:12px;color:#0B4A40;text-align:center;margin-top:18px}
+.lp-etapes{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.lp-etapes li{display:flex;gap:12px;align-items:flex-start;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:16px;padding:16px}
+.lp-etapes strong{display:block;font-size:15px}.lp-etapes small{display:block;font-size:14px;color:#5E6B67;line-height:1.6}
+.lp-etape-n{flex:none;width:30px;height:30px;border-radius:50%;background:#083B34;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+/* IA */
+.lp-ia{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.lp-fn-ico.sombre{background:#083B34;color:#9FE0C6}
+.lp-garde{display:flex;gap:10px;align-items:center;justify-content:center;margin:0;background:#F1F8F5;border:1px solid #CDE5DD;border-radius:16px;padding:14px 18px;font-size:15px;color:#0B4A40;text-align:center}
+/* Documents */
+.lp-docs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;align-items:center}
+.lp-docs-liste{background:#FFFFFF;border:1px solid #E4E0D6;border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:8px;box-shadow:0 30px 60px -36px rgba(8,59,52,.45)}
+.lp-docs-liste>div{display:flex;align-items:center;gap:10px;font-size:14px;padding:9px 12px;border:1px solid #EEEAE1;border-radius:12px}
+.lp-docs-liste span:nth-child(2){flex:1}
+.lp-doc-ext{font-size:12px;color:#5E6B67;font-family:'IBM Plex Sans',sans-serif}
+.lp-docs-liste .lp-docs-zip{background:#083B34;color:#FFFFFF;border:0;font-weight:600;justify-content:center}
+/* Captures */
+.lp-ecrans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.lp-ecran{margin:0;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:20px;padding:12px;display:flex;flex-direction:column;gap:10px;box-shadow:0 30px 60px -40px rgba(8,59,52,.5)}
+.lp-ecran img{display:block;width:100%;height:340px;object-fit:cover;object-position:top;border-radius:12px;border:1px solid #EEEAE1}
+.lp-ecran figcaption{font-size:15px;font-weight:600;text-align:center}
+@media (max-width:1080px){.lp-ia{grid-template-columns:repeat(2,minmax(0,1fr))}.lp-docs{grid-template-columns:1fr}}
+@media (max-width:760px){
+  .lp-flux{grid-template-columns:1fr;padding:22px 16px;gap:4px}
+  .lp-liaison{height:56px;width:3px;margin:0 auto}
+  .lp-tirets{width:3px;height:100%;background:repeating-linear-gradient(180deg,#2E8B6E 0 10px,transparent 10px 18px);background-size:3px 18px;animation:none}
+  .lp-boucle{top:13px;inset-inline-start:14px}
+  .lp-liaison small{position:absolute;inset-inline-start:52px;top:4px;margin:0;width:200px;text-align:start}
+  .lp-etapes,.lp-ia,.lp-ecrans{grid-template-columns:1fr}
+  .lp-ecran img{height:260px}
+}
+@media (prefers-reduced-motion:reduce){.lp-tirets{animation:none}}
+
 @media (max-width:1080px){
   .lp-paires{grid-template-columns:repeat(2,minmax(0,1fr))}
   .lp-hero-grille,.lp-crm,.lp-donnees{grid-template-columns:1fr}

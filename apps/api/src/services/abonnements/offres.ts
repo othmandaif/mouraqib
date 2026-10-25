@@ -4,15 +4,15 @@ import type { Abonnement, PlanAbonnement } from '@prisma/client'
 export const OFFRES: Record<PlanAbonnement, { nomAr: string; prix: number | null; prixFondateur: number | null; maxDossiers: number; utilisateurs: number }> = {
   // maxDossiers = valeur par défaut à la création (-1 = illimité) ; l'administrateur peut fixer une limite par compte
   SOLO: { nomAr: 'فردي', prix: 290, prixFondateur: 149, maxDossiers: -1, utilisateurs: 1 },
-  CABINET: { nomAr: 'مكتب', prix: 790, prixFondateur: 449, maxDossiers: -1, utilisateurs: 5 },
+  CABINET: { nomAr: 'مكتب', prix: 790, prixFondateur: 349, maxDossiers: -1, utilisateurs: 5 },
   SUR_MESURE: { nomAr: 'مكتب+ أو تثبيت محلي', prix: null, prixFondateur: null, maxDossiers: -1, utilisateurs: -1 },
   // Anciennes offres, gardées pour les comptes existants
   PRO: { nomAr: 'احترافي', prix: 390, prixFondateur: null, maxDossiers: -1, utilisateurs: 1 },
   GRATUIT: { nomAr: 'تجريبي', prix: 0, prixFondateur: null, maxDossiers: 3, utilisateurs: 1 },
 }
 
-export const ESSAI_INSCRIPTION_JOURS = 30 // compte créé seul depuis le site
-export const ESSAI_FONDATEUR_MOIS = 3
+export const ESSAI_INSCRIPTION_JOURS = 20 // compte créé seul depuis le site
+export const ESSAI_FONDATEUR_JOURS = 20 // programme fondateurs : 20 jours offerts (décision du 25 oct. 2026)
 export const GRACE_JOURS = 15 // après la fin : les alertes continuent, l'ajout de dossiers est bloqué
 
 export type EtatAbonnement = 'ESSAI' | 'PAYE' | 'A_RENOUVELER' | 'GRACE' | 'EXPIRE'
