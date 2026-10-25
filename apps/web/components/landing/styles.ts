@@ -1,6 +1,8 @@
 // Styles de la landing (tokens V2 : claude/DESIGN_UI_MALAFIPRO.md). Propriétés logiques (inline-start/end) : marche en RTL et LTR.
 export const CSS = `
 .lp a{text-decoration:none;color:inherit}
+.lp{overflow-x:clip}
+.lp *,.lp *::before,.lp *::after{box-sizing:border-box}
 .lp h3{color:inherit}
 .lp[lang=fr] h1,.lp[lang=fr] h2,.lp[lang=fr] h3{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif}
 .lp .num{font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
