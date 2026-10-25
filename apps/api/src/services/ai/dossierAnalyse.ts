@@ -1,9 +1,9 @@
-import { PrismaClient, StatutDossier } from '@prisma/client'
+import { StatutDossier } from '@prisma/client'
+import { prisma } from '../../utils/prisma'
 import { askDeepseek, limiterTexte } from './deepseek'
 import { PROMPT_ANALYSE_DOSSIER } from './prompts.ar'
 import { logger } from '../../utils/logger'
 
-const prisma = new PrismaClient()
 
 export interface AnalyseDossier {
   resume: string
@@ -19,7 +19,7 @@ export interface AnalyseDossier {
  */
 export async function analyserDossierComplet(
   dossierId: string,
-  userId: string,
+  userId: string | { in: string[] },
   force = false,
 ): Promise<AnalyseDossier | null> {
   const dossier = await prisma.dossier.findFirst({
@@ -55,7 +55,7 @@ export async function analyserDossierComplet(
     ? rawData.recours.map((r: any) => `${r.type} (${r.dateDepot})`).join(' / ')
     : ''
 
-  const userPrompt = `رقم الملف: ${dossier.numeroDossier}
+  const userPrompt = `رقم الملف: ${dossier.id}
 المحكمة: ${dossier.tribunal}
 الموضوع: ${dossier.titreAffaire || 'غير محدّد'}
 الأطراف: ${parties || 'غير متوفرة'}
@@ -88,7 +88,7 @@ ${historique}`
       },
     })
 
-    logger.info(`Analyse complète IA pour ${dossier.numeroDossier}`)
+    logger.info(`Analyse complète IA pour ${dossier.id}`)
     return analyse
   } catch (err) {
     logger.error(`Échec analyse complète IA dossier ${dossierId}:`, err)

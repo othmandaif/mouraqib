@@ -1,10 +1,9 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../../utils/prisma'
 import { askDeepseek, limiterTexte } from '../ai/deepseek'
 import { getTypeActe, TypeActe } from './typesActes'
 import { trouverModeleStyle } from './modeleImport'
 import { logger } from '../../utils/logger'
 
-const prisma = new PrismaClient()
 
 const DISCLAIMER_AR = '⚠️ هذه وثيقة مُولّدة آلياً كمسوّدة استرشادية فقط. يجب على المحامي مراجعتها وتدقيقها قانونياً قبل أي استعمال أو توقيع. لا تُغني عن المسؤولية المهنية.'
 

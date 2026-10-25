@@ -20,6 +20,24 @@ model User {
   whatsappVerifie Boolean  @default(false)
   role            UserRole @default(AVOCAT)
 
+  // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
+  statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts
+  demande             Json?     // infos du formulaire d'inscription (ville, nombre de dossiers, message)
+  activeAt            DateTime?
+  desactiveAt         DateTime?
+  motifDesactivation  String?
+
+  // ─── Design V2 ───
+  barreau              String?   // هيئة المحامين (ex. « هيئة الدار البيضاء »)
+  preferences          Json?     // { matrice, digestHeure, calmeDebut, calmeFin, rappels }
+  calendarToken        String?   @unique // inutilisé (synchronisation agenda retirée), gardé pour ne pas migrer
+  deuxFacteurs         Boolean   @default(false) // code WhatsApp à chaque nouvelle connexion
+  motDePasseChangeAt   DateTime?
+  doitChangerMdp       Boolean   @default(false) // mot de passe provisoire donné par l'admin : à changer à la connexion
+  suppressionDemandeeAt DateTime? // suppression définitive 30 jours après
+  invitationsEnvoyees  Invitation[]
+  rendezVous           RendezVous[]
+
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
   cabinetId String?
 
@@ -37,8 +55,15 @@ model User {
 
   @@index([email])
   @@index([cabinetId])
+  @@index([statut])
 }
 
+
+enum StatutCompte {
+  EN_ATTENTE // inscrit sur le site, à contacter puis activer
+  ACTIF
+  DESACTIVE  // accès fermé, plus de synchronisation ni d'alertes
+}
 
 enum UserRole {
   AVOCAT
@@ -90,6 +115,7 @@ model Dossier {
   typeProcedure TypeProcedure @default(CIVILE)
   titreAffaire  String?
   partieAdverse String?
+  roleClient    RoleClient    @default(INCONNU) // sépare « عليكم » de « على الخصم »
 
   // ─── Analyse IA (DeepSeek) ───
   statutIA   StatutDossier @default(INCONNU) // ouvert / en délibéré / clos
@@ -125,12 +151,30 @@ model Dossier {
 
   messagesChat MessageChat[] 
   conversations Conversation[]
+  rendezVous    RendezVous[]
 
   @@unique([anneeDossier, codeRole, numeroDossier, tribunal, userId])
   @@index([userId])
   @@index([numeroDossier])
+  @@index([userId, estActif])
 } 
 
+
+enum RoleClient {
+  DEMANDEUR // مدعٍ
+  DEFENDEUR // مدعى عليه
+  INCONNU
+}
+
+enum NatureJugement {
+  CONTRADICTOIRE // حضوري
+  DEFAUT         // غيابي
+}
+
+enum CampDelai {
+  AGIR       // عليكم
+  SURVEILLER // على الخصم
+}
 
 enum TypeProcedure {
   CIVILE
@@ -166,6 +210,7 @@ model Evenement {
   typeEvenement TypeEvenement?
   sousType      String?
   confiance     Float?          // Score de confiance du classifieur (0-1)
+  natureJugement NatureJugement? // demandé une fois à l'avocat quand un jugement est rendu
 
   // Métadonnées
   estNouvel Boolean @default(true)
@@ -179,6 +224,7 @@ model Evenement {
 
   @@index([dossierId])
   @@index([typeEvenement])
+  @@index([dossierId, datePublicationGreffe])
   @@index([estTraite])
 }
 
@@ -235,6 +281,9 @@ model Echeance {
   estCritique Boolean @default(false) // < 7 jours
   estExpire   Boolean @default(false)
   estComplete Boolean @default(false) // Avocat a coché "fait"
+  completeAt  DateTime?
+  camp        CampDelai @default(AGIR)
+  rappelAt    DateTime? // « ذكّروني يوم … »
 
   alertesEnvoyees Alerte[]
 
@@ -243,7 +292,9 @@ model Echeance {
 
   @@index([dossierId])
   @@index([dateLimite])
+  @@index([dossierId, estComplete, dateLimite])
   @@index([estCritique])
+  @@index([rappelAt])
 }
 
 enum TypeDelai {
@@ -281,11 +332,14 @@ model Alerte {
   erreur     String?
 
   envoyeAt  DateTime?
+  luAt      DateTime?
   createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([statut])
   @@index([canal])
+  @@index([userId, canal, luAt])
+  @@index([statut, canal])
 }
 
 enum CanalAlerte {
@@ -303,6 +357,10 @@ enum TypeAlerte {
   DELAI_EXPIRE      // Délai expiré
   DIGEST_QUOTIDIEN  // Résumé matinal
   RENVOI_DETECTE    // Audience renvoyée (évite déplacement)
+  NOUVEAU_DELAI     // Un délai vient de s'ouvrir
+  RAPPEL_DELAI      // Rappel demandé par l'avocat (« ذكّروني يوم … »)
+  RAPPORT_SYNC      // Échec de synchronisation mahakim
+  ABONNEMENT        // Fin de période offerte / payée proche
 }
 
 enum StatutAlerte {
@@ -330,6 +388,13 @@ model Abonnement {
   dateFin            DateTime?
   dateRenouvellement DateTime?
 
+  // Vente directe (commercial) : pas de paiement en ligne
+  estFondateur Boolean   @default(false) // programme « 50 membres fondateurs » : prix bloqué à vie
+  prixMensuel  Float? // prix négocié en DH/mois (null = prix public de l'offre)
+  essaiJusquAu DateTime? // fin de la période offerte
+  payeJusquAu  DateTime? // couvert par les paiements enregistrés jusqu'à cette date
+  note         String? // note interne du commercial
+
   paiements Paiement[]
 
   createdAt DateTime @default(now())
@@ -341,6 +406,7 @@ enum PlanAbonnement {
   SOLO    // 190 DH/mois, 100 dossiers
   PRO     // 390 DH/mois, illimité + délais
   CABINET // 790 DH/mois, multi-users
+  SUR_MESURE // Cabinet+ (6 utilisateurs et plus) ou installation sur les serveurs du cabinet : sur devis
 }
 
 enum StatutAbonnement {
@@ -391,6 +457,8 @@ model MessageChat {
 
   role      RoleChat    // USER ou ASSISTANT
   contenu   String      @db.Text
+  sources   Json?       // [{ titre, article, url }] renvoyées par le RAG
+  feedback  Int?        // 1 = utile, -1 = pas exact
   conversationId String?
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -399,6 +467,7 @@ model MessageChat {
   @@index([userId])
   @@index([dossierId])
   @@index([conversationId])
+  @@index([conversationId, createdAt])
 }
 
 enum RoleChat {
@@ -510,3 +579,49 @@ enum StatutDocument {
 }
 
 
+
+// ─── ÉQUIPE (Paramètres › الفريق) ───────────────────────────────────────────
+
+model Invitation {
+  id          String    @id @default(cuid())
+  email       String
+  role        UserRole  @default(AVOCAT)
+  token       String    @unique
+  invitantId  String
+  invitant    User      @relation(fields: [invitantId], references: [id], onDelete: Cascade)
+  accepteeAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([invitantId])
+  @@index([email])
+}
+
+// ─── AGENDA : rendez-vous saisis par l'avocat (Agenda › إضافة موعد) ─────────
+
+model RendezVous {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier? @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  titre     String
+  lieu      String?
+  debut     DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, debut])
+}
+
+// ─── Comptabilité du service (panneau admin) ───────────────────────────────────
+model Depense {
+  id         String   @id @default(cuid())
+  date       DateTime
+  categorie  String   // HEBERGEMENT, WHATSAPP, IA, DOMAINE, MARKETING, LOGICIEL, AUTRE
+  libelle    String
+  montant    Float    // en dirhams
+  recurrente Boolean  @default(false) // charge mensuelle (rappel visuel seulement)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+}

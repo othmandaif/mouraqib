@@ -96,10 +96,10 @@ export async function askDeepseek<T = string>(
 export async function streamDeepseek(
   messages: ChatMessage[],
   onToken: (chunk: string) => void,
-  options: { temperature?: number; maxTokens?: number } = {},
+  options: { temperature?: number; maxTokens?: number; signal?: AbortSignal } = {},
 ): Promise<string> {
   ensureKey()
-  const { temperature = 0.6, maxTokens = 1500 } = options
+  const { temperature = 0.6, maxTokens = 1500, signal } = options
 
   const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -108,6 +108,7 @@ export async function streamDeepseek(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({ model: MODEL, messages, temperature, max_tokens: maxTokens, stream: true }),
+    signal, // l'avocat ferme la page : on arrête la génération (et la facturation)
   })
 
   if (!res.ok || !res.body) {

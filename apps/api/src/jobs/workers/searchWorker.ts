@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq'
 import { redisConnection, searchResultKey } from '../queues'
 import { MahakimScraper } from '../../services/scraper/mahakimScraper'
-import { logger } from '../../utils/logger'
+import { logger, refDossier } from '../../utils/logger'
 
 // Une seule instance de scraper réutilisée (browser persistant) — clé de la performance.
 const scraper = new MahakimScraper()
@@ -35,7 +35,7 @@ export const searchWorker = new Worker(
           trouve: false, titreAffaire: null, evenements: [], infosCarte: null,
           parties: [], expertises: [], recours: [], dossiersLies: [],
         }
-        logger.warn(`Recherche live: aucun résultat pour ${numComplet}`)
+        logger.warn(`Recherche live: aucun résultat pour ${refDossier(numComplet)}`)
       } else {
         payload = {
           trouve: true,
@@ -47,10 +47,10 @@ export const searchWorker = new Worker(
           recours: data.recours,
           dossiersLies: data.dossiersLies,
         }
-        logger.info(`Recherche live OK pour ${numComplet}: ${data.evenements.length} événements`)
+        logger.info(`Recherche live OK pour ${refDossier(numComplet)}: ${data.evenements.length} événements`)
       }
     } catch (err) {
-      logger.error(`Recherche live échouée pour ${numComplet}:`, err)
+      logger.error(`Recherche live échouée pour ${refDossier(numComplet)}:`, err)
       payload = {
         trouve: false, titreAffaire: null, evenements: [], infosCarte: null,
         parties: [], expertises: [], recours: [], dossiersLies: [], erreur: true,

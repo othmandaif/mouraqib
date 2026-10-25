@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../../utils/prisma'
 
-const prisma = new PrismaClient()
 
 const STATUT_AR: Record<string, string> = {
   OUVERT: 'جارية', EN_DELIBERE: 'في المداولة', CLOS: 'منتهية', INCONNU: 'غير محددة',
@@ -18,7 +17,7 @@ const fmt = (d: Date | null | undefined) =>
  * @param dossierIdForce  un dossier à toujours détailler (ex : si on chate depuis sa page)
  */
 export async function construireContextePortefeuille(
-  userId: string,
+  userId: string | { in: string[] }, // l'avocat, ou les comptes du cabinet (dossiers partagés)
   question: string,
   dossierIdForce?: string,
 ): Promise<string> {

@@ -1,7 +1,10 @@
 import { Router, Response } from 'express'
 import multer from 'multer'
-import { PrismaClient } from '@prisma/client'
+import { z } from 'zod'
+import { LangueDocument, StatutDocument } from '@prisma/client'
+import { prisma } from '../utils/prisma'
 import { requireAuth, AuthRequest } from '../middleware/auth'
+import { limiter } from '../middleware/securite'
 import { genererDocument } from '../services/documents/generateurDocument'
 import { modifierDocument } from '../services/documents/modifierDocument'
 import { TYPES_ACTES, getTypeActe } from '../services/documents/typesActes'
@@ -9,7 +12,6 @@ import { extraireTexteDocx, importerModele } from '../services/documents/modeleI
 import { logger } from '../utils/logger'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // Upload en mémoire, limité aux .docx, max 5 Mo.
 const uploadDocx = multer({
@@ -44,7 +46,7 @@ router.get('/modeles', requireAuth, async (req: AuthRequest, res: Response): Pro
 })
 
 /* Modifier un document existant via instruction naturelle (chatbot) */
-router.post('/modifier', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/modifier', requireAuth, limiter('ia-doc', 60, 3600), async (req: AuthRequest, res: Response): Promise<void> => {
   const { contenuActuel, instruction, langue } = req.body ?? {}
   if (!contenuActuel || !instruction || !String(instruction).trim()) {
     res.status(400).json({ error: 'contenuActuel et instruction requis' })
@@ -64,7 +66,7 @@ router.post('/modifier', requireAuth, async (req: AuthRequest, res: Response): P
 })
 
 /* Générer un document (mode structuré OU libre). Ne sauvegarde pas encore. */
-router.post('/generer', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/generer', requireAuth, limiter('ia-doc', 60, 3600), async (req: AuthRequest, res: Response): Promise<void> => {
   const { typeActe, promptLibre, variables, dossierId, langue, modeleId } = req.body ?? {}
 
   if (!typeActe && !promptLibre) {
@@ -102,12 +104,34 @@ router.post('/generer', requireAuth, async (req: AuthRequest, res: Response): Pr
 })
 
 /* Sauvegarder un document généré (ou édité) */
+const DocumentSchema = z.object({
+  titre: z.string().trim().min(1).max(300),
+  contenu: z.string().min(1).max(1_000_000),
+  typeActe: z.string().max(80).optional().nullable(),
+  langue: z.nativeEnum(LangueDocument).optional(),
+  variables: z.record(z.unknown()).optional().nullable(),
+  promptLibre: z.string().max(20_000).optional().nullable(),
+  dossierId: z.string().max(40).optional().nullable(),
+  modeleId: z.string().max(40).optional().nullable(),
+})
+const MajDocumentSchema = z.object({
+  titre: z.string().trim().min(1).max(300).optional(),
+  contenu: z.string().min(1).max(1_000_000).optional(),
+  statut: z.nativeEnum(StatutDocument).optional(),
+})
+
+/** Un document ne peut être rattaché qu'à un dossier de l'avocat, et qu'à un modèle global ou à lui. */
+async function liensAutorises(userId: string, equipe: string[], dossierId?: string | null, modeleId?: string | null): Promise<boolean> {
+  if (dossierId && !(await prisma.dossier.findFirst({ where: { id: dossierId, userId: { in: equipe } }, select: { id: true } }))) return false
+  if (modeleId && !(await prisma.modeleDocument.findFirst({ where: { id: modeleId, OR: [{ userId: null }, { userId }] }, select: { id: true } }))) return false
+  return true
+}
+
 router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const { typeActe, titre, contenu, langue, variables, promptLibre, dossierId, modeleId } = req.body ?? {}
-  if (!contenu || !titre) {
-    res.status(400).json({ error: 'titre et contenu requis' })
-    return
-  }
+  const parse = DocumentSchema.safeParse(req.body)
+  if (!parse.success) { res.status(400).json({ error: 'titre et contenu requis' }); return }
+  const { typeActe, titre, contenu, langue, variables, promptLibre, dossierId, modeleId } = parse.data
+  if (!(await liensAutorises(req.userId!, req.equipe!, dossierId, modeleId))) { res.status(404).json({ error: 'Dossier ou modèle introuvable' }); return }
   const type = typeActe ? getTypeActe(typeActe) : undefined
   const doc = await prisma.document.create({
     data: {
@@ -117,9 +141,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response): Promise<v
       typeActe: typeActe ?? 'LIBRE',
       categorie: (type?.categorie ?? 'AUTRE') as any,
       titre,
-      langue: (langue ?? 'AR') as any,
+      langue: langue ?? LangueDocument.AR,
       contenu,
-      variables: variables ?? undefined,
+      variables: (variables ?? undefined) as object | undefined,
       promptLibre: promptLibre ?? null,
     },
   })
@@ -149,7 +173,9 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const doc = await prisma.document.findFirst({ where: { id: req.params.id, userId: req.userId! } })
   if (!doc) { res.status(404).json({ error: 'Document introuvable' }); return }
-  const { contenu, titre, statut } = req.body ?? {}
+  const parse = MajDocumentSchema.safeParse(req.body)
+  if (!parse.success) { res.status(400).json({ error: 'Données invalides' }); return }
+  const { contenu, titre, statut } = parse.data
   const updated = await prisma.document.update({
     where: { id: doc.id },
     data: {
@@ -174,7 +200,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response): Prom
 /* Importer un modèle .docx : extraction + analyse style + stockage.
    Le fichier est envoyé en multipart/form-data (champ "fichier").
    On lit le buffer via multer (mémoire). */
-router.post('/modeles/importer', requireAuth, uploadDocx.single('fichier'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/modeles/importer', requireAuth, limiter('import-docx', 20, 3600), uploadDocx.single('fichier'), async (req: AuthRequest, res: Response): Promise<void> => {
   const file = (req as any).file
   if (!file || !file.buffer) {
     res.status(400).json({ error: 'Aucun fichier reçu (champ "fichier")' })

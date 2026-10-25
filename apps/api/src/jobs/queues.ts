@@ -5,10 +5,14 @@ const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379'
   maxRetriesPerRequest: null,
 })
 
-export const scraperQueue = new Queue('scraper', { connection })
-export const nlpQueue = new Queue('nlp', { connection })
-export const alertQueue = new Queue('alerts', { connection })
-export const deadlineQueue = new Queue('deadlines', { connection })
+// Sans nettoyage, BullMQ garde chaque job terminé dans Redis : des centaines de milliers par mois
+// avec beaucoup de dossiers (mémoire Redis qui ne fait que grossir).
+const defaultJobOptions = { removeOnComplete: { age: 86_400, count: 1000 }, removeOnFail: { age: 7 * 86_400, count: 5000 } }
+
+export const scraperQueue = new Queue('scraper', { connection, defaultJobOptions })
+export const nlpQueue = new Queue('nlp', { connection, defaultJobOptions })
+export const alertQueue = new Queue('alerts', { connection, defaultJobOptions })
+export const deadlineQueue = new Queue('deadlines', { connection, defaultJobOptions })
 
 // File dédiée aux recherches "live" déclenchées par l'utilisateur (route /rechercher).
 // Séparée de scraperQueue pour que ces recherches interactives ne soient pas bloquées

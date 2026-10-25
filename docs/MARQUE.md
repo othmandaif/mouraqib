@@ -26,16 +26,24 @@ Vos dossiers sont identifiés, surveillés et à jour : l'app vous signale ce qu
 
 | Rôle | Nom | HEX | RGB | Usage |
 |---|---|---|---|---|
-| Primaire | Vert Malafi | `#0E5A4E` | 14 90 78 | Logo, boutons principaux, liens, en-têtes |
+| Primaire | Vert Malafi | `#0E5A4E` | 14 90 78 | Logo, structure (menu actif, en-têtes), liens |
+| Action | Orange Action | `#F69320` | 246 147 32 | Bouton principal de chaque écran, état appuyé, élément actif du menu ; texte **blanc** |
+| Choix | Orange clair + liseré | `#FEF0DC` / `#C2620C` | — | Option choisie : puce, onglet, segment, radio, case cochée, filtre appliqué |
 | Sombre | Vert profond | `#083B34` | 8 59 52 | Fonds sombres, hero, barre latérale |
 | Accent | Ambre Signal | `#F2A93B` | 242 169 59 | **Uniquement** pour les alertes, les badges et les délais proches |
 | Texte | Encre | `#15201E` | 21 32 30 | Texte courant |
 | Fond | Papier | `#F5F3EE` | 245 243 238 | Fond des pages |
-| Fond doux | Menthe | `#E3F0EC` | 227 240 236 | Survol, cartes sélectionnées, puces |
+| Fond doux | Menthe | `#E3F0EC` | 227 240 236 | Survol, fonds doux, ronds d'icônes |
 | Secondaire | Gris ardoise | `#5E6B67` | 94 107 103 | Texte secondaire, libellés |
 | Danger | Rouge délai | `#C0392B` | 192 57 43 | Délai dépassé, erreurs |
 
 **Règle d'or : l'ambre est le signal.** Il ne sert qu'à ce qui demande l'attention (comme la pastille du logo). S'il est partout, il ne signale plus rien.
+
+**Orange Action (octobre 2026)** : pour que le vert ne domine pas, les actions et les choix sont orange (règle 60-30-10 : vert = structure, papier/blanc = surfaces, orange = ce que l'on touche).
+- **Un seul bouton orange plein par écran** (l'action principale). Les autres boutons restent blancs à bordure grise.
+- Survol `#E8871E`, appui `#D9771A` + léger enfoncement (classe `.mp-action`, `app/globals.css`).
+- Option choisie : fond `#FEF0DC` + liseré `#C2620C` (classe `.mp-choix`, pilotée par `aria-pressed` / `aria-selected` / `aria-checked`).
+- L'orange ne remplace pas l'ambre : alertes et délais proches restent ambre (pastilles, compte à rebours).
 
 ### Contrastes vérifiés (norme WCAG)
 - Vert Malafi sur blanc : 8,1 · sur Papier : 7,3 → OK pour le texte.
@@ -43,6 +51,8 @@ Vos dossiers sont identifiés, surveillés et à jour : l'app vous signale ce qu
 - Blanc sur Vert profond : 12,5 → OK.
 - Encre sur Ambre : 8,4 → OK. **Ne jamais mettre de texte blanc sur l'ambre** (2,0 seulement).
 - Ambre sur blanc : 2,0 → jamais pour du texte, seulement pour des pastilles ou des icônes.
+- Blanc sur Orange Action : 2,3 (survol 2,7 · appui 3,2) → choix de la marque pour les boutons et le menu ; garder le texte en gras (600) et ≥ 15 px. Texte **Encre** sur l'orange clair des options choisies.
+- Liseré `#C2620C` sur blanc : 3,75 → l'état « choisi » reste visible (minimum 3 pour un élément d'interface).
 
 ## 3. Règles d'usage
 

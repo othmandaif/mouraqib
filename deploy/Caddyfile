@@ -1,0 +1,25 @@
+# HTTPS automatique (Let's Encrypt) dès que le DNS du domaine pointe vers le VPS.
+{$DOMAINE} {
+	encode zstd gzip
+
+	# Webhooks Meta (WhatsApp) : directement vers l'API, corps intact pour la vérification de signature
+	@webhooks path /api/v1/webhooks/*
+	handle @webhooks {
+		reverse_proxy api:3001
+	}
+
+	# Tout le reste : application Next.js (qui relaie /api vers l'API)
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header -Server
+	log {
+		output stdout
+		format console
+	}
+}
+
+www.{$DOMAINE} {
+	redir https://{$DOMAINE}{uri} permanent
+}

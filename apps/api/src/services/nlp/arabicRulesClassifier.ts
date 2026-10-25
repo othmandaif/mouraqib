@@ -19,19 +19,25 @@ const PATTERNS: Array<{
   { pattern: /ندب.*خبير|تعيين.*خبير|خبرة.*مأمور بها|أمر.*بخبرة/i,     type: TypeEvenement.EXPERTISE_ORDONNEE,  confiance: 0.90 },
   { pattern: /إيداع.*تقرير.*الخبرة|تقرير.*الخبير.*مودع|أودع.*الخبير/i, type: TypeEvenement.EXPERTISE_DEPOSEE,   confiance: 0.90 },
 
+  // ── Renvoi « pour notification » : AVANT le motif générique تبليغ, sinon il serait pris
+  //    pour une notification et ferait courir un délai à tort ──────────────────
+  { pattern: /تأجيل.*للتبليغ|تأخير.*للإعلام|رُجئت.*للتبليغ/i,          type: TypeEvenement.RENVOI_NOTIFICATION, confiance: 0.90 },
+
   // ── Notifications (avant renvoi) ─────────────────────────────────────────
   { pattern: /تبليغ.*الحكم|إعلام.*بالحكم|تبليغ.*بالمقرر/i,             type: TypeEvenement.NOTIFICATION_PARTIE, sousType: 'NOTIFICATION_JUGEMENT', confiance: 0.92 },
-  { pattern: /تبليغ|إعلام|إخطار|تنفيذ.*التبليغ/i,                       type: TypeEvenement.NOTIFICATION_PARTIE, confiance: 0.85 },
   { pattern: /تبليغ.*للتنفيذ|تنفيذ.*الحكم/i,                            type: TypeEvenement.SIGNIFICATION,       confiance: 0.88 },
+  { pattern: /تبليغ|إعلام|إخطار|تنفيذ.*التبليغ/i,                       type: TypeEvenement.NOTIFICATION_PARTIE, confiance: 0.85 },
 
   // ── Renvois ──────────────────────────────────────────────────────────────
-  { pattern: /تأجيل.*للتبليغ|تأخير.*للإعلام|رُجئت.*للتبليغ/i,          type: TypeEvenement.RENVOI_NOTIFICATION, confiance: 0.90 },
   { pattern: /تأخير|تأجيل|إرجاء|رُجئت|أُجلت|مؤجلة/i,                   type: TypeEvenement.RENVOI_SIMPLE,       confiance: 0.88 },
 
   // ── Délibéré & Jugements ─────────────────────────────────────────────────
-  { pattern: /حجز للمداولة|احتجاز للمداولة|للمداولة/i,                   type: TypeEvenement.MISE_EN_DELIBERE,    confiance: 0.95 },
+  { pattern: /حجز للمداولة|احتجاز للمداولة|للمداولة|للنطق بالحكم|حجز.*للحكم|للتأمل/i, type: TypeEvenement.MISE_EN_DELIBERE,    confiance: 0.95 },
   { pattern: /صدر الحكم|صدور الحكم|حكم بتاريخ|قضت المحكمة|حكم ابتدائي/i, type: TypeEvenement.JUGEMENT_RENDU,    confiance: 0.95 },
   { pattern: /صدر الأمر|أمر قضائي|أمر استعجالي/i,                        type: TypeEvenement.ORDONNANCE_RENDUE,  confiance: 0.90 },
+  // Formulations fréquentes du dispositif sur mahakim (« الحكم بأداء… », « حكمت المحكمة… », « قرار استئنافي »).
+  // Sans elles, un jugement non reconnu partait au LLM et, en cas d'échec, finissait en AUTRE → aucun délai.
+  { pattern: /(^|\s|—\s*)(الحكم|حكم) (ب|على|في|برفض|بعدم|بقبول|بإلغاء|بتأييد)|حكمت المحكمة|قررت المحكمة|بتت المحكمة|قرار (استئنافي|نهائي)|القرار ب/i, type: TypeEvenement.JUGEMENT_RENDU, confiance: 0.86 },
 
   // ── Inscriptions ─────────────────────────────────────────────────────────
   { pattern: /إدراج|أُدرج|تسجيل.*الجلسة|إدراج في الجدول/i,              type: TypeEvenement.INSCRIPTION_ROLE,   confiance: 0.88 },

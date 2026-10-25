@@ -1,6 +1,6 @@
 # MalafiPro — ملفاتي
 
-> Anciennement **Mouraqib (مراقب)**. Le dépôt, la base de données et certains identifiants techniques gardent encore le nom `mouraqib` (voir [`docs/MARQUE.md`](docs/MARQUE.md)).
+> Anciennement **Mouraqib**. Seuls le dépôt et la base de données Docker gardent encore le nom `mouraqib` (voir [`docs/MARQUE.md`](docs/MARQUE.md)).
 
 SaaS de surveillance judiciaire pour avocats marocains. Surveille automatiquement les dossiers sur **mahakim.ma**, calcule les délais procéduraux (CPC marocain), et envoie des alertes **WhatsApp** en temps réel.
 

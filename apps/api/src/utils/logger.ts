@@ -1,4 +1,5 @@
 import winston from 'winston'
+import { createHash } from 'crypto'
 
 export const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
@@ -17,3 +18,8 @@ export const logger = winston.createLogger({
   ),
   transports: [new winston.transports.Console()],
 })
+
+/** Empreinte courte et stable d'un numéro de dossier, pour corréler les logs sans l'écrire en clair. */
+export function refDossier(numero: string): string {
+  return 'dos#' + createHash('sha256').update(numero).digest('hex').slice(0, 8)
+}

@@ -14,7 +14,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@mouraqib/shared/*": ["../../packages/shared/*"]
+      "@malafipro/shared/*": ["../../packages/shared/*"]
     }
   },
   "include": ["src/**/*"],

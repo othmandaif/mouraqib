@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq'
-import { redisConnection } from '../queues'
+import { redisConnection, deadlineQueue } from '../queues'
+import { battement } from '../../services/deadlines/controleSecurite'
 import { NLPService } from '../../services/nlp/nlpService'
 import { analyserDossiersAvecNouveautes } from '../../services/ai/dossierClassifier'
 import { logger } from '../../utils/logger'
@@ -11,7 +12,13 @@ export const nlpWorker = new Worker(
   async (job) => {
     if (job.name === 'process-pending') {
       // 1) Classification des événements (règles + LLM) — logique existante
-      await nlp.traiterEvenementsEnAttente()
+      const classes = await nlp.traiterEvenementsEnAttente()
+      // Nouveaux événements classés → délais calculés tout de suite (au lieu d'attendre le passage horaire)
+      // Pas de jobId « par minute » : un 2e classement dans la même minute était ignoré (job déjà terminé, même id)
+      // et le délai n'apparaissait qu'au passage suivant (jusqu'à 1 h plus tard). Les passages se suivent
+      // (concurrency 1 + verrou « delais »), un passage sans nouvel acte coûte une requête.
+      if (classes > 0) await deadlineQueue.add('generate-deadlines', {})
+      await battement('nlp')
 
       // 2) Analyse IA au niveau dossier (statut, type procédure, résumé)
       //    Ciblée : uniquement les dossiers ayant des événements estNouvel=true.

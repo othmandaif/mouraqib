@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../../utils/prisma'
 import { askDeepseek, limiterTexte } from '../ai/deepseek'
 import { getTypeActe, TYPES_PAR_CLE } from './typesActes'
 import { logger } from '../../utils/logger'
 
-const prisma = new PrismaClient()
 
 /** Extrait le texte brut d'un fichier .docx (buffer) via mammoth. */
 export async function extraireTexteDocx(buffer: Buffer): Promise<string> {

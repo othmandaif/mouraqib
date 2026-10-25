@@ -1,14 +1,14 @@
 import { Router, Response } from 'express'
-import { PrismaClient, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import { prisma } from '../utils/prisma'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 const DAY_MS = 86_400_000
 
 /** Construit le filtre Prisma sur les dossiers à partir des query params. */
-function construireFiltre(userId: string, q: any): Prisma.DossierWhereInput {
+function construireFiltre(userId: string | Prisma.StringFilter, q: any): Prisma.DossierWhereInput {
   const where: Prisma.DossierWhereInput = { userId }
   const and: Prisma.DossierWhereInput[] = []
 
@@ -29,7 +29,7 @@ function construireFiltre(userId: string, q: any): Prisma.DossierWhereInput {
 /* ── Options de filtres (pour remplir les menus déroulants) ── */
 // GET /dashboard/filtres
 router.get('/filtres', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const userId = req.userId!
+  const userId = { in: req.equipe! }
   const dossiers = await prisma.dossier.findMany({
     where: { userId },
     select: { tribunal: true, numeroDossier: true, typeProcedure: true, statutIA: true },
@@ -52,6 +52,20 @@ router.get('/filtres', requireAuth, async (req: AuthRequest, res: Response): Pro
 
 /* ── Vue agrégée du tableau de bord (avec filtres) ── */
 // GET /dashboard/overview?tribunal=&annee=&typeProcedure=&statut=&ville=
+// Compteurs de la navigation (pastilles) : un seul appel léger par page
+router.get('/compteurs', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const userId = req.userId!
+  const equipe = { in: req.equipe! }
+  const [dossiers, critiques, nonLues] = await Promise.all([
+    prisma.dossier.count({ where: { userId: equipe, estActif: true } }),
+    prisma.echeance.count({ where: { dossier: { userId: equipe }, camp: 'AGIR', estCritique: true, estComplete: false, estExpire: false } }),
+    prisma.alerte.count({ where: { userId, canal: 'IN_APP', luAt: null } }),
+  ])
+  // Commercial : nombre de demandes d'inscription à traiter (pastille du menu)
+  const demandes = req.userRole === 'ADMIN' ? await prisma.user.count({ where: { statut: 'EN_ATTENTE' } }) : undefined
+  res.json({ dossiers, critiques, nonLues, demandes })
+})
+
 router.get('/overview', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const userId = req.userId!
   const now = new Date()
@@ -59,103 +73,65 @@ router.get('/overview', requireAuth, async (req: AuthRequest, res: Response): Pr
   const semaineAgo = new Date(today0.getTime() - 6 * DAY_MS)
 
   // Filtre dossiers (sans le critère estActif, qu'on combine ensuite).
-  const baseFiltre = construireFiltre(userId, req.query)
+  const baseFiltre = construireFiltre({ in: req.equipe! }, req.query)
   const filtreActif: Prisma.DossierWhereInput = { AND: [baseFiltre, { estActif: true }] }
   const filtreArchive: Prisma.DossierWhereInput = { AND: [baseFiltre, { estActif: false }] }
   // Filtre événements/échéances : via la relation dossier.
   const evtWhere: Prisma.EvenementWhereInput = { dossier: baseFiltre }
   const echWhere: Prisma.EcheanceWhereInput = { dossier: baseFiltre }
 
-  const [dossiersActifs, dossiersArchives] = await Promise.all([
+  const seuilDormant = new Date(today0.getTime() - 90 * DAY_MS)
+  const dans7j = new Date(today0.getTime() + 7 * DAY_MS)
+  // Toutes les mesures en parallèle (avant : ~20 requêtes l'une après l'autre)
+  const [
+    dossiersActifs, dossiersArchives, delaisCritiques,
+    evtAujourdhui, evtSemaine, evtSemainePrec, evtsRecents,
+    parProcedure, renvoisCetteSemaine, delaisTotal, delaisComplets, delaisExpires,
+    parStatut, dossiersDormants, audiencesSemaine, parTribunalRaw,
+    alertesNonLues, dossiersNonLusGroupes, nouveauxCeMois,
+  ] = await Promise.all([
     prisma.dossier.count({ where: filtreActif }),
     prisma.dossier.count({ where: filtreArchive }),
-  ])
-
-  const delaisCritiques = await prisma.echeance.count({
-    where: { ...echWhere, estComplete: false, estExpire: false, estCritique: true },
-  })
-
-  const [evtAujourdhui, evtSemaine, evtSemainePrec] = await Promise.all([
+    prisma.echeance.count({ where: { ...echWhere, estComplete: false, estExpire: false, estCritique: true } }),
     prisma.evenement.count({ where: { ...evtWhere, datePublicationGreffe: { gte: today0 } } }),
     prisma.evenement.count({ where: { ...evtWhere, datePublicationGreffe: { gte: semaineAgo } } }),
     prisma.evenement.count({ where: { ...evtWhere, datePublicationGreffe: { gte: new Date(semaineAgo.getTime() - 7 * DAY_MS), lt: semaineAgo } } }),
+    // Heatmap 7 jours
+    prisma.evenement.findMany({ where: { ...evtWhere, datePublicationGreffe: { gte: semaineAgo } }, select: { datePublicationGreffe: true } }),
+    prisma.dossier.groupBy({ by: ['typeProcedure'], where: filtreActif, _count: { _all: true } }),
+    prisma.evenement.count({
+      where: { ...evtWhere, datePublicationGreffe: { gte: semaineAgo }, typeEvenement: { in: ['RENVOI_SIMPLE', 'RENVOI_EXPERT', 'RENVOI_NOTIFICATION'] as any } },
+    }),
+    prisma.echeance.count({ where: echWhere }),
+    prisma.echeance.count({ where: { ...echWhere, estComplete: true } }),
+    prisma.echeance.count({ where: { ...echWhere, estExpire: true, estComplete: false } }),
+    prisma.dossier.groupBy({ by: ['statutIA'], where: filtreActif, _count: { _all: true } }),
+    // Dormant = aucun acte depuis 90 jours : compté en base (avant : tous les actes chargés en mémoire)
+    prisma.dossier.count({ where: { AND: [filtreActif, { evenements: { none: { datePublicationGreffe: { gte: seuilDormant } } } }] } }),
+    prisma.evenement.count({ where: { ...evtWhere, dateAudience: { gte: today0, lte: dans7j } } }),
+    prisma.dossier.groupBy({ by: ['tribunal'], where: filtreActif, _count: { _all: true } }),
+    prisma.alerte.count({ where: { userId, canal: 'IN_APP', luAt: null } }),
+    prisma.alerte.groupBy({ by: ['dossierId'], where: { userId, canal: 'IN_APP', luAt: null, dossierId: { not: null } } }),
+    prisma.dossier.count({ where: { ...filtreActif, createdAt: { gte: new Date(now.getFullYear(), now.getMonth(), 1) } } }),
   ])
 
-  // Heatmap 7 jours
-  const evtsRecents = await prisma.evenement.findMany({
-    where: { ...evtWhere, datePublicationGreffe: { gte: semaineAgo } },
-    select: { datePublicationGreffe: true },
-  })
   const heatmap = Array(7).fill(0)
   for (const e of evtsRecents) {
     const d = new Date(e.datePublicationGreffe); d.setHours(0, 0, 0, 0)
     const idx = Math.round((d.getTime() - semaineAgo.getTime()) / DAY_MS)
     if (idx >= 0 && idx <= 6) heatmap[idx]++
   }
-
-  // Types de procédures (dossiers filtrés actifs)
-  const parProcedure = await prisma.dossier.groupBy({
-    by: ['typeProcedure'],
-    where: filtreActif,
-    _count: { _all: true },
-  })
   const procedures = parProcedure
     .map((p) => ({ type: p.typeProcedure, count: p._count._all }))
     .sort((a, b) => b.count - a.count)
-
-  const renvoisCetteSemaine = await prisma.evenement.count({
-    where: {
-      ...evtWhere,
-      datePublicationGreffe: { gte: semaineAgo },
-      typeEvenement: { in: ['RENVOI_SIMPLE', 'RENVOI_EXPERT', 'RENVOI_NOTIFICATION'] as any },
-    },
-  })
-
-  const [delaisTotal, delaisComplets, delaisExpires] = await Promise.all([
-    prisma.echeance.count({ where: echWhere }),
-    prisma.echeance.count({ where: { ...echWhere, estComplete: true } }),
-    prisma.echeance.count({ where: { ...echWhere, estExpire: true, estComplete: false } }),
-  ])
   const pct = (n: number) => (delaisTotal > 0 ? Math.round((n / delaisTotal) * 100) : 0)
-
   const evolutionEvt = evtSemainePrec > 0
     ? Math.round(((evtSemaine - evtSemainePrec) / evtSemainePrec) * 1000) / 10
     : null
-
-  // Statut IA
-  const parStatut = await prisma.dossier.groupBy({
-    by: ['statutIA'],
-    where: filtreActif,
-    _count: { _all: true },
-  })
   const statutMap: Record<string, number> = { OUVERT: 0, EN_DELIBERE: 0, CLOS: 0, INCONNU: 0 }
   for (const s of parStatut) statutMap[s.statutIA] = s._count._all
   const statutsIA = { ouvert: statutMap.OUVERT, enDelibere: statutMap.EN_DELIBERE, clos: statutMap.CLOS, inconnu: statutMap.INCONNU }
-
-  // KPIs calculés
-  const seuilDormant = new Date(today0.getTime() - 90 * DAY_MS)
-  const tousActifs = await prisma.dossier.findMany({
-    where: filtreActif,
-    select: { tribunal: true, evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1, select: { datePublicationGreffe: true } } },
-  })
-  const dossiersDormants = tousActifs.filter((d) => {
-    const dernier = d.evenements[0]?.datePublicationGreffe
-    return !dernier || new Date(dernier) < seuilDormant
-  }).length
-
-  const dans7j = new Date(today0.getTime() + 7 * DAY_MS)
-  const audiencesSemaine = await prisma.evenement.count({
-    where: { ...evtWhere, dateAudience: { gte: today0, lte: dans7j } },
-  })
-  const delaisExpiresCount = await prisma.echeance.count({
-    where: { ...echWhere, estExpire: true, estComplete: false },
-  })
-
-  const parTribunalRaw = await prisma.dossier.groupBy({
-    by: ['tribunal'],
-    where: filtreActif,
-    _count: { _all: true },
-  })
+  const delaisExpiresCount = delaisExpires
   const parTribunal = parTribunalRaw
     .map((t) => ({ tribunal: t.tribunal, count: t._count._all }))
     .sort((a, b) => b.count - a.count)
@@ -163,6 +139,9 @@ router.get('/overview', requireAuth, async (req: AuthRequest, res: Response): Pr
 
   res.json({
     kpi: {
+      alertesNonLues,
+      dossiersNonLus: dossiersNonLusGroupes.length,
+      nouveauxCeMois,
       dossiersActifs, dossiersArchives, delaisCritiques,
       evenementsAujourdhui: evtAujourdhui, renvoisCetteSemaine,
       dossiersDormants, audiencesSemaine, delaisExpires: delaisExpiresCount,

@@ -1,9 +1,8 @@
 import { Router, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../utils/prisma'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 /* GET /api/v1/tribunaux  → liste du référentiel (pour traduction d'affichage) */
 router.get('/', requireAuth, async (_req: AuthRequest, res: Response): Promise<void> => {

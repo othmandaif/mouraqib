@@ -1,5 +1,5 @@
 {
-  "name": "@mouraqib/api",
+  "name": "@malafipro/api",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,8 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "test": "vitest"
+    "test": "vitest",
+    "start:prod": "prisma migrate deploy && node dist/server.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
@@ -29,7 +30,8 @@
     "pg": "^8.22.0",
     "playwright": "^1.41.0",
     "winston": "^3.11.0",
-    "zod": "^3.22.0"
+    "zod": "^3.22.0",
+    "prisma": "^5.10.0"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -42,7 +44,6 @@
     "@types/node": "^20.11.0",
     "@types/pg": "^8.20.0",
     "nodemon": "^3.0.0",
-    "prisma": "^5.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.0",
     "vitest": "^4.1.9"

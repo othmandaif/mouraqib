@@ -1,5 +1,5 @@
 /**
- * Prompts système (en arabe) pour les fonctions IA de Mouraqib.
+ * Prompts système (en arabe) pour les fonctions IA de MalafiPro.
  * Centralisés ici pour les ajuster sans toucher au code métier.
  */
 

@@ -1,13 +1,20 @@
 import { chromium, Browser, BrowserContext, Page, Locator } from 'playwright'
 import * as cheerio from 'cheerio'
-import * as Prisma from '@prisma/client'
-import { logger } from '../../utils/logger'
+import { prisma } from '../../utils/prisma'
+import { logger, refDossier } from '../../utils/logger'
+import { instantMaroc } from '../../utils/dateMaroc'
+import { avecVerrou } from '../../utils/verrou'
+import { createHash } from 'crypto'
+import { cleSync, noterEchecDossier, effacerEchecDossier, mahakimRepond, mahakimEchec } from './santeMahakim'
 
-const prisma = new Prisma.PrismaClient()
+/** Le portail n'a pas répondu correctement après plusieurs essais (≠ dossier introuvable, qui renvoie null). */
+export class EchecTechniqueMahakim extends Error {}
+
 
 const CONFIG = {
   // Application Angular en hash-routing : l'URL complète recharge directement la bonne vue
-  SEARCH_URL: 'https://www.mahakim.ma/#/suivi/dossier-suivi',
+  // MAHAKIM_URL : autre adresse (portail de test, miroir) ; par défaut le vrai portail
+  SEARCH_URL: process.env.MAHAKIM_URL || 'https://www.mahakim.ma/#/suivi/dossier-suivi',
   DELAY_MS: 150,
   TIMEOUT_MS: 30000,
   USER_AGENT: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -17,8 +24,6 @@ const CONFIG = {
   HEADLESS: true,
   // Nombre de tentatives complètes par dossier (réseau, Angular non chargé, etc.)
   MAX_TENTATIVES: 3,
-  // Dossiers traités en parallèle dans scraperTousDossiers (rester poli : 2-3 max).
-  CONCURRENCE: 2,
 }
 
 // Ressources inutiles au scraping (le DOM HTML suffit pour cheerio).
@@ -35,6 +40,7 @@ export interface EvenementBrut {
   texteArabe: string
   dateAudience?: Date
   datePublication: Date
+  dateInconnue?: boolean // date illisible sur mahakim : datePublication = maintenant
   rawHtml?: string
 }
 
@@ -169,21 +175,23 @@ export class MahakimScraper {
         }
         // null = dossier introuvable CONFIRMÉ par le portail → pas de retry inutile.
         if (data === null) {
-          logger.info(`Scrape ${numeroDossier} : aucun résultat (arrêt sans retry)`)
+          logger.info(`Scrape ${refDossier(numeroDossier)} : aucun résultat (arrêt sans retry)`)
           return null
         }
         // data tronqué (sans infos ni événements) : on l'accepte dès la 2e tentative.
         if (tentative >= 2) return data
-        logger.warn(`Scrape ${numeroDossier} incomplet (tentative ${tentative}/${CONFIG.MAX_TENTATIVES})`)
+        logger.warn(`Scrape ${refDossier(numeroDossier)} incomplet (tentative ${tentative}/${CONFIG.MAX_TENTATIVES})`)
       } catch (err) {
         derniereErreur = err
-        logger.warn(`Scrape ${numeroDossier} échoué (tentative ${tentative}/${CONFIG.MAX_TENTATIVES}):`, err)
+        logger.warn(`Scrape ${refDossier(numeroDossier)} échoué (tentative ${tentative}/${CONFIG.MAX_TENTATIVES}):`, err)
         await this.ensureBrowser() // le browser a peut-être crashé
       }
       if (tentative < CONFIG.MAX_TENTATIVES) await sleep(tentative * 1000) // backoff 1s, 2s
     }
-    logger.error(`Scrape ${numeroDossier} abandonné après ${CONFIG.MAX_TENTATIVES} tentatives`, derniereErreur)
-    return null
+    logger.error(`Scrape ${refDossier(numeroDossier)} abandonné après ${CONFIG.MAX_TENTATIVES} tentatives`, derniereErreur)
+    // Avant : `return null`, comme un dossier introuvable → la recherche disait « لم نجد هذا الملف » pendant une
+    // panne, et la synchronisation ne savait pas que mahakim était en panne.
+    throw new EchecTechniqueMahakim(`mahakim n'a pas répondu (${CONFIG.MAX_TENTATIVES} tentatives)`)
   }
 
   /** Une seule tentative de scraping (ouvre/ferme une page). */
@@ -197,7 +205,7 @@ export class MahakimScraper {
 
     const parsed = parseNumeroDossier(numeroDossier)
     if (!parsed) {
-      logger.error(`Format de numéro de dossier invalide: ${numeroDossier} (attendu annee/code/numero)`)
+      logger.error(`Format de numéro de dossier invalide: ${refDossier(numeroDossier)} (attendu annee/code/numero)`)
       return null
     }
 
@@ -213,7 +221,7 @@ export class MahakimScraper {
       const fieldNumero = page.locator('input[formcontrolname="numero"], input[placeholder*="رقم"], input#numero, input[name="numero"], input[formcontrolname="numDossier"], [ng-reflect-name="numero"] input, input[formControlName="numero"]').first()
 
       await fieldAnnee.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
-        logger.warn(`Champ année non trouvé pour ${numeroDossier}`)
+        logger.warn(`Champ année non trouvé pour ${refDossier(numeroDossier)}`)
       })
 
       // S'assurer d'être sur l'onglet "ملف" (souvent par défaut)
@@ -247,13 +255,13 @@ export class MahakimScraper {
         // façons de localiser la case (formcontrolname, label texte, p-checkbox proche).
         const coche = await cocherCaseTribunauxPrimaires(page)
         if (!coche) {
-          logger.warn(`Impossible de cocher 'البحث بالمحاكم الابتدائية' pour ${numeroDossier}`)
+          logger.warn(`Impossible de cocher 'البحث بالمحاكم الابتدائية' pour ${refDossier(numeroDossier)}`)
         }
 
         // Attendre que le 2e dropdown apparaisse (preuve que la case est bien cochée).
         const dd2 = page.locator('p-dropdown[formcontrolname="tribunaux_primaires"], p-dropdown[ng-reflect-name="tribunaux_primaires"]')
         await dd2.first().waitFor({ state: 'visible', timeout: 6000 }).catch(() => {
-          logger.warn(`2e dropdown (tribunaux primaires) non apparu pour ${numeroDossier}`)
+          logger.warn(`2e dropdown (tribunaux primaires) non apparu pour ${refDossier(numeroDossier)}`)
         })
         await selectPrimeDropdown(page, tribunalPrimaire)
         await this.takeDebugScreenshot(page, numeroDossier, '05-after-tp-select')
@@ -261,7 +269,7 @@ export class MahakimScraper {
 
       const submitBtn = page.locator('button:has-text("بحث"), input[value="بحث"], button:has-text("Rechercher"), .p-button:has-text("بحث")')
       await submitBtn.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {
-        logger.warn(`Bouton recherche non trouvé pour ${numeroDossier}`)
+        logger.warn(`Bouton recherche non trouvé pour ${refDossier(numeroDossier)}`)
       })
       await this.takeDebugScreenshot(page, numeroDossier, '06-before-submit')
 
@@ -298,7 +306,7 @@ export class MahakimScraper {
       // CAS 1 — message "aucun résultat" : on le CONFIRME avant de conclure.
       if (issue === 'empty') {
         if (await confirmerIntrouvable()) {
-          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${numeroDossier}`)
+          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${refDossier(numeroDossier)}`)
           await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
           return null
         }
@@ -309,7 +317,7 @@ export class MahakimScraper {
 
       if (!resultFound) {
         // CAS 2 — ni carte ni absence confirmée : lenteur probable → 2e soumission.
-        logger.warn(`Aucun résultat clair pour ${numeroDossier} — nouvelle tentative de soumission`)
+        logger.warn(`Aucun résultat clair pour ${refDossier(numeroDossier)} — nouvelle tentative de soumission`)
         if (await submitBtn.count() > 0) {
           await submitBtn.first().click({ force: true, timeout: 5000 }).catch(() => {})
         }
@@ -320,7 +328,7 @@ export class MahakimScraper {
         if (await aCarte()) {
           resultFound = true
         } else if (retry === 'empty' && await confirmerIntrouvable()) {
-          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${numeroDossier}`)
+          logger.info(`Aucun résultat (dossier introuvable confirmé) pour ${refDossier(numeroDossier)}`)
           await this.takeDebugScreenshot(page, numeroDossier, '08-no-result')
           return null
         }
@@ -370,7 +378,7 @@ export class MahakimScraper {
 
       // 5) Retry de RENDU : dossier chargé mais procédures vides → re-clic + ré-attente.
       if (parsed2.evenements.length === 0 && Object.keys(parsed2.infosCarte).length > 0) {
-        logger.warn(`لائحة الإجراءات vide pour ${numeroDossier} — re-render`)
+        logger.warn(`لائحة الإجراءات vide pour ${refDossier(numeroDossier)} — re-render`)
         const tabProc2 = page.locator('a[role="tab"]', { hasText: 'لائحة الإجراءات' })
         if (await tabProc2.count() > 0) await tabProc2.first().click({ timeout: 4000 }).catch(() => {})
         await page.waitForFunction(
@@ -389,7 +397,7 @@ export class MahakimScraper {
 
       return parsed2
     } catch (error) {
-      logger.error(`Erreur scraping dossier ${numeroDossier}:`, error)
+      logger.error(`Erreur scraping dossier ${refDossier(numeroDossier)}:`, error)
       throw error // propagé pour déclencher le retry global
     } finally {
       await page.close().catch(() => {})
@@ -446,6 +454,7 @@ export class MahakimScraper {
         texteArabe: [typeAction, decision].filter(Boolean).join(' — '),
         dateAudience: parseDateMahakim(dateProchaineAudience) ?? undefined,
         datePublication: parseDateMahakim(dateAction) ?? new Date(),
+        dateInconnue: !parseDateMahakim(dateAction),
         rawHtml: $(tr).html() ?? undefined,
       })
     })
@@ -519,62 +528,95 @@ export class MahakimScraper {
     }
   }
 
-  async scraperTousDossiers(userId: string): Promise<void> {
-    const dossiers = await prisma.dossier.findMany({
-      where: { userId, estActif: true },
-      include: {
-        evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1 },
-      },
-    })
-
-    logger.info(`Scraping de ${dossiers.length} dossiers pour userId=${userId}`)
-
-    // Traitement par lots de CONFIG.CONCURRENCE (pages parallèles du même contexte).
-    for (let i = 0; i < dossiers.length; i += CONFIG.CONCURRENCE) {
-      const lot = dossiers.slice(i, i + CONFIG.CONCURRENCE)
-      await Promise.all(lot.map(async (dossier) => {
-        try {
-          const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
-          const data = await this.scrapeDossier(dossier.numeroDossier, courAppel, tribunalPrimaire)
-          if (!data) return
-
-          const dernierDate = dossier.evenements[0]?.datePublicationGreffe
-          await this.sauvegarderNouveaux(dossier.id, data.evenements, dernierDate)
-
-          await prisma.dossier.update({
-            where: { id: dossier.id },
-            data: { derniereVerif: new Date() },
-          })
-        } catch (error) {
-          logger.error(`Erreur traitement dossier ${dossier.numeroDossier}:`, error)
-        }
-      }))
-    }
+  /** « مزامنة الآن » sur un seul dossier : scrape, enregistre les nouveaux événements, date la vérification. */
+  /**
+   * @param ignorerSiVerifieDepuisMs passage planifié : rien à faire si le dossier vient d'être lu
+   *   (« مزامنة الآن » de l'avocat, ou jumeau d'un autre avocat lu juste avant).
+   */
+  async scraperUnDossier(dossierId: string, ignorerSiVerifieDepuisMs = 0): Promise<number> {
+    const dossier = await prisma.dossier.findUnique({ where: { id: dossierId }, select: { id: true, numeroDossier: true, tribunal: true, derniereVerif: true } })
+    if (!dossier) return 0
+    if (ignorerSiVerifieDepuisMs && dossier.derniereVerif && Date.now() - dossier.derniereVerif.getTime() < ignorerSiVerifieDepuisMs) return 0
+    return this.synchroniser(dossier)
   }
 
-  private async sauvegarderNouveaux(
-    dossierId: string,
-    evenements: EvenementBrut[],
-    derniereDateConnue?: Date,
-  ): Promise<number> {
-    let count = 0
-    for (const ev of evenements) {
-      if (derniereDateConnue && ev.datePublication <= derniereDateConnue) continue
-      await prisma.evenement.create({
-        data: {
-          dossierId,
-          texteArabe: ev.texteArabe,
-          dateAudience: ev.dateAudience,
-          datePublicationGreffe: ev.datePublication,
-          raw: ev.rawHtml ? { html: ev.rawHtml } : undefined,
-          estNouvel: true,
-          estTraite: false,
-        },
-      })
-      count++
+  /**
+   * Un même dossier peut être suivi par plusieurs avocats (même numéro, même tribunal) :
+   * on le lit UNE fois sur mahakim et on enregistre les nouveautés pour chacun.
+   */
+  private async synchroniser(dossier: { id: string; numeroDossier: string; tribunal: string }): Promise<number> {
+    // Un seul processus à la fois par (numéro, tribunal) : deux synchronisations simultanées (planificateur
+    // + « مزامنة الآن », ou deux workers) inséraient deux fois les mêmes actes, donc des délais en double.
+    const cle = 'sync:' + createHash('sha1').update(`${dossier.numeroDossier}|${dossier.tribunal}`).digest('hex')
+    return (await avecVerrou(cle, 600, () => this.synchroniserSansVerrou(dossier))) ?? 0
+  }
+
+  private async synchroniserSansVerrou(dossier: { id: string; numeroDossier: string; tribunal: string }): Promise<number> {
+    const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
+    const cle = cleSync(dossier.numeroDossier, dossier.tribunal)
+    let data: DossierData | null
+    try {
+      data = await this.scrapeDossier(dossier.numeroDossier, courAppel, tribunalPrimaire)
+    } catch (e) {
+      // Panne : ce dossier attend avant de repasser, et le coupe-circuit compte l'échec
+      await noterEchecDossier(cle)
+      if (e instanceof EchecTechniqueMahakim) await mahakimEchec()
+      throw e
     }
-    if (count > 0) logger.info(`${count} nouveaux événements sauvegardés pour dossier ${dossierId}`)
-    return count
+    await mahakimRepond()
+    if (!data) {
+      // Introuvable : il ne doit pas repasser en tête de chaque planification (attente croissante)
+      await noterEchecDossier(cle)
+      return 0
+    }
+    await effacerEchecDossier(cle)
+    const jumeaux = await prisma.dossier.findMany({
+      where: { numeroDossier: dossier.numeroDossier, tribunal: dossier.tribunal, estActif: true },
+      select: { id: true },
+    })
+    const ids = jumeaux.length ? jumeaux.map((j) => j.id) : [dossier.id]
+    let total = 0
+    for (const id of ids) {
+      total += await this.sauvegarderNouveaux(id, data.evenements)
+      await prisma.dossier.update({ where: { id }, data: { derniereVerif: new Date() } })
+    }
+    return total
+  }
+
+  /**
+   * Enregistre les actes pas encore connus. Dédoublonnage par (texte, jour) et non plus par
+   * « date > dernière date connue » : mahakim n'affiche que le jour, et deux actes du même jour
+   * (ex. jugement puis notification) faisaient perdre le second — donc un délai.
+   */
+  private async sauvegarderNouveaux(dossierId: string, evenements: EvenementBrut[]): Promise<number> {
+    const existants = await prisma.evenement.findMany({ where: { dossierId }, select: { texteArabe: true, datePublicationGreffe: true } })
+    const jour = (d: Date) => d.toISOString().slice(0, 10)
+    const connus = new Set(existants.map((e) => `${e.texteArabe}|${jour(e.datePublicationGreffe)}`))
+    const textes = new Set(existants.map((e) => e.texteArabe))
+    const nouveaux = evenements.filter((ev) => {
+      if (ev.dateInconnue) return !textes.has(ev.texteArabe) // sans date fiable : le texte suffit
+      const cle = `${ev.texteArabe}|${jour(ev.datePublication)}`
+      if (connus.has(cle)) return false
+      connus.add(cle) // doublon dans la même page
+      return true
+    })
+    if (!nouveaux.length) return 0
+    // Premier import d'un dossier : l'historique n'est pas « مستجد » (sinon une alerte par acte ancien).
+    // Les délais sont tout de même calculés pour chaque acte (estTraite: false).
+    const premierImport = existants.length === 0
+    await prisma.evenement.createMany({
+      data: nouveaux.map((ev) => ({
+        dossierId,
+        texteArabe: ev.texteArabe,
+        dateAudience: ev.dateAudience,
+        datePublicationGreffe: ev.datePublication,
+        raw: ev.rawHtml ? { html: ev.rawHtml } : undefined,
+        estNouvel: !premierImport,
+        estTraite: false,
+      })),
+    })
+    logger.info(`${nouveaux.length} nouveaux événements sauvegardés pour dossier ${dossierId}`)
+    return nouveaux.length
   }
 }
 
@@ -815,7 +857,11 @@ export function parseDateMahakim(dateStr: string): Date | null {
   const match = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/)
   if (!match) return null
   const [, jour, mois, an, heure, minute] = match
-  const d = new Date(`${an}-${mois}-${jour}T${heure ?? '00'}:${minute ?? '00'}:00`)
+  // Date seule : 00:00 UTC (convention de l'app, « sans heure »). Avec heure : c'est l'heure du
+  // Maroc affichée par mahakim, convertie en UTC (avant : lue comme UTC → +1 h à l'écran).
+  const d = heure
+    ? instantMaroc(+an, +mois, +jour, +heure, +(minute ?? 0))
+    : new Date(Date.UTC(+an, +mois - 1, +jour))
   return isNaN(d.getTime()) ? null : d
 }
 

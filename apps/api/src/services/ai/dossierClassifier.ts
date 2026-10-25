@@ -1,9 +1,10 @@
-import { PrismaClient, TypeProcedure, StatutDossier } from '@prisma/client'
+import { TypeProcedure, StatutDossier } from '@prisma/client'
+import { prisma } from '../../utils/prisma'
+import { DeadlineService } from '../deadlines/deadlineService'
 import { askDeepseek, limiterTexte } from './deepseek'
 import { PROMPT_CLASSIFICATION } from './prompts.ar'
 import { logger } from '../../utils/logger'
 
-const prisma = new PrismaClient()
 
 interface ClassificationDossier {
   typeProcedure: string
@@ -35,7 +36,7 @@ export async function analyserDossierIA(dossierId: string): Promise<void> {
     6000,
   )
 
-  const userPrompt = `رقم الملف: ${dossier.numeroDossier}
+  const userPrompt = `رقم الملف: ${dossier.id}
 المحكمة: ${dossier.tribunal}
 لائحة الإجراءات (من الأحدث إلى الأقدم):
 ${historique}`
@@ -60,7 +61,10 @@ ${historique}`
       },
     })
 
-    logger.info(`IA dossier ${dossier.numeroDossier}: ${statutIA} / ${typeProcedure}`)
+    logger.info(`IA dossier ${dossier.id}: ${statutIA} / ${typeProcedure}`)
+    if (typeProcedure === TypeProcedure.REFERE && dossier.typeProcedure !== TypeProcedure.REFERE) {
+      await new DeadlineService().passerEnRefere(dossier.id)
+    }
   } catch (err) {
     logger.error(`Échec analyse IA dossier ${dossierId}:`, err)
   }
@@ -72,25 +76,23 @@ ${historique}`
  * que la dernière analyse (analyseAt).
  */
 export async function analyserDossiersAvecNouveautes(): Promise<void> {
+  // Dossiers jamais analysés, ou ayant reçu un acte APRÈS la dernière analyse. On compare la date
+  // d'enregistrement de l'acte (createdAt) : la date du greffe est souvent antérieure à l'analyse,
+  // et les nouveaux actes ne déclenchaient jamais de nouvelle analyse.
   const dossiers = await prisma.dossier.findMany({
-    where: {
-      estActif: true,
-      evenements: { some: { estNouvel: true } },
-    },
+    where: { estActif: true, evenements: { some: {} } },
     select: {
       id: true,
       analyseAt: true,
-      evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 1, select: { datePublicationGreffe: true } },
+      evenements: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
     },
   })
 
-  // On ne (ré)analyse que si un événement est plus récent que la dernière analyse IA.
   const aTraiter = dossiers.filter((d) => {
-    const dernierEvt = d.evenements[0]?.datePublicationGreffe
-    if (!dernierEvt) return false
-    if (!d.analyseAt) return true
-    return new Date(dernierEvt).getTime() > new Date(d.analyseAt).getTime()
-  })
+    const dernier = d.evenements[0]?.createdAt
+    if (!dernier) return false
+    return !d.analyseAt || dernier.getTime() > d.analyseAt.getTime()
+  }).slice(0, 50) // borne par passage : le reste au passage suivant (coût IA maîtrisé)
 
   logger.info(`IA: ${aTraiter.length}/${dossiers.length} dossier(s) à (ré)analyser`)
   for (const d of aTraiter) {

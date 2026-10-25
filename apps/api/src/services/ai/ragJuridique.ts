@@ -21,7 +21,13 @@ const CANDIDATS_PAR_RECHERCHE = 25   // recherche unique : on ratisse large, le 
 
 // Pool Postgres dédié (réutilise la même base que Prisma).
 // DATABASE_URL est déjà dans ton .env pour Prisma.
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+// Pool dédié à la recherche vectorielle : borné pour ne pas affamer Prisma, requêtes limitées à 10 s
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.RAG_POOL_MAX ?? 5), idleTimeoutMillis: 30_000, statement_timeout: 10_000 })
+pool.on('error', (e) => logger.warn('Pool RAG :', e))
+
+// Cache mémoire des embeddings de questions (même question reposée = pas de nouvel appel payant)
+const cacheEmbeddings = new Map<string, number[]>()
+const MAX_CACHE = 500
 
 export interface ArticleJuridique {
   chunkId: string
@@ -39,8 +45,12 @@ async function embedQuery(texte: string): Promise<number[] | null> {
     logger.warn('VOYAGE_API_KEY manquante — RAG juridique désactivé')
     return null
   }
+  const cle = texte.trim().slice(0, 2000)
+  const enCache = cacheEmbeddings.get(cle)
+  if (enCache) return enCache
   try {
     const res = await fetch(VOYAGE_URL, {
+      signal: AbortSignal.timeout(8000), // le chat ne doit jamais rester bloqué sur la recherche
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +67,12 @@ async function embedQuery(texte: string): Promise<number[] | null> {
       return null
     }
     const data = (await res.json()) as any
-    return data?.data?.[0]?.embedding ?? null
+    const emb: number[] | null = data?.data?.[0]?.embedding ?? null
+    if (emb) {
+      if (cacheEmbeddings.size >= MAX_CACHE) cacheEmbeddings.delete(cacheEmbeddings.keys().next().value as string)
+      cacheEmbeddings.set(cle, emb)
+    }
+    return emb
   } catch (err) {
     logger.warn('Échec embedding Voyage:', err)
     return null
@@ -74,6 +89,7 @@ async function reranker(question: string, documents: string[], topK: number): Pr
   if (!VOYAGE_API_KEY || documents.length === 0) return null
   try {
     const res = await fetch(VOYAGE_RERANK_URL, {
+      signal: AbortSignal.timeout(8000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

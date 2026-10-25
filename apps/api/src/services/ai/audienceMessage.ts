@@ -58,7 +58,7 @@ ${audience ? `تاريخ الجلسة: ${dateStr}` : ''}
     const clean = (msg || '').trim()
     return clean.length > 0 ? clean : null
   } catch (err) {
-    logger.warn(`Rédaction message IA échouée pour ${ctx.numeroDossier}:`, err)
+    logger.warn(`Rédaction message IA échouée pour un dossier:`, err)
     return null
   }
 }
