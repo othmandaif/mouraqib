@@ -1,5 +1,6 @@
 # API + workers MalafiPro. Debian (pas Alpine) : Chromium/Playwright n'est pas supporté sur Alpine.
 FROM node:20-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
 # Lockfile facultatif (monorepo : le package-lock.json est à la racine)

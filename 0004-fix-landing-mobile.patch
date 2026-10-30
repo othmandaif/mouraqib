@@ -1,0 +1,34 @@
+From eb254fbee9e89c8ac063f87d00f55da8f10d344d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 20:04:50 +0000
+Subject: [PATCH] =?UTF-8?q?fix(landing):=20d=C3=A9bordement=20horizontal?=
+ =?UTF-8?q?=20sur=20mobile=20(bouton=20d'essai=20flottant)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Le bouton fixe (left/right 16px) ajoutait son padding à la largeur (box-sizing content-box) : 48px de trop.
+box-sizing: border-box dans la landing + overflow-x: clip par sécurité.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012bLQpdFSSZPuuoKv3SQWtB
+---
+ apps/web/components/landing/styles.ts | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/apps/web/components/landing/styles.ts b/apps/web/components/landing/styles.ts
+index 54985eb..68b4b3e 100644
+--- a/apps/web/components/landing/styles.ts
++++ b/apps/web/components/landing/styles.ts
+@@ -1,6 +1,8 @@
+ // Styles de la landing (tokens V2 : claude/DESIGN_UI_MALAFIPRO.md). Propriétés logiques (inline-start/end) : marche en RTL et LTR.
+ export const CSS = `
+ .lp a{text-decoration:none;color:inherit}
++.lp{overflow-x:clip}
++.lp *,.lp *::before,.lp *::after{box-sizing:border-box}
+ .lp h3{color:inherit}
+ .lp[lang=fr] h1,.lp[lang=fr] h2,.lp[lang=fr] h3{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif}
+ .lp .num{font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+-- 
+2.43.0
+
