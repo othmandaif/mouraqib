@@ -23,6 +23,7 @@ const AR: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/Contenu trop volumineux/i, 'المحتوى كبير جداً.'],
   [/Erreur interne du serveur/i, 'حدث خطأ في الخادم. أعيدوا المحاولة بعد لحظات.'],
   [/Abonnement expiré/i, 'انتهى اشتراككم. تواصلوا معنا للتجديد، والملفات الحالية ما زالت تحت المتابعة.'],
+  [/Juridiction incompatible avec le code/i, 'المحكمة المختارة لا تطابق رمز الملف. اختاروا المحكمة من القائمة المقترحة.'],
   [/Limite de dossiers atteinte/i, 'بلغتم الحد الأقصى لعدد الملفات في عرضكم. تواصلوا معنا لتوسيعه.'],
   [/Lien expiré/i, 'انتهت صلاحية الرابط. اطلبوا رابطاً جديداً من مستشارنا.'],
   [/Email déjà utilisé/i, 'هذا البريد مستعمل في حساب آخر.'],

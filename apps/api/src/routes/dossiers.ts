@@ -6,12 +6,10 @@ import { requireAuth, sansSecretaire, AuthRequest } from '../middleware/auth'
 import { limiter } from '../middleware/securite'
 import { verifierAjoutDossier } from '../middleware/subscription'
 import { scraperQueue, nlpQueue, searchQueue, deadlineQueue, redisConnection, searchResultKey } from '../jobs/queues'
-import { findTribunalCode, TRIBUNAUX_COMPLETS } from '../services/scraper/mahakimScraper'
+import { findTribunalCode } from '../services/scraper/mahakimScraper'
+import { libellesMahakim } from '../services/juridictions/referentiel'
 import { logger } from '../utils/logger'
 import { DeadlineService } from '../services/deadlines/deadlineService'
-import { actesSuggeres } from '../services/documents/packDossier'
-import { lireProfil } from '../services/facturation/profil'
-import { adversaireDuDossier } from './clients'
 
 const router = Router()
 const deadlineService = new DeadlineService()
@@ -319,7 +317,11 @@ router.post('/rechercher', requireAuth, limiter('recherche', 20, 600), async (re
     return
   }
 
-  const { anneeDossier, codeRole, numeroDossier, courAppel, tribunalPrimaire } = parse.data
+  const { anneeDossier, codeRole, numeroDossier } = parse.data
+  // Libellés exacts de mahakim pour le type du code (8xxx → juridictions de commerce…)
+  const lib = libellesMahakim(codeRole, parse.data.courAppel, parse.data.tribunalPrimaire)
+  if (!lib) { res.status(400).json({ error: 'Juridiction incompatible avec le code du dossier' }); return }
+  const { courAppel, tribunalPrimaire } = lib
 
   try {
     const job = await searchQueue.add(
@@ -398,7 +400,10 @@ router.post('/', requireAuth, verifierAjoutDossier, async (req: AuthRequest, res
       return
     }
 
-    const { anneeDossier, codeRole, numeroDossier, courAppel, tribunalPrimaire, titreAffaire, typeProcedure, rawData, roleClient } = parse.data
+    const { anneeDossier, codeRole, numeroDossier, titreAffaire, typeProcedure, rawData, roleClient } = parse.data
+    const lib = libellesMahakim(codeRole, parse.data.courAppel, parse.data.tribunalPrimaire)
+    if (!lib) { res.status(400).json({ error: 'Juridiction incompatible avec le code du dossier' }); return }
+    const { courAppel, tribunalPrimaire } = lib
     // Un acte dont la date est illisible (format inattendu sur mahakim) est ignoré : il ne doit pas empêcher
     // l'ajout du dossier. La synchronisation suivante le relira.
     const evenements = parse.data.evenements
@@ -406,7 +411,10 @@ router.post('/', requireAuth, verifierAjoutDossier, async (req: AuthRequest, res
       .map((ev) => ({ ...ev, dateAudience: dateLisible(ev.dateAudience) ? ev.dateAudience : null }))
     const numComplet = `${anneeDossier}/${codeRole}/${numeroDossier}`
 
-    const tribunal = findTribunalCode(courAppel, tribunalPrimaire) ?? courAppel
+    // Ancien code du référentiel si la juridiction y figure, sinon le libellé exact de mahakim.
+    // (Avant : `?? courAppel` → un tribunal hors de l'ancienne liste était perdu, et les synchronisations
+    //  cherchaient au niveau de la cour d'appel : dossier « introuvable ».)
+    const tribunal = findTribunalCode(courAppel, tribunalPrimaire) ?? tribunalPrimaire ?? courAppel
     const estCourAppel = !tribunalPrimaire
 
     // Même dossier déjà suivi par soi ou par un membre du cabinet (le numéro est stocké complet : « 2026/1201/55 »)
@@ -503,7 +511,6 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
       echeances: { where: { estComplete: false }, orderBy: { dateLimite: 'asc' } },
       documents: { select: { id: true, titre: true, statut: true, updatedAt: true }, orderBy: { updatedAt: 'desc' }, take: 10 },
       conversations: { select: { id: true, titre: true, updatedAt: true }, orderBy: { updatedAt: 'desc' }, take: 10 },
-      client: { select: { id: true, nom: true, type: true, telephone: true } },
     },
   })
 
@@ -518,10 +525,6 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response): Promise
 const PatchDossierSchema = z.object({
   roleClient: z.enum(['DEMANDEUR', 'DEFENDEUR', 'INCONNU']).optional(),
   titreAffaire: z.string().max(300).optional(),
-  // CRM
-  clientId: z.string().max(40).nullable().optional(),
-  partieAdverse: z.string().trim().max(300).nullable().optional(),
-  honorairesConvenusCentimes: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
 })
 
 // Modifier le rôle du client (recalcule عليكم / على الخصم) ou le titre
@@ -530,9 +533,6 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response): Promi
   if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
   const dossier = await prisma.dossier.findFirst({ where: { id: req.params.id, userId: { in: req.equipe! } } })
   if (!dossier) { res.status(404).json({ error: 'Dossier non trouvé' }); return }
-  if (parse.data.clientId && !(await prisma.client.findFirst({ where: { id: parse.data.clientId, userId: { in: req.equipe! } }, select: { id: true } }))) {
-    res.status(404).json({ error: 'Client non trouvé' }); return
-  }
   const updated = await prisma.dossier.update({ where: { id: dossier.id }, data: parse.data })
   if (parse.data.roleClient && parse.data.roleClient !== dossier.roleClient) {
     await deadlineService.recalculerCamps(dossier.id, parse.data.roleClient)
@@ -599,51 +599,6 @@ router.post('/:id/scraper', requireAuth, limiter('sync-dossier', 30, 3600), asyn
   })
 
   res.json({ message: 'Scraping lancé' })
-})
-
-// « تحضير ملف العمل » : toutes les données utiles aux documents du dossier + actes de procédure suggérés
-router.get('/:id/pack', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const d = await prisma.dossier.findFirst({
-    where: { id: req.params.id, userId: { in: req.equipe! } },
-    include: {
-      client: true,
-      evenements: { orderBy: { datePublicationGreffe: 'desc' }, take: 30, select: { texteArabe: true, typeEvenement: true, dateAudience: true, datePublicationGreffe: true } },
-      echeances: { where: { estComplete: false, estExpire: false }, orderBy: { dateLimite: 'asc' }, select: { descriptionAr: true, description: true, dateLimite: true, camp: true } },
-      factures: { where: { statut: { not: 'BROUILLON' } }, orderBy: { dateEmission: 'desc' }, select: { id: true, numero: true, type: true, statut: true, dateEmission: true, totalTtcCentimes: true } },
-      reglements: { orderBy: { date: 'desc' }, select: { id: true, montantCentimes: true, date: true, mode: true, reference: true, factureId: true } },
-    },
-  })
-  if (!d) { res.status(404).json({ error: 'Dossier non trouvé' }); return }
-  const [tribunal, avocat, profil] = await Promise.all([
-    prisma.tribunal.findUnique({ where: { code: d.tribunal }, select: { nomAr: true, ville: true } }),
-    prisma.user.findUnique({ where: { id: req.userId! }, select: { nom: true, prenom: true, barreau: true, telephone: true, email: true } }),
-    lireProfil(req.cabinetId ?? req.userId!, req.userId!),
-  ])
-  const [parties, ...reste] = (d.titreAffaire ?? '').split(/\s+[—-]\s+/)
-  const [demandeur, defendeur] = parties.split(/\s+ضد\s+/)
-  const nomClient = d.client?.nom || (d.roleClient === 'DEMANDEUR' ? demandeur?.trim() : d.roleClient === 'DEFENDEUR' ? defendeur?.trim() : '') || ''
-  const nomAdversaire = adversaireDuDossier(d)
-  const jug = d.evenements.find((e) => e.typeEvenement === 'JUGEMENT_RENDU' || e.typeEvenement === 'ORDONNANCE_RENDUE')
-  // Codes créés à l'ajout (TPI_CASA_CIVIL…) absents du référentiel : nom pris dans la liste des cours du scraper
-  const tribunalAr = tribunal?.nomAr
-    ?? TRIBUNAUX_COMPLETS.flatMap((c) => [{ code: c.code, nomAr: c.nomAr }, ...c.tribunauxPrimaires]).find((t) => t.code === d.tribunal)?.nomAr
-    ?? d.tribunal
-  const prochaineAudience = d.evenements.filter((e) => e.dateAudience && e.dateAudience >= new Date()).map((e) => e.dateAudience!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null
-  res.json({
-    dossier: {
-      id: d.id, numeroDossier: d.numeroDossier, tribunal: d.tribunal, tribunalAr, ville: tribunal?.ville ?? null, estCourAppel: d.estCourAppel,
-      typeProcedure: d.typeProcedure, titreAffaire: d.titreAffaire, objet: reste.join(' — ').trim(), roleClient: d.roleClient,
-      honorairesConvenusCentimes: d.honorairesConvenusCentimes, createdAt: d.createdAt, prochaineAudience,
-    },
-    client: d.client, nomClient, nomAdversaire, avocat, profil,
-    evenements: d.evenements, echeances: d.echeances, factures: d.factures, reglements: d.reglements,
-    jugement: jug ? { texte: jug.texteArabe, date: jug.datePublicationGreffe } : null,
-    actesIA: actesSuggeres({
-      estCourAppel: d.estCourAppel, typeProcedure: d.typeProcedure, roleClient: d.roleClient, numeroDossier: d.numeroDossier, tribunalAr,
-      nomClient, nomAdversaire, objet: reste.join(' — ').trim(), nbEvenements: d.evenements.length,
-      jugement: jug ? { texte: jug.texteArabe, date: jug.datePublicationGreffe } : null,
-    }),
-  })
 })
 
 router.get('/:id/evenements', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {

@@ -1,6 +1,7 @@
 import { Worker, Job } from 'bullmq'
 import { redisConnection, searchResultKey } from '../queues'
 import { MahakimScraper } from '../../services/scraper/mahakimScraper'
+import { JuridictionIntrouvable } from '../../services/juridictions/referentiel'
 import { logger, refDossier } from '../../utils/logger'
 
 // Une seule instance de scraper réutilisée (browser persistant) — clé de la performance.
@@ -50,10 +51,12 @@ export const searchWorker = new Worker(
         logger.info(`Recherche live OK pour ${refDossier(numComplet)}: ${data.evenements.length} événements`)
       }
     } catch (err) {
+      // Juridiction absente du menu de mahakim : message précis à l'avocat (≠ panne de mahakim)
+      const juridiction = err instanceof JuridictionIntrouvable
       logger.error(`Recherche live échouée pour ${refDossier(numComplet)}:`, err)
       payload = {
         trouve: false, titreAffaire: null, evenements: [], infosCarte: null,
-        parties: [], expertises: [], recours: [], dossiersLies: [], erreur: true,
+        parties: [], expertises: [], recours: [], dossiersLies: [], erreur: true, ...(juridiction ? { cause: 'juridiction' } : {}),
       }
     }
 

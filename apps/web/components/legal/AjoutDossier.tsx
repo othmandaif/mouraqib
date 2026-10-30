@@ -4,7 +4,7 @@ import { heure } from '@/components/legal/DeadlineCard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import { apiFetch, rechercherDossier, SearchResultPayload } from '@/lib/api'
-import { COURS_APPEL } from '@/lib/coursAppel'
+import { useApi } from '@/hooks/useApi'
 import { erreurAr } from '@/lib/erreurs'
 import { InfoGrid } from '@/components/legal/InfoGrid'
 import { EventsTimeline } from '@/components/legal/EventsTimeline'
@@ -19,6 +19,8 @@ const CSS = `
 .mp-add input:focus-visible,.mp-add select:focus-visible{border-color:#0E5A4E;box-shadow:0 0 0 4px #CDE5DD}
 .mp-add label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
 `
+type Juridictions = { type: string; libelle: string; cours: { nom: string; tribunaux: string[] | null }[] }
+
 const BTN_P: React.CSSProperties = { fontFamily: 'inherit', fontSize: 16, fontWeight: 600, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, borderRadius: 999, padding: '0 26px', minHeight: 50, cursor: 'pointer' }  // + className="mp-action" (survol, appui)
 const BTN_S: React.CSSProperties = { fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: '#FFFFFF', color: '#15201E', border: '1px solid #CFCAC0', borderRadius: 999, padding: '0 20px', minHeight: 48, cursor: 'pointer' }
 
@@ -43,7 +45,15 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
   const abort = useRef<AbortController | null>(null)
 
   useEffect(() => () => abort.current?.abort(), [])
-  const ca = useMemo(() => COURS_APPEL.find((c) => c.nomAr === courAppel), [courAppel])
+  // Juridictions proposées par mahakim POUR CE CODE (8xxx → commerce, 7xxx → administratif, 2xxx → pénal…)
+  const codeComplet = /^\d{4}$/.test(codeRole)
+  const { data: jur, loading: chargeJur } = useApi<Juridictions>(codeComplet ? `/tribunaux/juridictions?code=${codeRole}` : null, [codeRole])
+  const ca = useMemo(() => jur?.cours.find((c) => c.nom === courAppel), [jur, courAppel])
+  // Nouveau type de code (ex. 1201 → 8210) : l'ancien choix n'existe plus dans la liste
+  useEffect(() => {
+    if (jur && courAppel && !jur.cours.some((c) => c.nom === courAppel)) { setCourAppel(''); setTribunalPrimaire('') }
+  }, [jur, courAppel])
+  const nomTribunaux = jur?.type === 'commerce' ? 'المحكمة التجارية' : jur?.type === 'administratif' ? 'المحكمة الإدارية' : 'المحكمة الابتدائية'
   const peutChercher = /^\d{4}$/.test(annee) && !!codeRole && !!numero && !!courAppel
 
   const chercher = async (e: React.FormEvent) => {
@@ -154,7 +164,9 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
           {resultat && !resultat.trouve && (
             <div role="alert" style={{ background: '#FBF1EF', border: '1px solid #F0C9C2', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: '#6E1D14', lineHeight: 1.6 }}>
               {/* Panne du portail ≠ dossier introuvable : ne pas faire douter l'avocat de son numéro */}
-              {resultat.erreur
+              {resultat.cause === 'juridiction'
+                ? 'هذه المحكمة غير متوفرة حالياً على بوابة محاكم. تحققوا من الرمز والمحكمة، ثم أعيدوا المحاولة.'
+                : resultat.erreur
                 ? 'بوابة محاكم لا تستجيب حالياً. أعيدوا المحاولة بعد دقائق، رقم الملف ليس هو المشكل.'
                 : 'لم نجد هذا الملف على محاكم. تحققوا من السنة والرمز والرقم والمحكمة، ثم أعيدوا المحاولة.'}
             </div>
@@ -166,20 +178,22 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
               <label>الرمز<input inputMode="numeric" className="num" value={codeRole} placeholder="1201" onChange={(e) => setCodeRole(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
               <label>الرقم<input inputMode="numeric" className="num" value={numero} placeholder="845" onChange={(e) => setNumero(chiffres(e.target.value, 8))} style={{ textAlign: 'center' }} /></label>
             </div>
-            <span style={{ fontSize: 13, color: '#5E6B67' }}>مثال: <span className="num">2026/1201/845</span></span>
+            <span style={{ fontSize: 13, color: '#5E6B67' }}>
+              {jur ? <>نوع الملف حسب الرمز: <strong style={{ color: '#15201E' }}>{jur.libelle}</strong></> : <>مثال: <span className="num">2026/1201/845</span></>}
+            </span>
           </fieldset>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
             <label>محكمة الاستئناف
-              <select value={courAppel} onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire('') }} required>
-                <option value="">اختاروا المحكمة</option>
-                {COURS_APPEL.map((c) => <option key={c.nomAr} value={c.nomAr}>{c.nomAr.replace('محكمة الاستئناف ب', '').replace('محكمة الاستئناف ', '')}</option>)}
+              <select value={courAppel} onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire('') }} required disabled={!jur}>
+                <option value="">{!codeComplet ? 'اكتبوا الرمز أولاً' : chargeJur ? 'جارٍ التحميل…' : 'اختاروا المحكمة'}</option>
+                {jur?.cours.map((c) => <option key={c.nom} value={c.nom}>{c.nom.replace(/^محكمة ال[اإ]ستئناف\s*(ب(?=\S))?/, '')}</option>)}
               </select>
             </label>
-            <label><span>المحكمة الابتدائية <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
-              <select value={tribunalPrimaire} onChange={(e) => setTribunalPrimaire(e.target.value)} disabled={!ca}>
+            <label><span>{nomTribunaux} <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
+              <select value={tribunalPrimaire} onChange={(e) => setTribunalPrimaire(e.target.value)} disabled={!ca?.tribunaux?.length}>
                 <option value="">الملف بمحكمة الاستئناف</option>
-                {ca?.tribunauxPrimaires.map((t) => <option key={t} value={t}>{t}</option>)}
+                {ca?.tribunaux?.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
           </div>

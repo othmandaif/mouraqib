@@ -6,6 +6,7 @@ import { instantMaroc } from '../../utils/dateMaroc'
 import { avecVerrou } from '../../utils/verrou'
 import { createHash } from 'crypto'
 import { cleSync, noterEchecDossier, effacerEchecDossier, mahakimRepond, mahakimEchec } from './santeMahakim'
+import { libellesMahakim, JuridictionIntrouvable } from '../juridictions/referentiel'
 
 /** Le portail n'a pas répondu correctement après plusieurs essais (≠ dossier introuvable, qui renvoie null). */
 export class EchecTechniqueMahakim extends Error {}
@@ -182,6 +183,7 @@ export class MahakimScraper {
         if (tentative >= 2) return data
         logger.warn(`Scrape ${refDossier(numeroDossier)} incomplet (tentative ${tentative}/${CONFIG.MAX_TENTATIVES})`)
       } catch (err) {
+        if (err instanceof JuridictionIntrouvable) throw err // erreur de référentiel, pas une panne : inutile de réessayer
         derniereErreur = err
         logger.warn(`Scrape ${refDossier(numeroDossier)} échoué (tentative ${tentative}/${CONFIG.MAX_TENTATIVES}):`, err)
         await this.ensureBrowser() // le browser a peut-être crashé
@@ -247,7 +249,8 @@ export class MahakimScraper {
       await this.takeDebugScreenshot(page, numeroDossier, '03-after-fill')
 
       // Sélection de la cour d'appel
-      await selectPrimeDropdown(page, courAppel)
+      // Juridiction absente du menu = référentiel périmé ou mauvais choix : erreur distincte (pas « introuvable »)
+      if (!(await selectPrimeDropdown(page, courAppel, 'ca'))) throw new JuridictionIntrouvable(courAppel)
       await this.takeDebugScreenshot(page, numeroDossier, '04-after-ca-select')
 
       if (tribunalPrimaire) {
@@ -263,7 +266,7 @@ export class MahakimScraper {
         await dd2.first().waitFor({ state: 'visible', timeout: 6000 }).catch(() => {
           logger.warn(`2e dropdown (tribunaux primaires) non apparu pour ${refDossier(numeroDossier)}`)
         })
-        await selectPrimeDropdown(page, tribunalPrimaire)
+        if (!(await selectPrimeDropdown(page, tribunalPrimaire, 'tp'))) throw new JuridictionIntrouvable(tribunalPrimaire)
         await this.takeDebugScreenshot(page, numeroDossier, '05-after-tp-select')
       }
 
@@ -552,7 +555,7 @@ export class MahakimScraper {
   }
 
   private async synchroniserSansVerrou(dossier: { id: string; numeroDossier: string; tribunal: string }): Promise<number> {
-    const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
+    const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal, dossier.numeroDossier.split('/')[1])
     const cle = cleSync(dossier.numeroDossier, dossier.tribunal)
     let data: DossierData | null
     try {
@@ -561,6 +564,7 @@ export class MahakimScraper {
       // Panne : ce dossier attend avant de repasser, et le coupe-circuit compte l'échec
       await noterEchecDossier(cle)
       if (e instanceof EchecTechniqueMahakim) await mahakimEchec()
+      if (e instanceof JuridictionIntrouvable) logger.warn(`${e.message} — relancer scripts/collecter-juridictions.ts si mahakim a changé ses listes`)
       throw e
     }
     await mahakimRepond()
@@ -696,11 +700,12 @@ async function cocherCaseTribunauxPrimaires(page: Page): Promise<boolean> {
 /**
  * Ouvre un p-dropdown PrimeNG et sélectionne l'option par texte.
  */
-async function selectPrimeDropdown(page: Page, optionText: string): Promise<boolean> {
-  const isCA = optionText.includes('محكمة الاستئناف')
-  const isTP = optionText.includes('المحكمة الابتدائية')
-  const formcontrol = isTP ? 'tribunaux_primaires' : isCA ? 'tribunal' : null
-  const placeholderFragment = isCA ? 'محكمة الاستئناف' : isTP ? 'المحكمة الابتدائية' : null
+async function selectPrimeDropdown(page: Page, optionText: string, role: 'ca' | 'tp'): Promise<boolean> {
+  // Rôle explicite : deviner d'après le texte ratait « محكمة الإستئناف التجارية », « المحكمة التجارية », « المركز القضائي »
+  const isCA = role === 'ca'
+  const isTP = role === 'tp'
+  const formcontrol = isTP ? 'tribunaux_primaires' : 'tribunal'
+  const placeholderFragment = isCA ? 'محكمة الاستئناف' : 'المحكمة الابتدائية'
 
   let pDropdown: Locator
   if (formcontrol) {
@@ -744,6 +749,7 @@ async function selectPrimeDropdown(page: Page, optionText: string): Promise<bool
       var norm = function(s) {
         return (s || '')
           .replace(/[\\u00A0\\u200B-\\u200F\\u202A-\\u202E]/g, ' ') // espaces invisibles
+          .replace(/[\\u0623\\u0625\\u0622]/g, '\\u0627') // أ إ آ → ا (« الإستئناف » / « الاستئناف »)
           .replace(/\\s+/g, ' ')
           .trim();
       };
@@ -1143,8 +1149,17 @@ for (const ca of TRIBUNAUX_COMPLETS) {
   }
 }
 
-export function resolveTribunalNames(tribunal: string): { courAppel: string; tribunalPrimaire?: string } {
-  return TRIBUNAUX_AR[tribunal] ?? { courAppel: tribunal }
+/**
+ * Libellés mahakim d'un dossier enregistré. `tribunal` est un ancien code (TPI_RABAT…) ou, depuis le
+ * référentiel mahakim, le libellé exact du tribunal (ou de la cour d'appel).
+ * Avec le code du dossier, les libellés sont recalés sur la liste du bon type (commerce, pénal…).
+ */
+export function resolveTribunalNames(tribunal: string, codeDossier?: string): { courAppel: string; tribunalPrimaire?: string } {
+  const ancien = TRIBUNAUX_AR[tribunal]
+  const estCour = /^محكمة ال[اإ]ستئناف/.test(tribunal)
+  const brut = ancien ?? (estCour ? { courAppel: tribunal } : { courAppel: '', tribunalPrimaire: tribunal })
+  if (!codeDossier) return ancien ?? { courAppel: tribunal }
+  return libellesMahakim(codeDossier, brut.courAppel, brut.tribunalPrimaire) ?? (ancien ?? { courAppel: tribunal })
 }
 
 export function findTribunalCode(courAppel: string, tribunalPrimaire?: string): string | null {

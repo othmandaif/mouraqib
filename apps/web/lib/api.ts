@@ -169,6 +169,8 @@ export interface SearchResultPayload {
   recours: any[]
   dossiersLies: any[]
   erreur?: boolean
+  /** 'juridiction' : la juridiction n'existe pas dans le menu de mahakim (≠ panne) */
+  cause?: string
 }
 
 interface PollOptions {
