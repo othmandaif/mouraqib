@@ -1,0 +1,733 @@
+From 73a0ca4ee23b4b6f1b8eca902a47169c99f559c5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 30 Oct 2026 21:42:01 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?=C3=89quipe=20g=C3=A9r=C3=A9e=20par=20le=20?=
+ =?UTF-8?q?responsable=20(cr=C3=A9ation=20directe,=20droits,=20mot=20de=20?=
+ =?UTF-8?q?passe,=20retrait)=20;=20suppression=20de=20compte=20par=20l'adm?=
+ =?UTF-8?q?in?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- User.droitsRetires (migration 20261030000000_droits_membres ; secrétaires existantes : sans suppression de dossiers)
+- middleware exigerDroit(SUPPRESSION_DOSSIERS | CRM | FACTURATION | IA) ; sansSecretaire = exigerDroit('SUPPRESSION_DOSSIERS') ;
+  /assistant et /documents exigent IA ; requireAuth idempotent (pas de double lecture)
+- /auth/me renvoie les droits ; POST /auth/equipe/membres (mot de passe provisoire), PATCH rôle/droits,
+  POST …/reinitialiser-mdp, DELETE (dossiers et rendez-vous transférés au responsable, purge à J+30)
+- admin : POST /comptes/:id/supprimer (accès coupé, purge à J+30) ; réactiver annule la suppression
+- site : écran Équipe (création, droits, mot de passe provisoire, retrait, textes d'aide) ; menus et boutons
+  masqués selon les droits ; admin « حذف الحساب » et badge « يُحذف في … »
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01D7ZppDnmu8ZRvoBj927TrA
+---
+ .../migration.sql                             |   4 +
+ apps/api/prisma/schema.prisma                 |   2 +
+ apps/api/src/middleware/auth.ts               |  24 +++-
+ apps/api/src/routes/admin.ts                  |  16 ++-
+ apps/api/src/routes/auth.ts                   | 100 ++++++++++++++--
+ apps/api/src/routes/index.ts                  |   5 +-
+ apps/web/app/(app)/admin/page.tsx             |  13 ++-
+ apps/web/app/(app)/dossiers/[id]/page.tsx     |  11 +-
+ apps/web/app/(app)/dossiers/page.tsx          |   7 +-
+ apps/web/app/(app)/parametres/page.tsx        | 107 ++++++++++++++----
+ apps/web/components/layout/AppShell.tsx       |  17 +--
+ apps/web/components/legal/DeadlineCard.tsx    |   4 +-
+ apps/web/hooks/useAuth.ts                     |   5 +
+ 13 files changed, 261 insertions(+), 54 deletions(-)
+ create mode 100644 apps/api/prisma/migrations/20261030000000_droits_membres/migration.sql
+
+diff --git a/apps/api/prisma/migrations/20261030000000_droits_membres/migration.sql b/apps/api/prisma/migrations/20261030000000_droits_membres/migration.sql
+new file mode 100644
+index 0000000..aa4f23b
+--- /dev/null
++++ b/apps/api/prisma/migrations/20261030000000_droits_membres/migration.sql
+@@ -0,0 +1,4 @@
++-- Droits par membre du cabinet (gérés par le responsable). Vide = tous les droits.
++ALTER TABLE "User" ADD COLUMN "droitsRetires" TEXT[] DEFAULT ARRAY[]::TEXT[];
++-- Les secrétaires existantes gardent leur comportement : pas d'archivage ni de suppression de dossiers
++UPDATE "User" SET "droitsRetires" = ARRAY['SUPPRESSION_DOSSIERS'] WHERE "role" = 'SECRETAIRE';
+diff --git a/apps/api/prisma/schema.prisma b/apps/api/prisma/schema.prisma
+index 76064ed..6ed10a8 100644
+--- a/apps/api/prisma/schema.prisma
++++ b/apps/api/prisma/schema.prisma
+@@ -19,6 +19,8 @@ model User {
+   whatsappNumero  String?  // Peut différer du téléphone
+   whatsappVerifie Boolean  @default(false)
+   role            UserRole @default(AVOCAT)
++  /// Droits retirés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). Vide = tous les droits.
++  droitsRetires   String[] @default([])
+ 
+   // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
+   statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts
+diff --git a/apps/api/src/middleware/auth.ts b/apps/api/src/middleware/auth.ts
+index bc190ef..97f564b 100644
+--- a/apps/api/src/middleware/auth.ts
++++ b/apps/api/src/middleware/auth.ts
+@@ -14,9 +14,16 @@ export interface AuthRequest extends Request {
+    * À utiliser comme `userId: { in: req.equipe }` dans toute requête sur les dossiers.
+    */
+   equipe?: string[]
++  /** Droits retirés par le responsable du cabinet (voir DROITS). */
++  droitsRetires?: string[]
+ }
+ 
++/** Droits qu'un responsable de cabinet peut retirer à un membre. */
++export const DROITS = ['SUPPRESSION_DOSSIERS', 'CRM', 'FACTURATION', 'IA'] as const
++export type Droit = (typeof DROITS)[number]
++
+ export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
++  if (req.userId) { next(); return } // déjà authentifié par le routeur parent (contrôle des droits) : pas de 2e lecture
+   const header = req.headers.authorization
+   if (!header?.startsWith('Bearer ')) {
+     res.status(401).json({ error: 'Token manquant' })
+@@ -30,7 +37,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
+ 
+     const session = await prisma.session.findUnique({
+       where: { id: payload.sessionId },
+-      select: { id: true, userId: true, expiresAt: true, user: { select: { role: true, statut: true, doitChangerMdp: true, cabinetId: true } } },
++      select: { id: true, userId: true, expiresAt: true, user: { select: { role: true, statut: true, doitChangerMdp: true, cabinetId: true, droitsRetires: true } } },
+     })
+ 
+     if (!session || session.expiresAt < new Date() || session.userId !== payload.userId) {
+@@ -54,6 +61,8 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
+     req.userRole = session.user.role
+     req.sessionId = session.id
+     req.cabinetId = session.user.cabinetId
++    // Le responsable et l'avocat seul ont toujours tous les droits
++    req.droitsRetires = session.user.cabinetId && session.user.role !== 'ASSOCIE_GERANT' ? session.user.droitsRetires : []
+     // Membres actifs du cabinet : un membre désactivé garde ses dossiers visibles pour l'équipe
+     req.equipe = session.user.cabinetId
+       ? (await prisma.user.findMany({ where: { cabinetId: session.user.cabinetId }, select: { id: true } })).map((u) => u.id)
+@@ -64,12 +73,17 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
+   }
+ }
+ 
+-/** Actions qui retirent un dossier du suivi (suppression, archivage) : interdites au compte « كاتب ». */
+-export function sansSecretaire(req: AuthRequest, res: Response, next: NextFunction): void {
+-  if (req.userRole === 'SECRETAIRE') { res.status(403).json({ error: "Réservé à l'avocat" }); return }
+-  next()
++/** Refuse l'accès si le responsable du cabinet a retiré ce droit au membre. */
++export function exigerDroit(droit: Droit) {
++  return (req: AuthRequest, res: Response, next: NextFunction): void => {
++    if (req.droitsRetires?.includes(droit)) { res.status(403).json({ error: 'Droit non accordé par le responsable du cabinet' }); return }
++    next()
++  }
+ }
+ 
++/** Actions qui retirent un dossier du suivi (suppression, archivage) : selon le droit du membre. */
++export const sansSecretaire = exigerDroit('SUPPRESSION_DOSSIERS')
++
+ export function requireRole(...roles: string[]) {
+   return (req: AuthRequest, res: Response, next: NextFunction): void => {
+     if (!req.userRole || !roles.includes(req.userRole)) {
+diff --git a/apps/api/src/routes/admin.ts b/apps/api/src/routes/admin.ts
+index 4628a3b..2e8c53d 100644
+--- a/apps/api/src/routes/admin.ts
++++ b/apps/api/src/routes/admin.ts
+@@ -116,7 +116,7 @@ router.get('/comptes', async (_req: AuthRequest, res: Response): Promise<void> =
+     where: { role: { not: 'ADMIN' } },
+     select: {
+       id: true, email: true, nom: true, prenom: true, telephone: true, barreau: true, role: true, whatsappVerifie: true, createdAt: true, cabinetId: true,
+-      statut: true, demande: true, activeAt: true, desactiveAt: true, motifDesactivation: true, doitChangerMdp: true,
++      statut: true, demande: true, activeAt: true, desactiveAt: true, motifDesactivation: true, doitChangerMdp: true, suppressionDemandeeAt: true,
+       cabinet: { select: { nom: true } },
+       abonnements: { where: { statut: 'ACTIF' }, orderBy: { dateDebut: 'desc' }, take: 1 },
+       sessions: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+@@ -308,12 +308,24 @@ router.post('/comptes/:id/desactiver', async (req: AuthRequest, res: Response):
+ router.post('/comptes/:id/reactiver', async (req: AuthRequest, res: Response): Promise<void> => {
+   const r = await prisma.user.updateMany({
+     where: { id: req.params.id, statut: 'DESACTIVE' },
+-    data: { statut: 'ACTIF', desactiveAt: null, motifDesactivation: null },
++    data: { statut: 'ACTIF', desactiveAt: null, motifDesactivation: null, suppressionDemandeeAt: null }, // annule aussi une suppression
+   })
+   if (!r.count) { res.status(404).json({ error: 'Compte introuvable' }); return }
+   res.json({ ok: true })
+ })
+ 
++// Suppression par le commercial : accès coupé tout de suite, données effacées par la purge à J+30
++// (réactiver le compte avant cette date annule la suppression).
++router.post('/comptes/:id/supprimer', async (req: AuthRequest, res: Response): Promise<void> => {
++  const r = await prisma.user.updateMany({
++    where: { id: req.params.id, role: { not: 'ADMIN' }, statut: { not: 'EN_ATTENTE' } },
++    data: { statut: 'DESACTIVE', desactiveAt: new Date(), motifDesactivation: 'حذف الحساب', suppressionDemandeeAt: new Date() },
++  })
++  if (!r.count) { res.status(404).json({ error: 'Compte introuvable' }); return }
++  await prisma.session.deleteMany({ where: { userId: req.params.id } })
++  res.json({ ok: true })
++})
++
+ // ─── Comptabilité : recettes (paiements enregistrés) et dépenses du service ─────
+ 
+ const CATEGORIES = ['HEBERGEMENT', 'WHATSAPP', 'IA', 'DOMAINE', 'MARKETING', 'LOGICIEL', 'AUTRE'] as const
+diff --git a/apps/api/src/routes/auth.ts b/apps/api/src/routes/auth.ts
+index be6a7ca..e748938 100644
+--- a/apps/api/src/routes/auth.ts
++++ b/apps/api/src/routes/auth.ts
+@@ -4,11 +4,11 @@ import jwt from 'jsonwebtoken'
+ import { z } from 'zod'
+ import { prisma } from '../utils/prisma'
+ import { WhatsAppService } from '../services/whatsapp/whatsappService'
+-import { requireAuth, AuthRequest } from '../middleware/auth'
++import { requireAuth, AuthRequest, DROITS } from '../middleware/auth'
+ import { limiter } from '../middleware/securite'
+ import { redisConnection } from '../jobs/queues'
+ import { randomBytes, randomInt } from 'crypto'
+-import { emailAutorise, champNom, champTelephone } from '../services/auth/comptes'
++import { emailAutorise, champNom, champTelephone, motDePasseProvisoire } from '../services/auth/comptes'
+ import { abonnementDe } from '../services/abonnements/rappelsAbonnement'
+ import { OFFRES } from '../services/abonnements/offres'
+ import { emailConfigure, envoyerEmail, messageCodeReinitialisation } from '../services/email/emailService'
+@@ -269,7 +269,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
+       },
+     },
+   })
+-  res.json(user)
++  res.json(user && { ...user, droits: DROITS.filter((d) => !req.droitsRetires!.includes(d)) })
+ })
+ 
+ const ProfilSchema = z.object({
+@@ -351,7 +351,7 @@ router.delete('/suppression', requireAuth, async (req: AuthRequest, res: Respons
+ router.get('/equipe', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+   const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { cabinetId: true, role: true } })
+   const membres = me?.cabinetId
+-    ? await prisma.user.findMany({ where: { cabinetId: me.cabinetId }, select: { id: true, nom: true, prenom: true, email: true, role: true }, orderBy: { createdAt: 'asc' } })
++    ? await prisma.user.findMany({ where: { cabinetId: me.cabinetId, suppressionDemandeeAt: null }, select: { id: true, nom: true, prenom: true, email: true, role: true, droitsRetires: true, doitChangerMdp: true }, orderBy: { createdAt: 'asc' } })
+     : await prisma.user.findMany({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, email: true, role: true } })
+   const invitations = await prisma.invitation.findMany({
+     where: { accepteeAt: null, createdAt: { gt: new Date(Date.now() - INVITATION_JOURS * 86_400_000) }, invitant: me?.cabinetId ? { cabinetId: me.cabinetId } : { id: req.userId! } },
+@@ -374,7 +374,7 @@ async function placesCabinet(userId: string, cabinetId: string | null) {
+   const depuis = new Date(Date.now() - INVITATION_JOURS * 86_400_000)
+   const [membres, enAttente] = cabinetId
+     ? await Promise.all([
+-        prisma.user.count({ where: { cabinetId } }),
++        prisma.user.count({ where: { cabinetId, suppressionDemandeeAt: null } }),
+         prisma.invitation.count({ where: { accepteeAt: null, createdAt: { gt: depuis }, invitant: { cabinetId } } }),
+       ])
+     : [1, 0]
+@@ -412,13 +412,91 @@ router.delete('/equipe/invitations/:id', requireAuth, async (req: AuthRequest, r
+   res.json({ ok: true, supprimees: r.count })
+ })
+ 
++const champDroits = z.array(z.enum(DROITS)).max(DROITS.length)
++const MembreSchema = z.object({
++  prenom: champNom, nom: champNom, email: z.string().trim().toLowerCase().email(),
++  role: z.enum(['AVOCAT', 'SECRETAIRE']), droitsRetires: champDroits.default([]),
++})
++const ModifMembreSchema = z.object({ role: z.enum(['AVOCAT', 'SECRETAIRE']).optional(), droitsRetires: champDroits.optional() })
++
++/** Responsable du cabinet (ou avocat seul avec une offre cabinet, avant la création du cabinet). */
++async function responsable(req: AuthRequest) {
++  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, cabinetId: true, role: true } })
++  return me && (!me.cabinetId || me.role === 'ASSOCIE_GERANT') ? me : null
++}
++/** Membre du cabinet du responsable (jamais lui-même). */
++async function membreDuCabinet(req: AuthRequest, id: string) {
++  const me = await responsable(req)
++  if (!me?.cabinetId || id === me.id) return null
++  const m = await prisma.user.findFirst({ where: { id, cabinetId: me.cabinetId, suppressionDemandeeAt: null }, select: { id: true, email: true } })
++  return m && { me, m }
++}
++
++// Le responsable crée directement le compte : mot de passe provisoire affiché, à changer à la 1re connexion
++router.post('/equipe/membres', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
++  const parse = MembreSchema.safeParse(req.body)
++  if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
++  const d = parse.data
++  const me = await responsable(req)
++  if (!me) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
++  const places = await placesCabinet(me.id, me.cabinetId)
++  if (!places) { res.status(403).json({ error: 'Offre cabinet requise pour inviter' }); return }
++  if (places.max >= 0 && places.utilisees >= places.max) { res.status(403).json({ error: "Limite d'utilisateurs atteinte" }); return }
++  if (!emailAutorise(d.email)) { res.status(400).json({ error: 'Adresse e-mail non acceptée' }); return }
++  if (await prisma.user.findUnique({ where: { email: d.email }, select: { id: true } })) { res.status(409).json({ error: 'Email déjà utilisé' }); return }
++  const provisoire = motDePasseProvisoire()
++  const membre = await prisma.$transaction(async (tx) => {
++    let cabinetId = me.cabinetId
++    if (!cabinetId) { // premier membre : le cabinet est créé, l'avocat en devient le responsable
++      cabinetId = (await tx.cabinet.create({ data: { nom: `مكتب ذ. ${me.nom}` } })).id
++      await tx.user.update({ where: { id: me.id }, data: { cabinetId, role: 'ASSOCIE_GERANT' } })
++    }
++    return tx.user.create({
++      data: {
++        prenom: d.prenom, nom: d.nom, email: d.email, role: d.role, droitsRetires: d.droitsRetires, cabinetId,
++        statut: 'ACTIF', activeAt: new Date(), passwordHash: await bcrypt.hash(provisoire, 12), doitChangerMdp: true,
++      },
++      select: { id: true },
++    })
++  })
++  res.status(201).json({ id: membre.id, motDePasseProvisoire: provisoire })
++})
++
+ router.patch('/equipe/membres/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+-  const role = req.body?.role
+-  if (role !== 'AVOCAT' && role !== 'SECRETAIRE') { res.status(400).json({ error: 'Rôle invalide' }); return }
+-  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { cabinetId: true, role: true } })
+-  if (!me?.cabinetId || me.role !== 'ASSOCIE_GERANT') { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
+-  const r = await prisma.user.updateMany({ where: { id: req.params.id, cabinetId: me.cabinetId, NOT: { id: req.userId! } }, data: { role } })
+-  res.json({ ok: true, maj: r.count })
++  const parse = ModifMembreSchema.safeParse(req.body)
++  if (!parse.success) { res.status(400).json({ error: 'Rôle invalide' }); return }
++  const ok = await membreDuCabinet(req, req.params.id)
++  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
++  await prisma.user.update({ where: { id: ok.m.id }, data: parse.data })
++  res.json({ ok: true, maj: 1 })
++})
++
++router.post('/equipe/membres/:id/reinitialiser-mdp', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
++  const ok = await membreDuCabinet(req, req.params.id)
++  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
++  const provisoire = motDePasseProvisoire()
++  await prisma.user.update({ where: { id: ok.m.id }, data: { passwordHash: await bcrypt.hash(provisoire, 12), doitChangerMdp: true } })
++  await prisma.session.deleteMany({ where: { userId: ok.m.id } })
++  await redisConnection.del(`login-echec:${ok.m.email.toLowerCase()}`)
++  res.json({ motDePasseProvisoire: provisoire })
++})
++
++// Retrait d'un membre : ses dossiers et rendez-vous passent au responsable (le cabinet ne perd rien),
++// accès coupé tout de suite, compte effacé par la purge à J+30 (Paramètres › حذف الحساب).
++router.delete('/equipe/membres/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
++  const ok = await membreDuCabinet(req, req.params.id)
++  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
++  const { me, m } = ok
++  await prisma.$transaction([
++    // Dossier déjà suivi aussi par le responsable : on garde le sien (contrainte d'unicité), l'autre part avec la purge
++    prisma.$executeRaw`UPDATE "Dossier" d SET "userId" = ${me.id} WHERE d."userId" = ${m.id} AND NOT EXISTS (
++      SELECT 1 FROM "Dossier" p WHERE p."userId" = ${me.id} AND p."anneeDossier" = d."anneeDossier" AND p."codeRole" = d."codeRole"
++        AND p."numeroDossier" = d."numeroDossier" AND p.tribunal = d.tribunal)`,
++    prisma.rendezVous.updateMany({ where: { userId: m.id }, data: { userId: me.id } }),
++    prisma.user.update({ where: { id: m.id }, data: { statut: 'DESACTIVE', suppressionDemandeeAt: new Date() } }),
++    prisma.session.deleteMany({ where: { userId: m.id } }),
++  ])
++  res.json({ ok: true })
+ })
+ 
+ const TelephoneSchema = z.object({ telephone: z.string().regex(/^\+?[\d\s]{9,16}$/) })
+diff --git a/apps/api/src/routes/index.ts b/apps/api/src/routes/index.ts
+index 7378fe5..a088065 100644
+--- a/apps/api/src/routes/index.ts
++++ b/apps/api/src/routes/index.ts
+@@ -11,6 +11,7 @@ import adminRouter from './admin'
+ import assistantRouter from './assistant'
+ import tribunauxRouter from './tribunaux'
+ import documentsRouter from './documents'
++import { requireAuth, exigerDroit } from '../middleware/auth'
+ 
+ const router = Router()
+ 
+@@ -23,8 +24,8 @@ router.use('/dashboard', dashboardRouter)
+ router.use('/calendrier', calendrierRouter)
+ router.use('/webhooks', webhooksRouter)
+ router.use('/admin', adminRouter)
+-router.use('/assistant', assistantRouter)
++router.use('/assistant', requireAuth, exigerDroit('IA'), assistantRouter)
+ router.use('/tribunaux', tribunauxRouter)
+-router.use('/documents', documentsRouter)
++router.use('/documents', requireAuth, exigerDroit('IA'), documentsRouter)
+ 
+ export default router
+\ No newline at end of file
+diff --git a/apps/web/app/(app)/admin/page.tsx b/apps/web/app/(app)/admin/page.tsx
+index 3ae2edf..4e0a6f5 100644
+--- a/apps/web/app/(app)/admin/page.tsx
++++ b/apps/web/app/(app)/admin/page.tsx
+@@ -18,7 +18,7 @@ import { Indicateur, useEnvoi as useActionLigne, Attente } from '@/components/ui
+ 
+ type Compte = {
+   id: string; email: string; nom: string; prenom: string; telephone: string | null; barreau: string | null; role: string
+-  whatsappVerifie: boolean; createdAt: string; dossiers: number; dossiersCabinet: number | null; derniereConnexion: string | null; cabinet: { nom: string } | null
++  whatsappVerifie: boolean; createdAt: string; dossiers: number; dossiersCabinet: number | null; suppressionDemandeeAt?: string | null; derniereConnexion: string | null; cabinet: { nom: string } | null
+   statut: 'EN_ATTENTE' | 'ACTIF' | 'DESACTIVE'; motifDesactivation: string | null; doitChangerMdp?: boolean
+   demande: { ville?: string; structure?: string; nbDossiers?: string; message?: string } | null
+   abonnement: null | { id: string; plan: Plan; estFondateur: boolean; prixMensuel: number | null; note: string | null; maxDossiers: number | null; essaiJusquAu: string | null; payeJusquAu: string | null; etat: EtatAbonnement; fin: string | null; joursRestants: number | null }
+@@ -152,6 +152,12 @@ export default function AdminPage() {
+     } catch (e: any) { toast(erreurAr(e?.message), 'error') } })
+   }
+   const refuser = (c: Compte) => differer([c.id], `رُفض طلب ذ. ${c.prenom} ${c.nom}.`, () => apiFetch(`/admin/demandes/${c.id}`, { method: 'DELETE' }), refetch)
++  const supprimer = (c: Compte) => {
++    if (!window.confirm(`حذف حساب ذ. ${c.prenom} ${c.nom}؟ يُغلق دخوله فوراً وتُمحى بياناته بعد 30 يوماً. إعادة التفعيل قبل ذلك تلغي الحذف.${c.cabinet ? ' تنبيه: إذا كان مسؤول مكتب، يفقد أعضاء المكتب اشتراكه.' : ''}`)) return
++    lancer(`del:${c.id}`, async () => {
++      try { await apiFetch(`/admin/comptes/${c.id}/supprimer`, { method: 'POST' }); toast('سيُحذف الحساب بعد 30 يوماً.', 'success'); await refetch() } catch (e: any) { toast(erreurAr(e?.message), 'error') }
++    })
++  }
+   const reactiver = (c: Compte) => lancer(`react:${c.id}`, async () => {
+     try { await apiFetch(`/admin/comptes/${c.id}/reactiver`, { method: 'POST' }); toast('أُعيد تفعيل الحساب.', 'success'); await refetch() } catch (e: any) { toast(erreurAr(e?.message), 'error') }
+   })
+@@ -167,6 +173,7 @@ export default function AdminPage() {
+       <button type="button" className="ad-btn" onClick={() => setPaiement(c)} disabled={!c.abonnement}>دفعة</button>
+       <button type="button" className="ad-btn" onClick={() => reinitialiserMdp(c)} disabled={occupe} aria-busy={envoi === `mdp:${c.id}`}><Attente actif={envoi === `mdp:${c.id}`} texte="جارٍ الإنشاء…" sombre><KeyRound size={15} aria-hidden />كلمة مرور مؤقتة</Attente></button>
+       <button type="button" className="ad-btn" style={{ color: '#9B2C20' }} onClick={() => setDesactivation(c)}><Power size={15} aria-hidden />تعطيل</button>
++      <button type="button" className="ad-btn" style={{ color: '#9B2C20' }} onClick={() => supprimer(c)} disabled={occupe}><Trash2 size={15} aria-hidden />حذف الحساب</button>
+         </div>
+       </details>
+     </>
+@@ -727,6 +734,10 @@ function Identite({ c }: { c: Compte }) {
+ }
+ 
+ function BadgeCompte({ c }: { c: Compte }) {
++  if (c.suppressionDemandeeAt) {
++    const le = new Date(new Date(c.suppressionDemandeeAt).getTime() + 30 * 86_400_000)
++    return <span title="إعادة التفعيل تلغي الحذف" style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', background: '#FBEAE7', color: '#9B2C20', whiteSpace: 'nowrap' }}>يُحذف في <span className="num">{fmtDate(le.toISOString())}</span></span>
++  }
+   return c.statut === 'DESACTIVE'
+     ? <span title={c.motifDesactivation ?? ''} style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', background: '#F1EFEA', color: '#4D5B57', whiteSpace: 'nowrap' }}>معطّل{c.motifDesactivation ? ` · ${c.motifDesactivation}` : ''}</span>
+     : <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '3px 10px', background: '#E3F0EC', color: '#0B4A40', whiteSpace: 'nowrap' }}>نشط</span>
+diff --git a/apps/web/app/(app)/dossiers/[id]/page.tsx b/apps/web/app/(app)/dossiers/[id]/page.tsx
+index b039304..7cc7ba8 100644
+--- a/apps/web/app/(app)/dossiers/[id]/page.tsx
++++ b/apps/web/app/(app)/dossiers/[id]/page.tsx
+@@ -7,6 +7,7 @@ import { Route as IcRoute, Contact as IdCard, Microscope, Files, MessagesSquare,
+ import Link from 'next/link'
+ import { Archive, ArchiveRestore, Check, FileText, MessageSquare, RefreshCw, Sparkles } from 'lucide-react'
+ import { useApi } from '@/hooks/useApi'
++import { useAuth, aDroit } from '@/hooks/useAuth'
+ import { apiFetch } from '@/lib/api'
+ import { useTribunaux } from '@/hooks/useTribunaux'
+ import { useToast } from '@/components/Toast'
+@@ -78,6 +79,8 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
+   const [editRole, setEditRole] = useState(false)
+   const { hidden, complete } = useCompleteWithUndo(refetch)
+   const { cle, occupe, lancer } = useEnvoi()
++  const { user } = useAuth()
++  const peutArchiver = aDroit(user, 'SUPPRESSION_DOSSIERS'), peutIA = aDroit(user, 'IA')
+ 
+   if (loading) return <SqueletteFiche />
+   // Erreur réseau ≠ dossier introuvable (404) : on propose de réessayer
+@@ -179,13 +182,14 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
+               <button type="button" disabled={occupe} aria-busy={cle === 'scraper'} onClick={() => action('scraper', () => apiFetch(`/dossiers/${id}/scraper`, { method: 'POST' }), 'بدأ التحديث من محاكم.')} style={{ ...BTN, gap: 8, fontSize: 15 }}>
+                 <Attente actif={cle === 'scraper'} texte="جارٍ الطلب…" sombre><RefreshCw size={18} aria-hidden />تحديث من محاكم</Attente>
+               </button>
++              {peutArchiver && (
+               <button type="button" aria-label={dossier.estActif === false ? 'استرجاع الملف' : 'أرشفة الملف'} title={dossier.estActif === false ? 'استرجاع' : 'أرشفة'}
+                 disabled={occupe} aria-busy={cle === 'archive'}
+                 onClick={() => action('archive', () => apiFetch(`/dossiers/${id}/${dossier.estActif === false ? 'restaurer' : 'archiver'}`, { method: 'PATCH' }), dossier.estActif === false ? 'استُرجع الملف.' : 'أُرشف الملف.')}
+                 style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center', borderRadius: '50%' }}>
+                 <Attente actif={cle === 'archive'} sombre>{dossier.estActif === false ? <ArchiveRestore size={18} aria-hidden /> : <Archive size={18} aria-hidden />}</Attente>
+-              </button>
+-              <Link className="mp-action" href={`/documents?dossier=${dossier.id}`} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 18px' }}><FileText size={18} aria-hidden />تحرير وثيقة</Link>
++              </button>)}
++              {peutIA && <Link className="mp-action" href={`/documents?dossier=${dossier.id}`} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 18px' }}><FileText size={18} aria-hidden />تحرير وثيقة</Link>}
+             </div>
+           </div>
+           <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 16, borderTop: '1px solid #EEEAE1', paddingTop: 18 }}>
+@@ -330,6 +334,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
+         </div>
+ 
+         <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
++          {peutIA && (
+           <section style={{ background: '#083B34', color: '#CFE5DD', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+               <h2 style={{ ...H2, color: '#FFFFFF' }}>قراءة الذكاء الاصطناعي</h2>
+@@ -347,7 +352,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
+                 <Attente actif={cle === 'analyser'} texte="جارٍ التحليل…"><Sparkles size={16} aria-hidden />{resumeIA.length ? 'تحديث القراءة' : 'تحليل الملف'}</Attente>
+               </button>
+             </div>
+-          </section>
++          </section>)}
+ 
+           {parties.length > 0 && (
+             <section style={{ ...CARD, padding: 20 }}>
+diff --git a/apps/web/app/(app)/dossiers/page.tsx b/apps/web/app/(app)/dossiers/page.tsx
+index b7370f5..9de7012 100644
+--- a/apps/web/app/(app)/dossiers/page.tsx
++++ b/apps/web/app/(app)/dossiers/page.tsx
+@@ -5,6 +5,7 @@ import Link from 'next/link'
+ import { useRouter } from 'next/navigation'
+ import { Plus, Search, X } from 'lucide-react'
+ import { useApi } from '@/hooks/useApi'
++import { useAuth, aDroit } from '@/hooks/useAuth'
+ import { apiFetch } from '@/lib/api'
+ import { useTribunaux } from '@/hooks/useTribunaux'
+ import { useToast, useActionAnnulable } from '@/components/Toast'
+@@ -162,6 +163,8 @@ export default function DossiersPage() {
+   const basculer = (id: string) => setSelection((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+   const ids = Array.from(selection)
+   const { cle: envoi, occupe, lancer } = useEnvoi()
++  const { user } = useAuth()
++  const peutArchiver = aDroit(user, 'SUPPRESSION_DOSSIERS')
+ 
+   const rafraichir = () => lancer('sync', async () => {
+     const r = await apiFetch<{ lances: number }>('/dossiers/scraper-lot', { method: 'POST', body: JSON.stringify({ ids }) }).catch(() => null)
+@@ -269,11 +272,11 @@ export default function DossiersPage() {
+           <span style={{ flex: 1 }} />
+           {onglet === 'archives' ? <>
+             <button type="button" onClick={restaurer} disabled={occupe} aria-busy={envoi === 'restaurer'} style={BARRE_BTN}><Attente actif={envoi === 'restaurer'} texte="جارٍ الاسترجاع…">استرجاع</Attente></button>
+-            <button type="button" onClick={supprimer} disabled={occupe} style={{ ...BARRE_BTN, background: '#C0392B', border: 0 }}>حذف نهائي</button>
++            {peutArchiver && <button type="button" onClick={supprimer} disabled={occupe} style={{ ...BARRE_BTN, background: '#C0392B', border: 0 }}>حذف نهائي</button>}
+           </> : <>
+             <button type="button" onClick={rafraichir} disabled={occupe} aria-busy={envoi === 'sync'} style={BARRE_BTN}><Attente actif={envoi === 'sync'} texte="جارٍ الطلب…">تحديث من محاكم</Attente></button>
+             <button type="button" onClick={exporter} style={BARRE_BTN}>تصدير</button>
+-            <button type="button" onClick={archiver} disabled={occupe} aria-busy={envoi === 'archiver'} style={{ ...BARRE_BTN, background: '#F5F3EE', color: '#15201E', border: 0 }}><Attente actif={envoi === 'archiver'} texte="جارٍ الأرشفة…" sombre>أرشفة</Attente></button>
++            {peutArchiver && <button type="button" onClick={archiver} disabled={occupe} aria-busy={envoi === 'archiver'} style={{ ...BARRE_BTN, background: '#F5F3EE', color: '#15201E', border: 0 }}><Attente actif={envoi === 'archiver'} texte="جارٍ الأرشفة…" sombre>أرشفة</Attente></button>}
+           </>}
+         </div>
+       )}
+diff --git a/apps/web/app/(app)/parametres/page.tsx b/apps/web/app/(app)/parametres/page.tsx
+index e61fd20..0e06bec 100644
+--- a/apps/web/app/(app)/parametres/page.tsx
++++ b/apps/web/app/(app)/parametres/page.tsx
+@@ -24,6 +24,8 @@ const LIGNES: { k: keyof Preferences['matrice']; label: React.ReactNode; verrou?
+ const RAPPELS: [number, React.ReactNode][] = [[7, <><span className="num">7</span> أيام</>], [3, <><span className="num">3</span> أيام</>], [1, 'يوم واحد'], [0, 'صباح اليوم الأخير'], [14, <><span className="num">14</span> يوماً</>]]
+ const CALME: [string, string][] = [['20:00', '07:00'], ['21:00', '07:00'], ['22:00', '07:00'], ['22:00', '06:00'], ['23:00', '07:00'], ['00:00', '00:00']]
+ const HEURES = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
++// Droits que le responsable accorde ou retire à chaque membre (même liste que l'API)
++const DROITS: [string, string][] = [['SUPPRESSION_DOSSIERS', 'أرشفة وحذف الملفات'], ['CRM', 'الموكلون'], ['FACTURATION', 'الفوترة'], ['IA', 'المساعد الذكي والوثائق']]
+ const ROLE_AR: Record<string, string> = { ASSOCIE_GERANT: 'مسؤول المكتب', AVOCAT: 'محامٍ', SECRETAIRE: 'كاتب', ADMIN: 'مسؤول' }
+ 
+ const CSS = `
+@@ -68,13 +70,15 @@ export default function ParametresPage() {
+   const { toast } = useToast()
+   const { data: prefsData } = useApi<{ whatsappNumero: string | null; whatsappVerifie: boolean; preferences: Preferences }>('/alertes/preferences')
+   const { data: sync, refetch: refetchSync } = useApi<{ actifs: number; derniereVerif: string | null; prochaineVerif: string | null }>('/dossiers/sync-statut')
+-  const { data: equipe, refetch: refetchEquipe } = useApi<{ membres: { id: string; nom: string; prenom: string; email: string; role: string }[]; invitations: { id: string; email: string; role: string; token: string }[]; places?: { max: number; utilisees: number } | null; peutInviter?: boolean }>('/auth/equipe')
++  const { data: equipe, refetch: refetchEquipe } = useApi<{ membres: { id: string; nom: string; prenom: string; email: string; role: string; droitsRetires?: string[]; doitChangerMdp?: boolean }[]; invitations: { id: string; email: string; role: string; token: string }[]; places?: { max: number; utilisees: number } | null; peutInviter?: boolean }>('/auth/equipe')
+   const { data: sessions, refetch: refetchSessions } = useApi<{ id: string; userAgent: string | null; createdAt: string; actuelle: boolean }[]>('/auth/sessions')
+   const [section, setSection] = useState('notif')
+   const [prefs, setPrefs] = useState<Preferences | null>(null)
+   const [prefsOrigine, setPrefsOrigine] = useState('')
+   const [profil, setProfil] = useState({ nom: '', prenom: '', barreau: '' })
+-  const [invite, setInvite] = useState({ email: '', role: 'AVOCAT' })
++  const [invite, setInvite] = useState({ prenom: '', nom: '', email: '', role: 'AVOCAT', droitsRetires: [] as string[] })
++  // Accès d'un membre créé ou réinitialisé : affiché une fois, à transmettre au membre
++  const [acces, setAcces] = useState<{ nom: string; email: string; mdp: string } | null>(null)
+   const [mdp, setMdp] = useState({ actuel: '', nouveau: '' })
+   const [apercu, setApercu] = useState(false)
+   const [formInvite, setFormInvite] = useState(false)
+@@ -103,8 +107,28 @@ export default function ParametresPage() {
+ 
+   const inviter = async (e: React.FormEvent) => {
+     e.preventDefault()
+-    if (await run(() => apiFetch('/auth/equipe/invitations', { method: 'POST', body: JSON.stringify(invite) }), 'أُنشئت الدعوة. انسخوا الرابط وأرسلوه.', 'invite')) { setInvite({ email: '', role: 'AVOCAT' }); setFormInvite(false); refetchEquipe() }
++    let mdp = ''
++    if (await run(async () => { mdp = (await apiFetch<{ motDePasseProvisoire: string }>('/auth/equipe/membres', { method: 'POST', body: JSON.stringify(invite) })).motDePasseProvisoire }, 'أُنشئ حساب العضو.', 'invite')) {
++      setAcces({ nom: `${invite.prenom} ${invite.nom}`, email: invite.email, mdp })
++      setInvite({ prenom: '', nom: '', email: '', role: 'AVOCAT', droitsRetires: [] }); setFormInvite(false); refetchEquipe()
++    }
+   }
++  const basculerDroit = (m: { id: string; droitsRetires?: string[] }, d: string) => {
++    const retires = m.droitsRetires ?? []
++    const nouv = retires.includes(d) ? retires.filter((x) => x !== d) : [...retires, d]
++    run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ droitsRetires: nouv }) }); await refetchEquipe() }, 'حُفظت الصلاحيات.', `droit:${m.id}:${d}`)
++  }
++  const reinitialiserMembre = (m: { id: string; prenom: string; nom: string; email: string }) => {
++    if (!window.confirm(`إنشاء كلمة مرور مؤقتة جديدة لـ ${m.prenom} ${m.nom}؟ ستُغلق جلساته الحالية.`)) return
++    let mdp = ''
++    run(async () => { mdp = (await apiFetch<{ motDePasseProvisoire: string }>(`/auth/equipe/membres/${m.id}/reinitialiser-mdp`, { method: 'POST' })).motDePasseProvisoire }, 'أُنشئت كلمة مرور مؤقتة.', `mdp:${m.id}`)
++      .then((ok) => { if (ok) setAcces({ nom: `${m.prenom} ${m.nom}`, email: m.email, mdp }) })
++  }
++  const retirerMembre = (m: { id: string; prenom: string; nom: string }) => {
++    if (!window.confirm(`حذف حساب ${m.prenom} ${m.nom}؟ تنتقل ملفاته ومواعيده إليكم، ويُغلق دخوله فوراً.`)) return
++    run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'DELETE' }); await refetchEquipe() }, 'حُذف العضو، وانتقلت ملفاته إليكم.', `del:${m.id}`)
++  }
++
+   const lienInvitation = (t: string) => `${window.location.origin}/register?invitation=${t}`
+   const changerMdp = async (e: React.FormEvent) => {
+     e.preventDefault()
+@@ -235,33 +259,78 @@ export default function ParametresPage() {
+           <section id="team" className="pr-card">
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+               <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={Users} taille={40} />الفريق</h2>
+-              {equipe?.peutInviter && <button type="button" className="pr-btn p mp-action" aria-expanded={formInvite} onClick={() => setFormInvite((v) => !v)}>دعوة عضو</button>}
++              {equipe?.peutInviter && <button type="button" className="pr-btn p mp-action" aria-expanded={formInvite} onClick={() => setFormInvite((v) => !v)}>إضافة عضو</button>}
+             </div>
+             {equipe && !equipe.places && <p style={{ margin: 0, fontSize: 14, color: '#3B4A47' }}>دعوة أعضاء الفريق (محامون وكتّاب يتابعون نفس الملفات) متاحة في عرض «مكتب». تواصلوا معنا لتغيير العرض.</p>}
+             {equipe?.places && equipe.places.max > 0 && <p style={{ margin: 0, fontSize: 14, color: '#5E6B67' }}>المستخدمون: <span className="num">{equipe.places.utilisees}</span> من <span className="num">{equipe.places.max}</span> (مع الدعوات المعلّقة) · يتشارك الفريق نفس الملفات والآجال والمفكرة.</p>}
+-            {(equipe?.membres ?? []).map((m) => (
+-              <div key={m.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #EEEAE1' }}>
+-                <span className="pr-av">{`${m.prenom[0] ?? ''} ${m.nom[0] ?? ''}`}</span>
+-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong style={{ fontSize: 15, fontWeight: 600 }}>{m.id === user?.id ? 'ذ. ' : ''}{m.prenom} {m.nom}</strong><span dir="ltr" style={{ fontSize: 13, color: '#5E6B67', textAlign: 'right' }}>{m.email}</span></div>
+-                {responsable && m.id !== user?.id && m.role !== 'ASSOCIE_GERANT' ? (
+-                  <select aria-label={`دور ${m.prenom} ${m.nom}`} aria-busy={cle === `role:${m.id}`} disabled={occupe} className="pr-in" style={{ width: 'auto', minHeight: 44 }} value={m.role} onChange={(e) => run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ role: e.target.value }) }); await refetchEquipe() }, 'غُيّر الدور.', `role:${m.id}`)}>
+-                    <option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option>
+-                  </select>
+-                ) : <span style={{ fontSize: 13, fontWeight: 600, color: '#3B4A47', background: '#F1EFEA', borderRadius: 999, padding: '4px 12px' }}>{ROLE_AR[m.role] ?? m.role}</span>}
++            {acces && (
++              <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#F1F8F5', border: '1px solid #CDE5DD', borderRadius: 12, padding: 14 }}>
++                <strong style={{ fontSize: 15 }}>دخول {acces.nom}</strong>
++                <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>أرسلوا له هذه المعلومات. سيُطلب منه اختيار كلمة مرور جديدة عند أول دخول. لن تظهر كلمة المرور هذه مرة أخرى.</span>
++                <span dir="ltr" style={{ textAlign: 'right', fontSize: 14 }}>{acces.email} · <strong className="num">{acces.mdp}</strong></span>
++                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
++                  <button type="button" className="pr-btn" onClick={async () => { await navigator.clipboard?.writeText(`${window.location.origin}/login\n${acces.email}\n${acces.mdp}`).catch(() => {}); toast('نُسخت معلومات الدخول.', 'success') }}>نسخ معلومات الدخول</button>
++                  <button type="button" className="pr-btn" onClick={() => setAcces(null)}>تم</button>
++                </div>
+               </div>
+-            ))}
++            )}
++            {(equipe?.membres ?? []).map((m) => {
++              const gerable = responsable && m.id !== user?.id && m.role !== 'ASSOCIE_GERANT'
++              return (
++              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0', borderBottom: '1px solid #EEEAE1' }}>
++                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
++                  <span className="pr-av">{`${m.prenom[0] ?? ''} ${m.nom[0] ?? ''}`}</span>
++                  <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
++                    <strong style={{ fontSize: 15, fontWeight: 600 }}>{m.prenom} {m.nom}</strong>
++                    <span dir="ltr" style={{ fontSize: 13, color: '#5E6B67', textAlign: 'right' }}>{m.email}</span>
++                    {gerable && m.doitChangerMdp && <span style={{ fontSize: 12, color: '#7A4E06' }}>لم يغيّر كلمة المرور المؤقتة بعد</span>}
++                  </div>
++                  {gerable ? (
++                    <select aria-label={`دور ${m.prenom} ${m.nom}`} aria-busy={cle === `role:${m.id}`} disabled={occupe} className="pr-in" style={{ width: 'auto', minHeight: 44 }} value={m.role} onChange={(e) => run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ role: e.target.value }) }); await refetchEquipe() }, 'غُيّر الدور.', `role:${m.id}`)}>
++                      <option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option>
++                    </select>
++                  ) : <span style={{ fontSize: 13, fontWeight: 600, color: '#3B4A47', background: '#F1EFEA', borderRadius: 999, padding: '4px 12px' }}>{ROLE_AR[m.role] ?? m.role}</span>}
++                </div>
++                {gerable && (
++                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingInlineStart: 52 }}>
++                    <span style={{ fontSize: 13, color: '#5E6B67' }}>الصلاحيات:</span>
++                    {DROITS.map(([d, l]) => (
++                      <button key={d} type="button" className="pr-chip mp-choix" aria-pressed={!(m.droitsRetires ?? []).includes(d)} disabled={occupe} aria-busy={cle === `droit:${m.id}:${d}`} onClick={() => basculerDroit(m, d)}>{l}</button>
++                    ))}
++                    <span style={{ flex: 1 }} />
++                    <button type="button" className="pr-btn" disabled={occupe} aria-busy={cle === `mdp:${m.id}`} onClick={() => reinitialiserMembre(m)}>{att(`mdp:${m.id}`, 'كلمة مرور مؤقتة', 'جارٍ الإنشاء…')}</button>
++                    <button type="button" className="pr-btn danger" disabled={occupe} aria-busy={cle === `del:${m.id}`} onClick={() => retirerMembre(m)}>{att(`del:${m.id}`, 'حذف', 'جارٍ الحذف…')}</button>
++                  </div>
++                )}
++              </div>
++              )
++            })}
+             {(equipe?.invitations ?? []).map((i) => (
+               <div key={i.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #EEEAE1' }}>
+                 <span className="pr-av" style={{ background: '#F1EFEA', color: '#3B4A47' }}>@</span>
+-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong dir="ltr" style={{ fontSize: 15, fontWeight: 600, textAlign: 'right' }}>{i.email}</strong><span style={{ fontSize: 13, color: '#5E6B67' }}>{ROLE_AR[i.role]} · ينتظر قبول الدعوة</span></div>
++                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong dir="ltr" style={{ fontSize: 15, fontWeight: 600, textAlign: 'right' }}>{i.email}</strong><span style={{ fontSize: 13, color: '#5E6B67' }}>{ROLE_AR[i.role]} · دعوة قديمة تنتظر القبول</span></div>
+                 <button type="button" className="pr-btn" onClick={async () => { await navigator.clipboard?.writeText(lienInvitation(i.token)).catch(() => {}); toast('نُسخ رابط الدعوة.', 'success') }}>نسخ الرابط</button>
+                 <button type="button" className="pr-btn" aria-label={`إلغاء دعوة ${i.email}`} disabled={occupe} aria-busy={cle === `inv:${i.id}`} onClick={() => run(async () => { await apiFetch(`/auth/equipe/invitations/${i.id}`, { method: 'DELETE' }); await refetchEquipe() }, 'أُلغيت الدعوة.', `inv:${i.id}`)} style={{ padding: 0, width: 44, justifyContent: 'center' }}><Attente actif={cle === `inv:${i.id}`} sombre><X size={16} aria-hidden /></Attente></button>
+               </div>
+             ))}
+-            {formInvite && equipe?.peutInviter && <form onSubmit={inviter} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', background: '#F5F3EE', borderRadius: 12, padding: 14 }}>
+-              <label className="pr-l" style={{ flex: '2 1 220px' }}>البريد الإلكتروني للعضو<input autoFocus className="pr-in" type="email" required dir="ltr" placeholder="nom@cabinet.ma" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} style={{ textAlign: 'right' }} /></label>
+-              <label className="pr-l" style={{ flex: '1 1 140px' }}>الدور<select className="pr-in" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}><option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option></select></label>
+-              <button type="submit" className="pr-btn p mp-action" style={{ minHeight: 48 }} disabled={occupe} aria-busy={cle === 'invite'}>{att('invite', 'إنشاء رابط الدعوة', 'جارٍ الإنشاء…', false)}</button>
++            {formInvite && equipe?.peutInviter && <form onSubmit={inviter} style={{ display: 'flex', flexDirection: 'column', gap: 12, background: '#F5F3EE', borderRadius: 12, padding: 14 }}>
++              <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>يُنشأ الحساب فوراً بكلمة مرور مؤقتة تظهر لكم لترسلوها للعضو. يرى العضو ملفات المكتب حسب الصلاحيات التي تختارونها.</span>
++              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
++                <label className="pr-l" style={{ flex: '1 1 160px' }}>الاسم الشخصي<input autoFocus required minLength={2} className="pr-in" value={invite.prenom} onChange={(e) => setInvite({ ...invite, prenom: e.target.value })} /></label>
++                <label className="pr-l" style={{ flex: '1 1 160px' }}>الاسم العائلي<input required minLength={2} className="pr-in" value={invite.nom} onChange={(e) => setInvite({ ...invite, nom: e.target.value })} /></label>
++              </div>
++              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
++                <label className="pr-l" style={{ flex: '2 1 220px' }}>البريد الإلكتروني<input className="pr-in" type="email" required dir="ltr" placeholder="nom@gmail.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} style={{ textAlign: 'right' }} />
++                  <span style={{ fontSize: 12, fontWeight: 400, color: '#5E6B67' }}>هو معرّف الدخول. بريد Gmail أو Outlook أو ما شابه.</span></label>
++                <label className="pr-l" style={{ flex: '1 1 140px' }}>الدور<select className="pr-in" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value, droitsRetires: e.target.value === 'SECRETAIRE' ? ['SUPPRESSION_DOSSIERS'] : [] })}><option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option></select></label>
++              </div>
++              <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
++                <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>الصلاحيات <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اضغطوا لمنح أو سحب صلاحية؛ يمكن تعديلها لاحقاً)</span></legend>
++                {DROITS.map(([d, l]) => (
++                  <button key={d} type="button" className="pr-chip mp-choix" aria-pressed={!invite.droitsRetires.includes(d)} onClick={() => setInvite({ ...invite, droitsRetires: invite.droitsRetires.includes(d) ? invite.droitsRetires.filter((x) => x !== d) : [...invite.droitsRetires, d] })}>{l}</button>
++                ))}
++              </fieldset>
++              <div><button type="submit" className="pr-btn p mp-action" style={{ minHeight: 48 }} disabled={occupe} aria-busy={cle === 'invite'}>{att('invite', 'إنشاء الحساب', 'جارٍ الإنشاء…', false)}</button></div>
+             </form>}
+           </section>
+ 
+diff --git a/apps/web/components/layout/AppShell.tsx b/apps/web/components/layout/AppShell.tsx
+index cd9fc34..b0c7b7b 100644
+--- a/apps/web/components/layout/AppShell.tsx
++++ b/apps/web/components/layout/AppShell.tsx
+@@ -3,7 +3,7 @@
+ import { Suspense, useEffect, useState } from 'react'
+ import Link from 'next/link'
+ import { usePathname, useRouter } from 'next/navigation'
+-import { useAuth } from '@/hooks/useAuth'
++import { useAuth, aDroit } from '@/hooks/useAuth'
+ import { RechercheGlobale } from '@/components/layout/RechercheGlobale'
+ import type { AbonnementCourant } from '@/lib/abonnement'
+ import { useApi } from '@/hooks/useApi'
+@@ -18,7 +18,7 @@ import {
+ 
+ interface AppShellProps { children: React.ReactNode }
+ 
+-type NavItem = { href: string; label: string; Icon: typeof Home; badge?: 'deadlines' | 'dossiers' | 'alertes' | 'demandes' }
++type NavItem = { href: string; label: string; Icon: typeof Home; badge?: 'deadlines' | 'dossiers' | 'alertes' | 'demandes'; droit?: string }
+ const NAV: { section?: string; items: NavItem[] }[] = [
+   { items: [
+     { href: '/dashboard', label: 'الرئيسية', Icon: Home },
+@@ -27,9 +27,9 @@ const NAV: { section?: string; items: NavItem[] }[] = [
+     { href: '/calendrier', label: 'الأجندة', Icon: Calendar },
+   ] },
+   { section: 'الذكاء الاصطناعي', items: [
+-    { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },
+-    { href: '/documents', label: 'محرّر الوثائق', Icon: FileText },
+-    { href: '/documents/mes', label: 'وثائقي', Icon: Archive },
++    { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles, droit: 'IA' },
++    { href: '/documents', label: 'محرّر الوثائق', Icon: FileText, droit: 'IA' },
++    { href: '/documents/mes', label: 'وثائقي', Icon: Archive, droit: 'IA' },
+   ] },
+   { section: 'المتابعة', items: [
+     { href: '/alertes', label: 'التنبيهات', Icon: Bell, badge: 'alertes' },
+@@ -60,7 +60,7 @@ const BOTTOM = [
+   { href: '/dashboard', label: 'الرئيسية', Icon: Home },
+   { href: '/dossiers', label: 'الملفات', Icon: FolderOpen },
+   { href: '/echeances', label: 'الآجال', Icon: Clock },
+-  { href: '/assistant', label: 'المساعد', Icon: Sparkles },
++  { href: '/assistant', label: 'المساعد', Icon: Sparkles, droit: 'IA' },
+ ]
+ 
+ const CSS = `
+@@ -162,7 +162,8 @@ export function AppShell({ children }: AppShellProps) {
+   const nbCritiques = compteurs?.critiques ?? 0
+   const nbNonLues = compteurs?.nonLues ?? 0
+ 
+-  const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((grp, gi) => (
++  // Rubriques dont le responsable du cabinet a retiré le droit : masquées (l'API refuse de toute façon)
++  const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((g) => ({ ...g, items: g.items.filter((i) => !i.droit || aDroit(user, i.droit)) })).filter((g) => g.items.length).map((grp, gi) => (
+     <div key={gi} role="group" aria-label={grp.section} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+       {gi > 0 && <span className="mp-sep" aria-hidden />}
+       {grp.items.map(({ href, label, Icon, badge }) => (
+@@ -260,7 +261,7 @@ export function AppShell({ children }: AppShellProps) {
+         <Suspense fallback={null}><BarreProgression /></Suspense>
+ 
+         <nav className="mp-bnav" aria-label="التنقل السفلي">
+-          {(estAdmin ? BOTTOM_ADMIN : BOTTOM).map(({ href, label, Icon }) => (
++          {(estAdmin ? BOTTOM_ADMIN : BOTTOM.filter((i) => !i.droit || aDroit(user, i.droit))).map(({ href, label, Icon }) => (
+             <Link key={href} href={href} aria-current={isActive(href) ? 'page' : undefined}>
+               <span style={{ position: 'relative', display: 'inline-flex' }}>
+                 <Icon size={22} strokeWidth={1.8} aria-hidden />
+diff --git a/apps/web/components/legal/DeadlineCard.tsx b/apps/web/components/legal/DeadlineCard.tsx
+index 0b2aeca..5980aaa 100644
+--- a/apps/web/components/legal/DeadlineCard.tsx
++++ b/apps/web/components/legal/DeadlineCard.tsx
+@@ -6,6 +6,7 @@ import { Check, FileText, Eye, ArrowLeftRight } from 'lucide-react'
+ import { apiFetch } from '@/lib/api'
+ import { useToast, TOAST_MS } from '@/components/Toast'
+ import { Attente } from '@/components/ui/Chargement'
++import { useAuth, aDroit } from '@/hooks/useAuth'
+ 
+ export type Camp = 'AGIR' | 'SURVEILLER'
+ export type RoleClient = 'DEMANDEUR' | 'DEFENDEUR' | 'INCONNU'
+@@ -151,6 +152,7 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
+   const prog = ecoule(e)
+   const href = e.dossier.id ? `/dossiers/${e.dossier.id}` : '/dossiers'
+   const role = roleTexte(e.dossier.roleClient)
++  const { user } = useAuth()
+   // Mobile : glisser la carte vers la gauche (≥ 96 px) = « تم الإيداع ». Le défilement vertical reste prioritaire.
+   const depart = useRef<{ x: number; y: number; horizontal?: boolean } | null>(null)
+   const [dx, setDx] = useState(0)
+@@ -202,7 +204,7 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
+         )}
+       </div>
+       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+-        <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden /> تحرير المقال</Link>
++        {aDroit(user, 'IA') && <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden /> تحرير المقال</Link>}
+         <button type="button" onClick={() => onComplete(e)} style={BTN}><Check size={16} aria-hidden /> تم الإيداع</button>
+         {onBasculer && (
+           <button type="button" onClick={() => onBasculer(e)} disabled={attente} aria-busy={attente} title="هذا الأجل على الخصم" aria-label="نقل الأجل إلى «على الخصم»" style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center' }}>
+diff --git a/apps/web/hooks/useAuth.ts b/apps/web/hooks/useAuth.ts
+index dbef1ad..f9a67f3 100644
+--- a/apps/web/hooks/useAuth.ts
++++ b/apps/web/hooks/useAuth.ts
+@@ -19,8 +19,13 @@ export interface User {
+   createdAt?: string
+   cabinet?: { id: string; nom: string } | null
+   barreau?: string | null
++  /** Droits accordés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). */
++  droits?: string[]
+ }
+ 
++/** Le compte a-t-il ce droit ? (absent = ancienne réponse de l'API : tout est permis, l'API contrôle de toute façon) */
++export const aDroit = (user: User | null | undefined, droit: string) => !user?.droits || user.droits.includes(droit)
++
+ type LoginResult = { token: string; user: User } | { deuxFacteurs: true; ticket: string }
+ 
+ export function useAuth() {
+-- 
+2.43.0
+

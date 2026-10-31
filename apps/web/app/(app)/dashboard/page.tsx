@@ -47,7 +47,7 @@ export default function DashboardPage() {
   // Derniers mouvements : 4 dossiers seulement, triés en base (pas tout le portefeuille)
   const { data: recentsPage } = useApi<{ items: Dossier[] }>('/dossiers/liste?tri=recent&taille=4&avecActe=1')
   const dossiers = recentsPage?.items
-  const { data: alertes } = useApi<Alerte[]>('/alertes')
+  const { data: alertes } = useApi<Alerte[]>('/alertes?vue=a-traiter&taille=100')
   const { data: sync } = useApi<Sync>('/dossiers/sync-statut')
   const { hidden, complete } = useCompleteWithUndo(refetch)
   const { data: abo } = useApi<AbonnementCourant>(user && user.role !== 'ADMIN' ? '/abonnements/current' : null)

@@ -24,6 +24,8 @@ const LIGNES: { k: keyof Preferences['matrice']; label: React.ReactNode; verrou?
 const RAPPELS: [number, React.ReactNode][] = [[7, <><span className="num">7</span> أيام</>], [3, <><span className="num">3</span> أيام</>], [1, 'يوم واحد'], [0, 'صباح اليوم الأخير'], [14, <><span className="num">14</span> يوماً</>]]
 const CALME: [string, string][] = [['20:00', '07:00'], ['21:00', '07:00'], ['22:00', '07:00'], ['22:00', '06:00'], ['23:00', '07:00'], ['00:00', '00:00']]
 const HEURES = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
+// Droits que le responsable accorde ou retire à chaque membre (même liste que l'API)
+const DROITS: [string, string][] = [['SUPPRESSION_DOSSIERS', 'أرشفة وحذف الملفات'], ['CRM', 'الموكلون'], ['FACTURATION', 'الفوترة'], ['IA', 'المساعد الذكي والوثائق']]
 const ROLE_AR: Record<string, string> = { ASSOCIE_GERANT: 'مسؤول المكتب', AVOCAT: 'محامٍ', SECRETAIRE: 'كاتب', ADMIN: 'مسؤول' }
 
 const CSS = `
@@ -68,13 +70,15 @@ export default function ParametresPage() {
   const { toast } = useToast()
   const { data: prefsData } = useApi<{ whatsappNumero: string | null; whatsappVerifie: boolean; preferences: Preferences }>('/alertes/preferences')
   const { data: sync, refetch: refetchSync } = useApi<{ actifs: number; derniereVerif: string | null; prochaineVerif: string | null }>('/dossiers/sync-statut')
-  const { data: equipe, refetch: refetchEquipe } = useApi<{ membres: { id: string; nom: string; prenom: string; email: string; role: string }[]; invitations: { id: string; email: string; role: string; token: string }[]; places?: { max: number; utilisees: number } | null; peutInviter?: boolean }>('/auth/equipe')
+  const { data: equipe, refetch: refetchEquipe } = useApi<{ membres: { id: string; nom: string; prenom: string; email: string; role: string; droitsRetires?: string[]; doitChangerMdp?: boolean }[]; invitations: { id: string; email: string; role: string; token: string }[]; places?: { max: number; utilisees: number } | null; peutInviter?: boolean }>('/auth/equipe')
   const { data: sessions, refetch: refetchSessions } = useApi<{ id: string; userAgent: string | null; createdAt: string; actuelle: boolean }[]>('/auth/sessions')
   const [section, setSection] = useState('notif')
   const [prefs, setPrefs] = useState<Preferences | null>(null)
   const [prefsOrigine, setPrefsOrigine] = useState('')
   const [profil, setProfil] = useState({ nom: '', prenom: '', barreau: '' })
-  const [invite, setInvite] = useState({ email: '', role: 'AVOCAT' })
+  const [invite, setInvite] = useState({ prenom: '', nom: '', email: '', role: 'AVOCAT', droitsRetires: [] as string[] })
+  // Accès d'un membre créé ou réinitialisé : affiché une fois, à transmettre au membre
+  const [acces, setAcces] = useState<{ nom: string; email: string; mdp: string } | null>(null)
   const [mdp, setMdp] = useState({ actuel: '', nouveau: '' })
   const [apercu, setApercu] = useState(false)
   const [formInvite, setFormInvite] = useState(false)
@@ -103,8 +107,28 @@ export default function ParametresPage() {
 
   const inviter = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (await run(() => apiFetch('/auth/equipe/invitations', { method: 'POST', body: JSON.stringify(invite) }), 'أُنشئت الدعوة. انسخوا الرابط وأرسلوه.', 'invite')) { setInvite({ email: '', role: 'AVOCAT' }); setFormInvite(false); refetchEquipe() }
+    let mdp = ''
+    if (await run(async () => { mdp = (await apiFetch<{ motDePasseProvisoire: string }>('/auth/equipe/membres', { method: 'POST', body: JSON.stringify(invite) })).motDePasseProvisoire }, 'أُنشئ حساب العضو.', 'invite')) {
+      setAcces({ nom: `${invite.prenom} ${invite.nom}`, email: invite.email, mdp })
+      setInvite({ prenom: '', nom: '', email: '', role: 'AVOCAT', droitsRetires: [] }); setFormInvite(false); refetchEquipe()
+    }
   }
+  const basculerDroit = (m: { id: string; droitsRetires?: string[] }, d: string) => {
+    const retires = m.droitsRetires ?? []
+    const nouv = retires.includes(d) ? retires.filter((x) => x !== d) : [...retires, d]
+    run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ droitsRetires: nouv }) }); await refetchEquipe() }, 'حُفظت الصلاحيات.', `droit:${m.id}:${d}`)
+  }
+  const reinitialiserMembre = (m: { id: string; prenom: string; nom: string; email: string }) => {
+    if (!window.confirm(`إنشاء كلمة مرور مؤقتة جديدة لـ ${m.prenom} ${m.nom}؟ ستُغلق جلساته الحالية.`)) return
+    let mdp = ''
+    run(async () => { mdp = (await apiFetch<{ motDePasseProvisoire: string }>(`/auth/equipe/membres/${m.id}/reinitialiser-mdp`, { method: 'POST' })).motDePasseProvisoire }, 'أُنشئت كلمة مرور مؤقتة.', `mdp:${m.id}`)
+      .then((ok) => { if (ok) setAcces({ nom: `${m.prenom} ${m.nom}`, email: m.email, mdp }) })
+  }
+  const retirerMembre = (m: { id: string; prenom: string; nom: string }) => {
+    if (!window.confirm(`حذف حساب ${m.prenom} ${m.nom}؟ تنتقل ملفاته ومواعيده إليكم، ويُغلق دخوله فوراً.`)) return
+    run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'DELETE' }); await refetchEquipe() }, 'حُذف العضو، وانتقلت ملفاته إليكم.', `del:${m.id}`)
+  }
+
   const lienInvitation = (t: string) => `${window.location.origin}/register?invitation=${t}`
   const changerMdp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -235,33 +259,78 @@ export default function ParametresPage() {
           <section id="team" className="pr-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={Users} taille={40} />الفريق</h2>
-              {equipe?.peutInviter && <button type="button" className="pr-btn p mp-action" aria-expanded={formInvite} onClick={() => setFormInvite((v) => !v)}>دعوة عضو</button>}
+              {equipe?.peutInviter && <button type="button" className="pr-btn p mp-action" aria-expanded={formInvite} onClick={() => setFormInvite((v) => !v)}>إضافة عضو</button>}
             </div>
             {equipe && !equipe.places && <p style={{ margin: 0, fontSize: 14, color: '#3B4A47' }}>دعوة أعضاء الفريق (محامون وكتّاب يتابعون نفس الملفات) متاحة في عرض «مكتب». تواصلوا معنا لتغيير العرض.</p>}
             {equipe?.places && equipe.places.max > 0 && <p style={{ margin: 0, fontSize: 14, color: '#5E6B67' }}>المستخدمون: <span className="num">{equipe.places.utilisees}</span> من <span className="num">{equipe.places.max}</span> (مع الدعوات المعلّقة) · يتشارك الفريق نفس الملفات والآجال والمفكرة.</p>}
-            {(equipe?.membres ?? []).map((m) => (
-              <div key={m.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #EEEAE1' }}>
-                <span className="pr-av">{`${m.prenom[0] ?? ''} ${m.nom[0] ?? ''}`}</span>
-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong style={{ fontSize: 15, fontWeight: 600 }}>{m.id === user?.id ? 'ذ. ' : ''}{m.prenom} {m.nom}</strong><span dir="ltr" style={{ fontSize: 13, color: '#5E6B67', textAlign: 'right' }}>{m.email}</span></div>
-                {responsable && m.id !== user?.id && m.role !== 'ASSOCIE_GERANT' ? (
-                  <select aria-label={`دور ${m.prenom} ${m.nom}`} aria-busy={cle === `role:${m.id}`} disabled={occupe} className="pr-in" style={{ width: 'auto', minHeight: 44 }} value={m.role} onChange={(e) => run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ role: e.target.value }) }); await refetchEquipe() }, 'غُيّر الدور.', `role:${m.id}`)}>
-                    <option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option>
-                  </select>
-                ) : <span style={{ fontSize: 13, fontWeight: 600, color: '#3B4A47', background: '#F1EFEA', borderRadius: 999, padding: '4px 12px' }}>{ROLE_AR[m.role] ?? m.role}</span>}
+            {acces && (
+              <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#F1F8F5', border: '1px solid #CDE5DD', borderRadius: 12, padding: 14 }}>
+                <strong style={{ fontSize: 15 }}>دخول {acces.nom}</strong>
+                <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>أرسلوا له هذه المعلومات. سيُطلب منه اختيار كلمة مرور جديدة عند أول دخول. لن تظهر كلمة المرور هذه مرة أخرى.</span>
+                <span dir="ltr" style={{ textAlign: 'right', fontSize: 14 }}>{acces.email} · <strong className="num">{acces.mdp}</strong></span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="pr-btn" onClick={async () => { await navigator.clipboard?.writeText(`${window.location.origin}/login\n${acces.email}\n${acces.mdp}`).catch(() => {}); toast('نُسخت معلومات الدخول.', 'success') }}>نسخ معلومات الدخول</button>
+                  <button type="button" className="pr-btn" onClick={() => setAcces(null)}>تم</button>
+                </div>
               </div>
-            ))}
+            )}
+            {(equipe?.membres ?? []).map((m) => {
+              const gerable = responsable && m.id !== user?.id && m.role !== 'ASSOCIE_GERANT'
+              return (
+              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 0', borderBottom: '1px solid #EEEAE1' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                  <span className="pr-av">{`${m.prenom[0] ?? ''} ${m.nom[0] ?? ''}`}</span>
+                  <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <strong style={{ fontSize: 15, fontWeight: 600 }}>{m.prenom} {m.nom}</strong>
+                    <span dir="ltr" style={{ fontSize: 13, color: '#5E6B67', textAlign: 'right' }}>{m.email}</span>
+                    {gerable && m.doitChangerMdp && <span style={{ fontSize: 12, color: '#7A4E06' }}>لم يغيّر كلمة المرور المؤقتة بعد</span>}
+                  </div>
+                  {gerable ? (
+                    <select aria-label={`دور ${m.prenom} ${m.nom}`} aria-busy={cle === `role:${m.id}`} disabled={occupe} className="pr-in" style={{ width: 'auto', minHeight: 44 }} value={m.role} onChange={(e) => run(async () => { await apiFetch(`/auth/equipe/membres/${m.id}`, { method: 'PATCH', body: JSON.stringify({ role: e.target.value }) }); await refetchEquipe() }, 'غُيّر الدور.', `role:${m.id}`)}>
+                      <option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option>
+                    </select>
+                  ) : <span style={{ fontSize: 13, fontWeight: 600, color: '#3B4A47', background: '#F1EFEA', borderRadius: 999, padding: '4px 12px' }}>{ROLE_AR[m.role] ?? m.role}</span>}
+                </div>
+                {gerable && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingInlineStart: 52 }}>
+                    <span style={{ fontSize: 13, color: '#5E6B67' }}>الصلاحيات:</span>
+                    {DROITS.map(([d, l]) => (
+                      <button key={d} type="button" className="pr-chip mp-choix" aria-pressed={!(m.droitsRetires ?? []).includes(d)} disabled={occupe} aria-busy={cle === `droit:${m.id}:${d}`} onClick={() => basculerDroit(m, d)}>{l}</button>
+                    ))}
+                    <span style={{ flex: 1 }} />
+                    <button type="button" className="pr-btn" disabled={occupe} aria-busy={cle === `mdp:${m.id}`} onClick={() => reinitialiserMembre(m)}>{att(`mdp:${m.id}`, 'كلمة مرور مؤقتة', 'جارٍ الإنشاء…')}</button>
+                    <button type="button" className="pr-btn danger" disabled={occupe} aria-busy={cle === `del:${m.id}`} onClick={() => retirerMembre(m)}>{att(`del:${m.id}`, 'حذف', 'جارٍ الحذف…')}</button>
+                  </div>
+                )}
+              </div>
+              )
+            })}
             {(equipe?.invitations ?? []).map((i) => (
               <div key={i.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #EEEAE1' }}>
                 <span className="pr-av" style={{ background: '#F1EFEA', color: '#3B4A47' }}>@</span>
-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong dir="ltr" style={{ fontSize: 15, fontWeight: 600, textAlign: 'right' }}>{i.email}</strong><span style={{ fontSize: 13, color: '#5E6B67' }}>{ROLE_AR[i.role]} · ينتظر قبول الدعوة</span></div>
+                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><strong dir="ltr" style={{ fontSize: 15, fontWeight: 600, textAlign: 'right' }}>{i.email}</strong><span style={{ fontSize: 13, color: '#5E6B67' }}>{ROLE_AR[i.role]} · دعوة قديمة تنتظر القبول</span></div>
                 <button type="button" className="pr-btn" onClick={async () => { await navigator.clipboard?.writeText(lienInvitation(i.token)).catch(() => {}); toast('نُسخ رابط الدعوة.', 'success') }}>نسخ الرابط</button>
                 <button type="button" className="pr-btn" aria-label={`إلغاء دعوة ${i.email}`} disabled={occupe} aria-busy={cle === `inv:${i.id}`} onClick={() => run(async () => { await apiFetch(`/auth/equipe/invitations/${i.id}`, { method: 'DELETE' }); await refetchEquipe() }, 'أُلغيت الدعوة.', `inv:${i.id}`)} style={{ padding: 0, width: 44, justifyContent: 'center' }}><Attente actif={cle === `inv:${i.id}`} sombre><X size={16} aria-hidden /></Attente></button>
               </div>
             ))}
-            {formInvite && equipe?.peutInviter && <form onSubmit={inviter} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', background: '#F5F3EE', borderRadius: 12, padding: 14 }}>
-              <label className="pr-l" style={{ flex: '2 1 220px' }}>البريد الإلكتروني للعضو<input autoFocus className="pr-in" type="email" required dir="ltr" placeholder="nom@cabinet.ma" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} style={{ textAlign: 'right' }} /></label>
-              <label className="pr-l" style={{ flex: '1 1 140px' }}>الدور<select className="pr-in" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}><option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option></select></label>
-              <button type="submit" className="pr-btn p mp-action" style={{ minHeight: 48 }} disabled={occupe} aria-busy={cle === 'invite'}>{att('invite', 'إنشاء رابط الدعوة', 'جارٍ الإنشاء…', false)}</button>
+            {formInvite && equipe?.peutInviter && <form onSubmit={inviter} style={{ display: 'flex', flexDirection: 'column', gap: 12, background: '#F5F3EE', borderRadius: 12, padding: 14 }}>
+              <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>يُنشأ الحساب فوراً بكلمة مرور مؤقتة تظهر لكم لترسلوها للعضو. يرى العضو ملفات المكتب حسب الصلاحيات التي تختارونها.</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <label className="pr-l" style={{ flex: '1 1 160px' }}>الاسم الشخصي<input autoFocus required minLength={2} className="pr-in" value={invite.prenom} onChange={(e) => setInvite({ ...invite, prenom: e.target.value })} /></label>
+                <label className="pr-l" style={{ flex: '1 1 160px' }}>الاسم العائلي<input required minLength={2} className="pr-in" value={invite.nom} onChange={(e) => setInvite({ ...invite, nom: e.target.value })} /></label>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <label className="pr-l" style={{ flex: '2 1 220px' }}>البريد الإلكتروني<input className="pr-in" type="email" required dir="ltr" placeholder="nom@gmail.com" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} style={{ textAlign: 'right' }} />
+                  <span style={{ fontSize: 12, fontWeight: 400, color: '#5E6B67' }}>هو معرّف الدخول. بريد Gmail أو Outlook أو ما شابه.</span></label>
+                <label className="pr-l" style={{ flex: '1 1 140px' }}>الدور<select className="pr-in" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value, droitsRetires: e.target.value === 'SECRETAIRE' ? ['SUPPRESSION_DOSSIERS'] : [] })}><option value="AVOCAT">محامٍ</option><option value="SECRETAIRE">كاتب</option></select></label>
+              </div>
+              <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>الصلاحيات <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اضغطوا لمنح أو سحب صلاحية؛ يمكن تعديلها لاحقاً)</span></legend>
+                {DROITS.map(([d, l]) => (
+                  <button key={d} type="button" className="pr-chip mp-choix" aria-pressed={!invite.droitsRetires.includes(d)} onClick={() => setInvite({ ...invite, droitsRetires: invite.droitsRetires.includes(d) ? invite.droitsRetires.filter((x) => x !== d) : [...invite.droitsRetires, d] })}>{l}</button>
+                ))}
+              </fieldset>
+              <div><button type="submit" className="pr-btn p mp-action" style={{ minHeight: 48 }} disabled={occupe} aria-busy={cle === 'invite'}>{att('invite', 'إنشاء الحساب', 'جارٍ الإنشاء…', false)}</button></div>
             </form>}
           </section>
 

@@ -19,6 +19,8 @@ model User {
   whatsappNumero  String?  // Peut différer du téléphone
   whatsappVerifie Boolean  @default(false)
   role            UserRole @default(AVOCAT)
+  /// Droits retirés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). Vide = tous les droits.
+  droitsRetires   String[] @default([])
 
   // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
   statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts

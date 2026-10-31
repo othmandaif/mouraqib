@@ -6,7 +6,7 @@ import { scraperQueue, nlpQueue, alertQueue, deadlineQueue, redisConnection } fr
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
-import { ESSAI_FONDATEUR_JOURS, etatAbonnement, prolonger, finCouverture } from '../services/abonnements/offres'
+import { ESSAI_FONDATEUR_MOIS, etatAbonnement, prolonger, finCouverture } from '../services/abonnements/offres'
 import { controleSecurite } from '../services/deadlines/controleSecurite'
 import { motDePasseProvisoire, champNom, champTelephone, emailAutorise } from '../services/auth/comptes'
 
@@ -131,7 +131,8 @@ router.get('/comptes', async (_req: AuthRequest, res: Response): Promise<void> =
     const a = abonnements[0]
     return {
       ...u,
-      dossiers: cabinetId ? parCabinet.get(cabinetId) ?? 0 : _count.dossiers,
+      dossiers: _count.dossiers, // dossiers suivis par CET avocat
+      dossiersCabinet: cabinetId ? parCabinet.get(cabinetId) ?? 0 : null, // total du cabinet (la limite s'y applique)
       derniereConnexion: sessions[0]?.createdAt ?? null,
       abonnement: a ? {
         id: a.id, plan: a.plan, estFondateur: a.estFondateur, prixMensuel: a.prixMensuel, note: a.note,
@@ -164,7 +165,7 @@ router.post('/comptes', async (req: AuthRequest, res: Response): Promise<void> =
   if (!emailAutorise(d.email)) { res.status(400).json({ error: 'Adresse e-mail non acceptée' }); return }
   if (await prisma.user.findUnique({ where: { email: d.email } })) { res.status(409).json({ error: 'Email déjà utilisé' }); return }
   // prolonger() s'arrête au dernier jour du mois (31 janvier + 1 mois = 28/29 février, pas le 3 mars)
-  const essai = d.essaiMois == null && d.estFondateur ? new Date(Date.now() + ESSAI_FONDATEUR_JOURS * 86_400_000) : prolonger(null, d.essaiMois ?? 1)
+  const essai = prolonger(null, d.essaiMois ?? (d.estFondateur ? ESSAI_FONDATEUR_MOIS : 1))
   const provisoire = motDePasseProvisoire()
   const user = await prisma.user.create({
     data: {

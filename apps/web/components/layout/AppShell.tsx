@@ -13,7 +13,7 @@ import { BarreProgression } from '@/components/layout/BarreProgression'
 import { useRaccourcis, AideRaccourcis } from '@/components/layout/Raccourcis'
 import { InviteInstallation } from '@/components/layout/InviteInstallation'
 import {
-  Home, FolderOpen, Clock, Bell, Calendar, Menu, X, Sparkles, FileText, Archive, SlidersHorizontal, LogOut, Search, Users, Inbox, Wallet, Activity, ShieldCheck, Contact, Receipt,
+  Home, FolderOpen, Clock, Bell, Calendar, Menu, X, Sparkles, FileText, Archive, SlidersHorizontal, LogOut, Search, Users, Inbox, Wallet, Activity, ShieldCheck,
 } from 'lucide-react'
 
 interface AppShellProps { children: React.ReactNode }
@@ -25,10 +25,6 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     { href: '/dossiers', label: 'الملفات', Icon: FolderOpen, badge: 'dossiers' },
     { href: '/echeances', label: 'الآجال', Icon: Clock, badge: 'deadlines' },
     { href: '/calendrier', label: 'الأجندة', Icon: Calendar },
-  ] },
-  { section: 'المكتب', items: [
-    { href: '/clients', label: 'الموكلون', Icon: Contact },
-    { href: '/facturation', label: 'الفوترة والأتعاب', Icon: Receipt },
   ] },
   { section: 'الذكاء الاصطناعي', items: [
     { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },
@@ -113,7 +109,13 @@ export function AppShell({ children }: AppShellProps) {
   const { data: abo } = useApi<AbonnementCourant>(user && user.role !== 'ADMIN' ? '/abonnements/current' : null)
   const [aboMasque, setAboMasque] = useState(false)
   // Pastilles : délais critiques à agir, nombre de dossiers, alertes non lues.
-  const { data: compteurs } = useApi<{ dossiers: number; critiques: number; nonLues: number; demandes?: number }>(user ? '/dashboard/compteurs' : null, [pathname])
+  const { data: compteurs, refetch: recompter } = useApi<{ dossiers: number; critiques: number; nonLues: number; demandes?: number }>(user ? '/dashboard/compteurs' : null, [pathname])
+  // Alerte lue sur la page des alertes : la pastille du menu suit sans attendre un changement de page
+  useEffect(() => {
+    const maj = () => { recompter() }
+    window.addEventListener('mp:alertes-lues', maj)
+    return () => window.removeEventListener('mp:alertes-lues', maj)
+  }, [recompter])
 
   useEffect(() => {
     if (!loading && !user) router.push('/login')

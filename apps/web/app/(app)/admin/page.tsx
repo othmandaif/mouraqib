@@ -18,7 +18,7 @@ import { Indicateur, useEnvoi as useActionLigne, Attente } from '@/components/ui
 
 type Compte = {
   id: string; email: string; nom: string; prenom: string; telephone: string | null; barreau: string | null; role: string
-  whatsappVerifie: boolean; createdAt: string; dossiers: number; derniereConnexion: string | null; cabinet: { nom: string } | null
+  whatsappVerifie: boolean; createdAt: string; dossiers: number; dossiersCabinet: number | null; derniereConnexion: string | null; cabinet: { nom: string } | null
   statut: 'EN_ATTENTE' | 'ACTIF' | 'DESACTIVE'; motifDesactivation: string | null; doitChangerMdp?: boolean
   demande: { ville?: string; structure?: string; nbDossiers?: string; message?: string } | null
   abonnement: null | { id: string; plan: Plan; estFondateur: boolean; prixMensuel: number | null; note: string | null; maxDossiers: number | null; essaiJusquAu: string | null; payeJusquAu: string | null; etat: EtatAbonnement; fin: string | null; joursRestants: number | null }
@@ -35,7 +35,7 @@ type Plan = 'SOLO' | 'CABINET' | 'SUR_MESURE'
 // Mêmes valeurs que apps/api/src/services/abonnements/offres.ts
 const OFFRES: Record<Plan, { nom: string; prix: number | null; fondateur: number | null }> = {
   SOLO: { nom: 'فردي', prix: 290, fondateur: 149 },
-  CABINET: { nom: 'مكتب', prix: 790, fondateur: 349 },
+  CABINET: { nom: 'مكتب', prix: 790, fondateur: 449 },
   SUR_MESURE: { nom: 'مكتب+ / تثبيت محلي', prix: null, fondateur: null },
 }
 const PLACES_FONDATEURS = 50
@@ -58,7 +58,13 @@ const CSS = `
 .ad-btn.p{background:var(--mp-action);color:var(--mp-action-texte);border-color:var(--mp-action)}
 .ad-tbl{width:100%;border-collapse:collapse;font-size:14px}
 .ad-tbl th{font-size:13px;font-weight:600;color:#5E6B67;text-align:right;padding:10px 12px;border-bottom:1px solid #E4E0D6;white-space:nowrap}
-.ad-tbl td{padding:12px;border-bottom:1px solid #EEEAE1;vertical-align:middle}
+.ad-tbl td{padding:8px 10px;border-bottom:1px solid #EEEAE1;vertical-align:middle}
+.ad-tbl td.num{white-space:nowrap}
+.ad-plus{position:relative}
+.ad-plus>summary{list-style:none;min-width:40px;justify-content:center;font-size:18px;line-height:1}
+.ad-plus>summary::-webkit-details-marker{display:none}
+.ad-plus>div{position:absolute;inset-inline-end:0;top:calc(100% + 4px);z-index:20;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:12px;padding:8px;box-shadow:0 14px 30px -18px rgba(8,59,52,.35);min-width:190px}
+.ad-plus>div .ad-btn{justify-content:flex-start;width:100%}
 .ad-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .ad-seg{display:inline-flex;background:#EEEAE1;border-radius:999px;padding:4px;gap:4px}
 .ad-seg button{font-family:inherit;font-size:14px;font-weight:600;background:transparent;color:#3B4A47;border:0;border-radius:999px;padding:0 14px;min-height:36px;cursor:pointer}
@@ -153,10 +159,16 @@ export default function AdminPage() {
   const actions = (c: Compte) => c.statut === 'DESACTIVE'
     ? <button type="button" className="ad-btn p mp-action" onClick={() => reactiver(c)} disabled={occupe} aria-busy={envoi === `react:${c.id}`}><Attente actif={envoi === `react:${c.id}`} texte="جارٍ التفعيل…"><Power size={15} aria-hidden />إعادة التفعيل</Attente></button>
     : <>
-      <button type="button" className="ad-btn" onClick={() => setPaiement(c)} disabled={!c.abonnement}>دفعة</button>
       <button type="button" className="ad-btn" onClick={() => setEdition(c)}>العرض</button>
+      {/* Actions moins fréquentes : menu « ⋯ » (la ligne reste sur une hauteur) */}
+      <details className="ad-plus">
+        <summary className="ad-btn" aria-label="إجراءات أخرى">⋯</summary>
+        <div onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false }}>
+      <button type="button" className="ad-btn" onClick={() => setPaiement(c)} disabled={!c.abonnement}>دفعة</button>
       <button type="button" className="ad-btn" onClick={() => reinitialiserMdp(c)} disabled={occupe} aria-busy={envoi === `mdp:${c.id}`}><Attente actif={envoi === `mdp:${c.id}`} texte="جارٍ الإنشاء…" sombre><KeyRound size={15} aria-hidden />كلمة مرور مؤقتة</Attente></button>
       <button type="button" className="ad-btn" style={{ color: '#9B2C20' }} onClick={() => setDesactivation(c)}><Power size={15} aria-hidden />تعطيل</button>
+        </div>
+      </details>
     </>
 
   const TITRES: Record<Onglet, { t: string; sous: string; Icon: typeof Inbox }> = {
@@ -239,7 +251,7 @@ export default function AdminPage() {
             </div>
             <div className="ad-tblw ad-comptes">
               <table className="ad-tbl">
-                <thead><tr><th>المحامي</th><th>الحساب</th><th>العرض</th><th>الاشتراك</th><th>حتى</th><th>الملفات</th><th>واتساب</th><th>آخر دخول</th><th /></tr></thead>
+                <thead><tr><th>المحامي</th><th>الحساب</th><th>العرض</th><th>الاشتراك</th><th>الملفات</th><th>واتساب</th><th>آخر دخول</th><th /></tr></thead>
                 <tbody>
                   {liste.map((c) => {
                     const a = c.abonnement
@@ -249,8 +261,7 @@ export default function AdminPage() {
                         <td><Identite c={c} /></td>
                         <td><BadgeCompte c={c} /></td>
                         <td><Offre a={a} /></td>
-                        <td><BadgeEtat a={a} /></td>
-                        <td className="num">{a?.fin ? fmtDate(a.fin) : '—'}</td>
+                        <td><span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}><BadgeEtat a={a} />{a?.fin && <span className="num" style={{ fontSize: 12, color: '#5E6B67', whiteSpace: 'nowrap' }}>حتى {fmtDate(a.fin)}</span>}</span></td>
                         <td><Dossiers c={c} /></td>
                         <td>{c.whatsappVerifie ? <CheckCircle2 size={18} color="#0E5A4E" aria-label="مفعّل" /> : <span style={{ color: '#9B2C20', fontWeight: 600 }}>لا</span>}</td>
                         <td className="num" style={{ color: '#5E6B67' }}>{c.derniereConnexion ? fmtDate(c.derniereConnexion) : 'لم يدخل'}</td>
@@ -258,7 +269,7 @@ export default function AdminPage() {
                       </tr>
                     )
                   })}
-                  {liste.length === 0 && <tr><td colSpan={9} style={{ color: '#5E6B67', padding: 20 }}>لا حسابات.</td></tr>}
+                  {liste.length === 0 && <tr><td colSpan={8} style={{ color: '#5E6B67', padding: 20 }}>لا حسابات.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -574,9 +585,9 @@ function FormOffre({ compte, onFermer, onOk }: { compte: Compte; onFermer: () =>
           <label className="ad-l">مدفوع حتى<input className="ad-in num" type="date" value={f.paye} onChange={(e) => setF({ ...f, paye: e.target.value })} /></label>
           <ChampLimite valeur={f.limite} onChange={(v) => setF({ ...f, limite: v })} />
         </div>
-        {f.limite && Number(f.limite) < compte.dossiers && (
+        {f.limite && Number(f.limite) < (compte.dossiersCabinet ?? compte.dossiers) && (
           <p role="alert" style={{ margin: 0, fontSize: 13, color: '#7A4E06', background: '#FDF1DC', borderRadius: 10, padding: '8px 12px' }}>
-            يتابع هذا الحساب <span className="num">{compte.dossiers}</span> ملفاً، أكثر من الحد. تبقى ملفاته الحالية متابَعة، لكن لن يستطيع إضافة ملف جديد.
+            يتابع هذا الحساب <span className="num">{compte.dossiersCabinet ?? compte.dossiers}</span> ملفاً، أكثر من الحد. تبقى ملفاته الحالية متابَعة، لكن لن يستطيع إضافة ملف جديد.
           </p>
         )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, minHeight: 44 }}><input type="checkbox" checked={f.estFondateur} onChange={(e) => setF({ ...f, estFondateur: e.target.checked })} style={{ width: 22, height: 22, accentColor: '#0E5A4E' }} />عضو مؤسس</label>
@@ -724,13 +735,16 @@ function BadgeCompte({ c }: { c: Compte }) {
 /** Dossiers suivis / limite fixée par l'administrateur (« بلا حد » par défaut) ; ambre à 90 %, rouge à la limite. */
 function Dossiers({ c }: { c: Compte }) {
   const max = c.abonnement?.maxDossiers ?? null
-  if (max == null) return <span style={{ whiteSpace: 'nowrap' }}><span className="num">{c.dossiers}</span><span style={{ color: '#5E6B67' }}> · بلا حد</span></span>
-  const plein = c.dossiers >= max
-  const ton = plein ? '#9B2C20' : c.dossiers >= max * 0.9 ? '#7A4E06' : '#15201E'
+  const total = c.dossiersCabinet ?? c.dossiers // la limite porte sur tout le cabinet
+  const plein = max != null && total >= max
+  const ton = max == null ? '#15201E' : plein ? '#9B2C20' : total >= max * 0.9 ? '#7A4E06' : '#15201E'
   return (
-    <span style={{ color: ton, fontWeight: 600, whiteSpace: 'nowrap' }} title={`الحد: ${max}`}>
-      <bdi dir="ltr" className="num">{c.dossiers} / {max}</bdi>
-      {plein && <span style={{ fontWeight: 400 }}> · بلغ الحد</span>}
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, whiteSpace: 'nowrap' }} title={max == null ? 'بلا حد' : `الحد: ${max}`}>
+      <span><span className="num" style={{ fontWeight: 600 }}>{c.dossiers}</span> ملف</span>
+      <span style={{ fontSize: 12, color: ton }}>
+        {c.dossiersCabinet != null && <>المكتب <span className="num">{c.dossiersCabinet}</span></>}
+        {max == null ? (c.dossiersCabinet != null ? ' · بلا حد' : 'بلا حد') : <>{c.dossiersCabinet != null ? ' / ' : 'الحد '}<span className="num">{max}</span>{plein && ' · بلغ الحد'}</>}
+      </span>
     </span>
   )
 }
@@ -750,7 +764,7 @@ function Offre({ a }: { a: Compte['abonnement'] }) {
   if (!a) return <span style={{ color: '#5E6B67', fontWeight: 400 }}>عضو مكتب</span>
   const prix = a.prixMensuel ?? (a.estFondateur ? OFFRES[a.plan]?.fondateur : OFFRES[a.plan]?.prix)
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, whiteSpace: 'nowrap' }}>
       <span>{OFFRES[a.plan]?.nom ?? a.plan}{a.estFondateur && <span style={{ marginInlineStart: 6, fontSize: 12, fontWeight: 700, background: '#F2A93B', color: '#15201E', borderRadius: 999, padding: '2px 8px' }}>مؤسس</span>}</span>
       <span style={{ fontSize: 12, color: '#5E6B67', fontWeight: 400 }}>{prix != null ? <><span className="num">{prix}</span> درهم/شهر</> : 'عرض سعر'}</span>
     </span>

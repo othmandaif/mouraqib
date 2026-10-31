@@ -6,6 +6,7 @@ import { Check, FileText, Eye, ArrowLeftRight } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast, TOAST_MS } from '@/components/Toast'
 import { Attente } from '@/components/ui/Chargement'
+import { useAuth, aDroit } from '@/hooks/useAuth'
 
 export type Camp = 'AGIR' | 'SURVEILLER'
 export type RoleClient = 'DEMANDEUR' | 'DEFENDEUR' | 'INCONNU'
@@ -151,6 +152,7 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
   const prog = ecoule(e)
   const href = e.dossier.id ? `/dossiers/${e.dossier.id}` : '/dossiers'
   const role = roleTexte(e.dossier.roleClient)
+  const { user } = useAuth()
   // Mobile : glisser la carte vers la gauche (≥ 96 px) = « تم الإيداع ». Le défilement vertical reste prioritaire.
   const depart = useRef<{ x: number; y: number; horizontal?: boolean } | null>(null)
   const [dx, setDx] = useState(0)
@@ -202,7 +204,7 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
         )}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden /> تحرير المقال</Link>
+        {aDroit(user, 'IA') && <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden /> تحرير المقال</Link>}
         <button type="button" onClick={() => onComplete(e)} style={BTN}><Check size={16} aria-hidden /> تم الإيداع</button>
         {onBasculer && (
           <button type="button" onClick={() => onBasculer(e)} disabled={attente} aria-busy={attente} title="هذا الأجل على الخصم" aria-label="نقل الأجل إلى «على الخصم»" style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center' }}>

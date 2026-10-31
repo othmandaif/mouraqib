@@ -1,0 +1,414 @@
+From db6267a11c73040479841848312be15d3dcb560c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 30 Oct 2026 21:30:07 +0000
+Subject: [PATCH 2/3] =?UTF-8?q?Filtres,=20notifications=20=C2=AB=20=C3=A0?=
+ =?UTF-8?q?=20traiter=20=C2=BB,=20admin=20:=20dossiers=20par=20avocat=20et?=
+ =?UTF-8?q?=20liste=20compacte?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Filtres des dossiers (et boutons langue / avis de l'assistant) : plus de mélange border / borderColor
+  (avertissement React, styles qui restaient après désélection)
+- Alertes : vue « للمعالجة » (non lues : une alerte lue ou traitée disparaît aussitôt) et « السجل »,
+  chargées par pages de 30 (GET /alertes?vue=&avant=) ; un lien d'action vaut lecture ; pastille du menu à jour
+- Admin : nombre de dossiers de l'avocat lui-même + total du cabinet (la limite porte sur le cabinet) ;
+  liste plus compacte (date d'échéance sous l'état, actions secondaires dans un menu « ⋯ »)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01D7ZppDnmu8ZRvoBj927TrA
+---
+ apps/api/src/routes/admin.ts            |  3 +-
+ apps/api/src/routes/alertes.ts          | 18 +++++++-
+ apps/web/app/(app)/admin/page.tsx       | 46 ++++++++++++-------
+ apps/web/app/(app)/alertes/page.tsx     | 60 ++++++++++++++++++++-----
+ apps/web/app/(app)/assistant/page.tsx   |  4 +-
+ apps/web/app/(app)/dashboard/page.tsx   |  2 +-
+ apps/web/app/(app)/documents/page.tsx   |  2 +-
+ apps/web/app/(app)/dossiers/page.tsx    |  2 +-
+ apps/web/components/layout/AppShell.tsx |  8 +++-
+ 9 files changed, 109 insertions(+), 36 deletions(-)
+
+diff --git a/apps/api/src/routes/admin.ts b/apps/api/src/routes/admin.ts
+index 1a925d5..4628a3b 100644
+--- a/apps/api/src/routes/admin.ts
++++ b/apps/api/src/routes/admin.ts
+@@ -131,7 +131,8 @@ router.get('/comptes', async (_req: AuthRequest, res: Response): Promise<void> =
+     const a = abonnements[0]
+     return {
+       ...u,
+-      dossiers: cabinetId ? parCabinet.get(cabinetId) ?? 0 : _count.dossiers,
++      dossiers: _count.dossiers, // dossiers suivis par CET avocat
++      dossiersCabinet: cabinetId ? parCabinet.get(cabinetId) ?? 0 : null, // total du cabinet (la limite s'y applique)
+       derniereConnexion: sessions[0]?.createdAt ?? null,
+       abonnement: a ? {
+         id: a.id, plan: a.plan, estFondateur: a.estFondateur, prixMensuel: a.prixMensuel, note: a.note,
+diff --git a/apps/api/src/routes/alertes.ts b/apps/api/src/routes/alertes.ts
+index 367ec3f..8bea179 100644
+--- a/apps/api/src/routes/alertes.ts
++++ b/apps/api/src/routes/alertes.ts
+@@ -1,4 +1,5 @@
+ import { Router, Response } from 'express'
++import { z } from 'zod'
+ import { CanalAlerte, TypeAlerte } from '@prisma/client'
+ import { prisma } from '../utils/prisma'
+ import { requireAuth, AuthRequest } from '../middleware/auth'
+@@ -9,16 +10,29 @@ const router = Router()
+ // Page « التنبيهات » : les alertes in-app + la trace des résumés WhatsApp du matin.
+ const VISIBLES = { OR: [{ canal: CanalAlerte.IN_APP }, { canal: CanalAlerte.WHATSAPP, typeAlerte: TypeAlerte.DIGEST_QUOTIDIEN }] }
+ 
++// vue « a-traiter » = non lues (disparaissent dès qu'elles sont lues ou traitées) ; « historique » = le reste.
++// Par pages (`avant` = date de la dernière reçue) : on ne charge jamais tout l'historique d'un coup.
++const ListeSchema = z.object({
++  vue: z.enum(['a-traiter', 'historique']).optional(),
++  avant: z.string().datetime().optional(),
++  taille: z.coerce.number().int().min(1).max(100).default(30),
++})
++const NON_LUE = { canal: CanalAlerte.IN_APP, luAt: null }
++
+ router.get('/', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
++  const parse = ListeSchema.safeParse(req.query)
++  if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
++  const { vue, avant, taille } = parse.data
++  const filtreVue = vue === 'a-traiter' ? NON_LUE : vue === 'historique' ? { ...VISIBLES, NOT: NON_LUE } : VISIBLES
+   const alertes = await prisma.alerte.findMany({
+-    where: { userId: req.userId!, ...VISIBLES },
++    where: { userId: req.userId!, ...filtreVue, ...(avant ? { createdAt: { lt: new Date(avant) } } : {}) },
+     include: {
+       dossier: { select: { id: true, numeroDossier: true, tribunal: true, titreAffaire: true } },
+       echeance: { select: { id: true, descriptionAr: true, description: true, dateLimite: true, camp: true, typeDelai: true } },
+       evenement: { select: { id: true, typeEvenement: true, natureJugement: true, dateAudience: true, texteArabe: true } },
+     },
+     orderBy: { createdAt: 'desc' },
+-    take: 100,
++    take: vue ? taille : 100, // sans vue : ancien comportement (compatibilité)
+   })
+   res.json(alertes)
+ })
+diff --git a/apps/web/app/(app)/admin/page.tsx b/apps/web/app/(app)/admin/page.tsx
+index f9036c9..3ae2edf 100644
+--- a/apps/web/app/(app)/admin/page.tsx
++++ b/apps/web/app/(app)/admin/page.tsx
+@@ -18,7 +18,7 @@ import { Indicateur, useEnvoi as useActionLigne, Attente } from '@/components/ui
+ 
+ type Compte = {
+   id: string; email: string; nom: string; prenom: string; telephone: string | null; barreau: string | null; role: string
+-  whatsappVerifie: boolean; createdAt: string; dossiers: number; derniereConnexion: string | null; cabinet: { nom: string } | null
++  whatsappVerifie: boolean; createdAt: string; dossiers: number; dossiersCabinet: number | null; derniereConnexion: string | null; cabinet: { nom: string } | null
+   statut: 'EN_ATTENTE' | 'ACTIF' | 'DESACTIVE'; motifDesactivation: string | null; doitChangerMdp?: boolean
+   demande: { ville?: string; structure?: string; nbDossiers?: string; message?: string } | null
+   abonnement: null | { id: string; plan: Plan; estFondateur: boolean; prixMensuel: number | null; note: string | null; maxDossiers: number | null; essaiJusquAu: string | null; payeJusquAu: string | null; etat: EtatAbonnement; fin: string | null; joursRestants: number | null }
+@@ -58,7 +58,13 @@ const CSS = `
+ .ad-btn.p{background:var(--mp-action);color:var(--mp-action-texte);border-color:var(--mp-action)}
+ .ad-tbl{width:100%;border-collapse:collapse;font-size:14px}
+ .ad-tbl th{font-size:13px;font-weight:600;color:#5E6B67;text-align:right;padding:10px 12px;border-bottom:1px solid #E4E0D6;white-space:nowrap}
+-.ad-tbl td{padding:12px;border-bottom:1px solid #EEEAE1;vertical-align:middle}
++.ad-tbl td{padding:8px 10px;border-bottom:1px solid #EEEAE1;vertical-align:middle}
++.ad-tbl td.num{white-space:nowrap}
++.ad-plus{position:relative}
++.ad-plus>summary{list-style:none;min-width:40px;justify-content:center;font-size:18px;line-height:1}
++.ad-plus>summary::-webkit-details-marker{display:none}
++.ad-plus>div{position:absolute;inset-inline-end:0;top:calc(100% + 4px);z-index:20;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:12px;padding:8px;box-shadow:0 14px 30px -18px rgba(8,59,52,.35);min-width:190px}
++.ad-plus>div .ad-btn{justify-content:flex-start;width:100%}
+ .ad-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+ .ad-seg{display:inline-flex;background:#EEEAE1;border-radius:999px;padding:4px;gap:4px}
+ .ad-seg button{font-family:inherit;font-size:14px;font-weight:600;background:transparent;color:#3B4A47;border:0;border-radius:999px;padding:0 14px;min-height:36px;cursor:pointer}
+@@ -153,10 +159,16 @@ export default function AdminPage() {
+   const actions = (c: Compte) => c.statut === 'DESACTIVE'
+     ? <button type="button" className="ad-btn p mp-action" onClick={() => reactiver(c)} disabled={occupe} aria-busy={envoi === `react:${c.id}`}><Attente actif={envoi === `react:${c.id}`} texte="جارٍ التفعيل…"><Power size={15} aria-hidden />إعادة التفعيل</Attente></button>
+     : <>
+-      <button type="button" className="ad-btn" onClick={() => setPaiement(c)} disabled={!c.abonnement}>دفعة</button>
+       <button type="button" className="ad-btn" onClick={() => setEdition(c)}>العرض</button>
++      {/* Actions moins fréquentes : menu « ⋯ » (la ligne reste sur une hauteur) */}
++      <details className="ad-plus">
++        <summary className="ad-btn" aria-label="إجراءات أخرى">⋯</summary>
++        <div onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false }}>
++      <button type="button" className="ad-btn" onClick={() => setPaiement(c)} disabled={!c.abonnement}>دفعة</button>
+       <button type="button" className="ad-btn" onClick={() => reinitialiserMdp(c)} disabled={occupe} aria-busy={envoi === `mdp:${c.id}`}><Attente actif={envoi === `mdp:${c.id}`} texte="جارٍ الإنشاء…" sombre><KeyRound size={15} aria-hidden />كلمة مرور مؤقتة</Attente></button>
+       <button type="button" className="ad-btn" style={{ color: '#9B2C20' }} onClick={() => setDesactivation(c)}><Power size={15} aria-hidden />تعطيل</button>
++        </div>
++      </details>
+     </>
+ 
+   const TITRES: Record<Onglet, { t: string; sous: string; Icon: typeof Inbox }> = {
+@@ -239,7 +251,7 @@ export default function AdminPage() {
+             </div>
+             <div className="ad-tblw ad-comptes">
+               <table className="ad-tbl">
+-                <thead><tr><th>المحامي</th><th>الحساب</th><th>العرض</th><th>الاشتراك</th><th>حتى</th><th>الملفات</th><th>واتساب</th><th>آخر دخول</th><th /></tr></thead>
++                <thead><tr><th>المحامي</th><th>الحساب</th><th>العرض</th><th>الاشتراك</th><th>الملفات</th><th>واتساب</th><th>آخر دخول</th><th /></tr></thead>
+                 <tbody>
+                   {liste.map((c) => {
+                     const a = c.abonnement
+@@ -249,8 +261,7 @@ export default function AdminPage() {
+                         <td><Identite c={c} /></td>
+                         <td><BadgeCompte c={c} /></td>
+                         <td><Offre a={a} /></td>
+-                        <td><BadgeEtat a={a} /></td>
+-                        <td className="num">{a?.fin ? fmtDate(a.fin) : '—'}</td>
++                        <td><span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}><BadgeEtat a={a} />{a?.fin && <span className="num" style={{ fontSize: 12, color: '#5E6B67', whiteSpace: 'nowrap' }}>حتى {fmtDate(a.fin)}</span>}</span></td>
+                         <td><Dossiers c={c} /></td>
+                         <td>{c.whatsappVerifie ? <CheckCircle2 size={18} color="#0E5A4E" aria-label="مفعّل" /> : <span style={{ color: '#9B2C20', fontWeight: 600 }}>لا</span>}</td>
+                         <td className="num" style={{ color: '#5E6B67' }}>{c.derniereConnexion ? fmtDate(c.derniereConnexion) : 'لم يدخل'}</td>
+@@ -258,7 +269,7 @@ export default function AdminPage() {
+                       </tr>
+                     )
+                   })}
+-                  {liste.length === 0 && <tr><td colSpan={9} style={{ color: '#5E6B67', padding: 20 }}>لا حسابات.</td></tr>}
++                  {liste.length === 0 && <tr><td colSpan={8} style={{ color: '#5E6B67', padding: 20 }}>لا حسابات.</td></tr>}
+                 </tbody>
+               </table>
+             </div>
+@@ -574,9 +585,9 @@ function FormOffre({ compte, onFermer, onOk }: { compte: Compte; onFermer: () =>
+           <label className="ad-l">مدفوع حتى<input className="ad-in num" type="date" value={f.paye} onChange={(e) => setF({ ...f, paye: e.target.value })} /></label>
+           <ChampLimite valeur={f.limite} onChange={(v) => setF({ ...f, limite: v })} />
+         </div>
+-        {f.limite && Number(f.limite) < compte.dossiers && (
++        {f.limite && Number(f.limite) < (compte.dossiersCabinet ?? compte.dossiers) && (
+           <p role="alert" style={{ margin: 0, fontSize: 13, color: '#7A4E06', background: '#FDF1DC', borderRadius: 10, padding: '8px 12px' }}>
+-            يتابع هذا الحساب <span className="num">{compte.dossiers}</span> ملفاً، أكثر من الحد. تبقى ملفاته الحالية متابَعة، لكن لن يستطيع إضافة ملف جديد.
++            يتابع هذا الحساب <span className="num">{compte.dossiersCabinet ?? compte.dossiers}</span> ملفاً، أكثر من الحد. تبقى ملفاته الحالية متابَعة، لكن لن يستطيع إضافة ملف جديد.
+           </p>
+         )}
+         <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, minHeight: 44 }}><input type="checkbox" checked={f.estFondateur} onChange={(e) => setF({ ...f, estFondateur: e.target.checked })} style={{ width: 22, height: 22, accentColor: '#0E5A4E' }} />عضو مؤسس</label>
+@@ -724,13 +735,16 @@ function BadgeCompte({ c }: { c: Compte }) {
+ /** Dossiers suivis / limite fixée par l'administrateur (« بلا حد » par défaut) ; ambre à 90 %, rouge à la limite. */
+ function Dossiers({ c }: { c: Compte }) {
+   const max = c.abonnement?.maxDossiers ?? null
+-  if (max == null) return <span style={{ whiteSpace: 'nowrap' }}><span className="num">{c.dossiers}</span><span style={{ color: '#5E6B67' }}> · بلا حد</span></span>
+-  const plein = c.dossiers >= max
+-  const ton = plein ? '#9B2C20' : c.dossiers >= max * 0.9 ? '#7A4E06' : '#15201E'
++  const total = c.dossiersCabinet ?? c.dossiers // la limite porte sur tout le cabinet
++  const plein = max != null && total >= max
++  const ton = max == null ? '#15201E' : plein ? '#9B2C20' : total >= max * 0.9 ? '#7A4E06' : '#15201E'
+   return (
+-    <span style={{ color: ton, fontWeight: 600, whiteSpace: 'nowrap' }} title={`الحد: ${max}`}>
+-      <bdi dir="ltr" className="num">{c.dossiers} / {max}</bdi>
+-      {plein && <span style={{ fontWeight: 400 }}> · بلغ الحد</span>}
++    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, whiteSpace: 'nowrap' }} title={max == null ? 'بلا حد' : `الحد: ${max}`}>
++      <span><span className="num" style={{ fontWeight: 600 }}>{c.dossiers}</span> ملف</span>
++      <span style={{ fontSize: 12, color: ton }}>
++        {c.dossiersCabinet != null && <>المكتب <span className="num">{c.dossiersCabinet}</span></>}
++        {max == null ? (c.dossiersCabinet != null ? ' · بلا حد' : 'بلا حد') : <>{c.dossiersCabinet != null ? ' / ' : 'الحد '}<span className="num">{max}</span>{plein && ' · بلغ الحد'}</>}
++      </span>
+     </span>
+   )
+ }
+@@ -750,7 +764,7 @@ function Offre({ a }: { a: Compte['abonnement'] }) {
+   if (!a) return <span style={{ color: '#5E6B67', fontWeight: 400 }}>عضو مكتب</span>
+   const prix = a.prixMensuel ?? (a.estFondateur ? OFFRES[a.plan]?.fondateur : OFFRES[a.plan]?.prix)
+   return (
+-    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
++    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, whiteSpace: 'nowrap' }}>
+       <span>{OFFRES[a.plan]?.nom ?? a.plan}{a.estFondateur && <span style={{ marginInlineStart: 6, fontSize: 12, fontWeight: 700, background: '#F2A93B', color: '#15201E', borderRadius: 999, padding: '2px 8px' }}>مؤسس</span>}</span>
+       <span style={{ fontSize: 12, color: '#5E6B67', fontWeight: 400 }}>{prix != null ? <><span className="num">{prix}</span> درهم/شهر</> : 'عرض سعر'}</span>
+     </span>
+diff --git a/apps/web/app/(app)/alertes/page.tsx b/apps/web/app/(app)/alertes/page.tsx
+index 5b4142d..fcbe20f 100644
+--- a/apps/web/app/(app)/alertes/page.tsx
++++ b/apps/web/app/(app)/alertes/page.tsx
+@@ -1,6 +1,6 @@
+ 'use client'
+ 
+-import { useMemo, useState } from 'react'
++import { useEffect, useMemo, useState } from 'react'
+ import Link from 'next/link'
+ import { Gavel, Clock, Eye, CalendarDays, RefreshCw, MessageCircle, Bell } from 'lucide-react'
+ import { useApi } from '@/hooks/useApi'
+@@ -18,7 +18,9 @@ interface Alerte {
+   echeance?: { id: string; descriptionAr: string | null; description: string; dateLimite: string; camp: 'AGIR' | 'SURVEILLER'; typeDelai: string } | null
+   evenement?: { id: string; typeEvenement: string | null; natureJugement: string | null; dateAudience: string | null; texteArabe?: string } | null
+ }
+-type Filtre = 'tous' | 'nonlus' | 'jugements' | 'delais' | 'audiences' | 'sync'
++type Filtre = 'tous' | 'jugements' | 'delais' | 'audiences' | 'sync'
++type Vue = 'a-traiter' | 'historique'
++const TAILLE = 30 // taille d'une page côté API
+ 
+ const CSS = `
+ .al-chip{font-family:inherit;font-size:14px;font-weight:600;background:#FFFFFF;color:#3B4A47;border:1px solid #E4E0D6;border-radius:999px;padding:0 16px;min-height:44px;cursor:pointer}
+@@ -36,7 +38,25 @@ const masquer = (t?: string | null) => (t ? t.replace(/(\d{2})\s?(\d{2})\s?(\d{2
+ export default function AlertesPage() {
+   const { toast } = useToast()
+   const { tribunalAr } = useTribunaux()
+-  const { data: alertes, loading, error, refetch } = useApi<Alerte[]>('/alertes')
++  // « للمعالجة » = non lues : une alerte lue ou traitée en sort aussitôt. « السجل » = le reste, par pages.
++  const [vue, setVue] = useState<Vue>('a-traiter')
++  const { data: page1, loading, error, refetch } = useApi<Alerte[]>(`/alertes?vue=${vue}`, [vue])
++  const { data: compte, refetch: recompter } = useApi<{ nonLues: number }>('/alertes/non-lues')
++  const [suite, setSuite] = useState<{ items: Alerte[]; dernierLot: number }>({ items: [], dernierLot: 0 })
++  const [masquees, setMasquees] = useState<Set<string>>(new Set()) // lues à l'instant : retirées sans attendre le serveur
++  useEffect(() => { setSuite({ items: [], dernierLot: 0 }); setMasquees(new Set()) }, [page1])
++  const alertes = page1 && [...page1, ...suite.items].filter((a) => !masquees.has(a.id))
++  const peutPlus = (suite.items.length ? suite.dernierLot : page1?.length ?? 0) === TAILLE
++  const [chargePlus, setChargePlus] = useState(false)
++  const chargerPlus = async () => {
++    const dernier = [...(page1 ?? []), ...suite.items].at(-1)
++    if (!dernier) return
++    setChargePlus(true)
++    try {
++      const lot = await apiFetch<Alerte[]>(`/alertes?vue=${vue}&avant=${encodeURIComponent(dernier.createdAt)}`)
++      setSuite((s) => ({ items: [...s.items, ...lot], dernierLot: lot.length }))
++    } catch { toast('تعذّر تحميل المزيد.', 'error') } finally { setChargePlus(false) }
++  }
+   const { data: prefs } = useApi<{ whatsappNumero: string | null; whatsappVerifie: boolean; preferences: Preferences }>('/alertes/preferences')
+   const [filtre, setFiltre] = useState<Filtre>('tous')
+ 
+@@ -49,18 +69,24 @@ export default function AlertesPage() {
+     return 'autre'
+   }
+   const filtres: Record<Filtre, (a: Alerte) => boolean> = {
+-    tous: () => true, nonlus: (a) => !a.luAt && a.canal === 'IN_APP', jugements: (a) => famille(a) === 'jugement',
++    tous: () => true, jugements: (a) => famille(a) === 'jugement',
+     delais: (a) => famille(a) === 'delai' || famille(a) === 'adverse', audiences: (a) => famille(a) === 'audience', sync: (a) => famille(a) === 'sync',
+   }
+   const liste = (alertes ?? []).filter(filtres[filtre])
+-  const nonLues = (alertes ?? []).filter(filtres.nonlus).length
++  const nonLues = compte?.nonLues ?? 0
+   const groupes = useMemo(() => {
+     const g = new Map<string, Alerte[]>()
+     for (const a of liste) g.set(jourLabel(a.createdAt), [...(g.get(jourLabel(a.createdAt)) ?? []), a])
+     return Array.from(g.entries())
+   }, [liste])
+ 
+-  const marquerLu = (a: Alerte) => { if (!a.luAt && a.canal === 'IN_APP') apiFetch(`/alertes/${a.id}/lu`, { method: 'PATCH' }).then(refetch).catch(() => {}) }
++  const marquerLu = (a: Alerte) => {
++    if (a.luAt || a.canal !== 'IN_APP') return
++    setMasquees((m) => new Set(m).add(a.id))
++    apiFetch(`/alertes/${a.id}/lu`, { method: 'PATCH' })
++      .then(() => { recompter(); window.dispatchEvent(new Event('mp:alertes-lues')) }) // pastille du menu
++      .catch(() => setMasquees((m) => { const n = new Set(m); n.delete(a.id); return n }))
++  }
+   // Une action à la fois ; la clé « <alerte>:<action> » désigne le bouton qui attend
+   const { cle, occupe, lancer } = useEnvoi()
+   const btn = (k: string, label: React.ReactNode, onClick: () => void, primaire?: boolean, texte = 'جارٍ الحفظ…') => (
+@@ -69,7 +95,7 @@ export default function AlertesPage() {
+     </button>
+   )
+   const toutLu = () => lancer('tout-lu', async () => {
+-    try { await apiFetch('/alertes/lu-tout', { method: 'POST' }); await refetch() } catch { toast('تعذّر تعليم التنبيهات كمقروءة.', 'error') }
++    try { await apiFetch('/alertes/lu-tout', { method: 'POST' }); await Promise.all([refetch(), recompter()]); window.dispatchEvent(new Event('mp:alertes-lues')) } catch { toast('تعذّر تعليم التنبيهات كمقروءة.', 'error') }
+   })
+   const rappel = (a: Alerte) => lancer(`${a.id}:rappel`, async () => {
+     if (!a.echeance) return
+@@ -169,15 +195,22 @@ export default function AlertesPage() {
+       </div>
+ 
+       <div role="tablist" aria-label="تصفية التنبيهات" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+-        {([['tous', 'الكل'], ['nonlus', 'غير مقروءة'], ['jugements', 'أحكام'], ['delais', 'آجال'], ['audiences', 'جلسات'], ['sync', 'المزامنة']] as [Filtre, string][]).map(([k, l]) => (
+-          <button key={k} type="button" role="tab" aria-selected={filtre === k} onClick={() => setFiltre(k)} className={`al-chip${filtre === k ? ' on' : ''}`}>{l}{k === 'nonlus' && nonLues > 0 ? <> <span className="num">{nonLues}</span></> : null}</button>
++        {([['a-traiter', 'للمعالجة'], ['historique', 'السجل']] as [Vue, string][]).map(([k, l]) => (
++          <button key={k} type="button" role="tab" aria-selected={vue === k} onClick={() => setVue(k)} className={`al-chip${vue === k ? ' on' : ''}`}>{l}{k === 'a-traiter' && nonLues > 0 ? <> <span className="num">{nonLues}</span></> : null}</button>
++        ))}
++      </div>
++      <div role="group" aria-label="نوع التنبيه" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: -8 }}>
++        {([['tous', 'الكل'], ['jugements', 'أحكام'], ['delais', 'آجال'], ['audiences', 'جلسات'], ['sync', 'المزامنة']] as [Filtre, string][]).map(([k, l]) => (
++          <button key={k} type="button" aria-pressed={filtre === k} onClick={() => setFiltre(k)} className={`al-chip${filtre === k ? ' on' : ''}`} style={{ minHeight: 36, fontSize: 13, padding: '0 12px' }}>{l}</button>
+         ))}
+       </div>
+ 
+       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+         <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+           {!alertes && error ? <ErreurChargement quoi="التنبيهات" onReessayer={refetch} /> : loading ? <SqueletteListe n={6} label="جارٍ تحميل التنبيهات" /> : liste.length === 0 ? (
+-            <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '10px 0' }}>{(alertes ?? []).length === 0
++            <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '10px 0' }}>{vue === 'a-traiter' && filtre === 'tous'
++              ? <EtatVide Icon={Bell} texte="لا شيء للمعالجة. التنبيهات المقروءة في السجل." />
++              : (alertes ?? []).length === 0 && vue === 'historique'
+               ? <EtatVide Icon={Bell} texte="لا تنبيهات بعد. ستظهر هنا مستجدات ملفاتكم وآجالها." action={<Link href="/dossiers?ajouter=1" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 16px', borderRadius: 12, border: '1px solid #CDE5DD', background: '#E3F0EC', color: '#0E5A4E', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>إضافة ملف للمراقبة</Link>} />
+               : <EtatVide Icon={Bell} texte="لا تنبيهات في هذا القسم." />}</div>
+           ) : groupes.map(([jour, l]) => (
+@@ -196,13 +229,18 @@ export default function AlertesPage() {
+                       <span style={{ fontSize: 14, color: '#3B4A47' }}>{c.sous}</span>
+                       {c.hint && <span style={{ fontSize: 13, color: '#5E6B67' }}>{c.hint}</span>}
+                     </div>
+-                    {c.action && <div className="al-ac" style={{ display: 'flex', gap: 8, alignSelf: 'center' }} onClick={(e) => e.stopPropagation()}>{c.action}</div>}
++                    {c.action && <div className="al-ac" style={{ display: 'flex', gap: 8, alignSelf: 'center' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).closest('a')) marquerLu(a) }}>{c.action}</div>}
+                     {nonLu && <span role="img" aria-label="غير مقروء" style={{ position: 'absolute', top: 14, left: 14, width: 10, height: 10, borderRadius: '50%', background: '#0E5A4E' }} />}
+                   </article>
+                 )
+               })}
+             </div>
+           ))}
++          {peutPlus && !loading && (
++            <button type="button" onClick={chargerPlus} disabled={chargePlus} aria-busy={chargePlus} className="al-chip" style={{ alignSelf: 'center', marginTop: 4 }}>
++              <Attente actif={chargePlus} texte="جارٍ التحميل…" sombre>عرض المزيد</Attente>
++            </button>
++          )}
+         </div>
+ 
+         <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+diff --git a/apps/web/app/(app)/assistant/page.tsx b/apps/web/app/(app)/assistant/page.tsx
+index 2f1b9d7..f288ca2 100644
+--- a/apps/web/app/(app)/assistant/page.tsx
++++ b/apps/web/app/(app)/assistant/page.tsx
+@@ -237,8 +237,8 @@ export default function AssistantPage() {
+                       <Link href={dossier ? `/documents?dossier=${dossier.id}` : '/documents'} style={{ ...BTN, background: '#15201E', color: '#FFFFFF', border: 0 }}><FileText size={16} aria-hidden />تحرير وثيقة</Link>
+                       <button type="button" onClick={() => copier(m.contenu)} style={BTN}><Copy size={16} aria-hidden />نسخ</button>
+                       <span style={{ flex: 1 }} />
+-                      <button type="button" aria-label="إجابة مفيدة" aria-pressed={m.feedback === 1} disabled={!m.id} onClick={() => avis(m, 1)} style={{ ...ROND, ...(m.feedback === 1 ? { background: '#E3F0EC', color: '#0B4A40', borderColor: '#0E5A4E' } : {}) }}><ThumbsUp size={18} aria-hidden /></button>
+-                      <button type="button" aria-label="إجابة غير دقيقة" aria-pressed={m.feedback === -1} disabled={!m.id} onClick={() => avis(m, -1)} style={{ ...ROND, ...(m.feedback === -1 ? { background: '#FBEAE7', color: '#9B2C20', borderColor: '#C0392B' } : {}) }}><ThumbsDown size={18} aria-hidden /></button>
++                      <button type="button" aria-label="إجابة مفيدة" aria-pressed={m.feedback === 1} disabled={!m.id} onClick={() => avis(m, 1)} style={{ ...ROND, ...(m.feedback === 1 ? { background: '#E3F0EC', color: '#0B4A40', border: '1px solid #0E5A4E' } : {}) }}><ThumbsUp size={18} aria-hidden /></button>
++                      <button type="button" aria-label="إجابة غير دقيقة" aria-pressed={m.feedback === -1} disabled={!m.id} onClick={() => avis(m, -1)} style={{ ...ROND, ...(m.feedback === -1 ? { background: '#FBEAE7', color: '#9B2C20', border: '1px solid #C0392B' } : {}) }}><ThumbsDown size={18} aria-hidden /></button>
+                     </div>
+                   </>}
+                 </div>
+diff --git a/apps/web/app/(app)/dashboard/page.tsx b/apps/web/app/(app)/dashboard/page.tsx
+index abb01b3..89ca4e0 100644
+--- a/apps/web/app/(app)/dashboard/page.tsx
++++ b/apps/web/app/(app)/dashboard/page.tsx
+@@ -47,7 +47,7 @@ export default function DashboardPage() {
+   // Derniers mouvements : 4 dossiers seulement, triés en base (pas tout le portefeuille)
+   const { data: recentsPage } = useApi<{ items: Dossier[] }>('/dossiers/liste?tri=recent&taille=4&avecActe=1')
+   const dossiers = recentsPage?.items
+-  const { data: alertes } = useApi<Alerte[]>('/alertes')
++  const { data: alertes } = useApi<Alerte[]>('/alertes?vue=a-traiter&taille=100')
+   const { data: sync } = useApi<Sync>('/dossiers/sync-statut')
+   const { hidden, complete } = useCompleteWithUndo(refetch)
+   const { data: abo } = useApi<AbonnementCourant>(user && user.role !== 'ADMIN' ? '/abonnements/current' : null)
+diff --git a/apps/web/app/(app)/documents/page.tsx b/apps/web/app/(app)/documents/page.tsx
+index ca7599f..c11a3f9 100644
+--- a/apps/web/app/(app)/documents/page.tsx
++++ b/apps/web/app/(app)/documents/page.tsx
+@@ -297,7 +297,7 @@ export default function DocumentsPage() {
+                 {generating ? <><Indicateur taille={18} courant />جارٍ التحرير…</> : <><Sparkles size={18} aria-hidden />تحرير المسودة</>}
+               </button>
+               <div role="group" aria-label="اللغة" style={{ display: 'inline-flex', gap: 6 }}>
+-                {(['AR', 'FR'] as const).map((l) => <button key={l} type="button" className="mp-choix" aria-pressed={langue === l} onClick={() => setLangue(l)} style={{ ...BTN, minHeight: 40, ...(langue === l ? { background: '#E3F0EC', borderColor: '#0E5A4E', color: '#0B4A40' } : {}) }}>{l === 'AR' ? 'العربية' : 'Français'}</button>)}
++                {(['AR', 'FR'] as const).map((l) => <button key={l} type="button" className="mp-choix" aria-pressed={langue === l} onClick={() => setLangue(l)} style={{ ...BTN, minHeight: 40 }}>{l === 'AR' ? 'العربية' : 'Français'}</button>)}
+               </div>
+             </div>
+           </section>
+diff --git a/apps/web/app/(app)/dossiers/page.tsx b/apps/web/app/(app)/dossiers/page.tsx
+index 1aef937..b7370f5 100644
+--- a/apps/web/app/(app)/dossiers/page.tsx
++++ b/apps/web/app/(app)/dossiers/page.tsx
+@@ -47,7 +47,7 @@ const CHIP: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWei
+ const CHIP_ON: React.CSSProperties = { ...CHIP, background: '#15201E', color: '#FFFFFF', border: 0 }
+ const SELECT: React.CSSProperties = { fontSize: 14, background: '#FFFFFF', color: '#15201E', border: '1px solid #E4E0D6', borderRadius: 10, padding: '0 12px', minHeight: 44 }
+ // Filtre appliqué = option choisie (orange clair, comme .mp-choix) : on voit d'un coup d'œil que la liste est filtrée
+-const SELECT_ON: React.CSSProperties = { ...SELECT, background: 'var(--mp-choix-fond)', borderColor: 'var(--mp-choix-bord)', boxShadow: 'inset 0 0 0 1px var(--mp-choix-bord)', fontWeight: 600 }
++const SELECT_ON: React.CSSProperties = { ...SELECT, background: 'var(--mp-choix-fond)', border: '1px solid var(--mp-choix-bord)', boxShadow: 'inset 0 0 0 1px var(--mp-choix-bord)', fontWeight: 600 }
+ const BARRE_BTN: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: 'transparent', color: '#FFFFFF', border: '1px solid #5E6B67', borderRadius: 999, padding: '0 14px', minHeight: 40, cursor: 'pointer' }
+ const sansMouvement = (d: Dossier) => Math.floor((Date.now() - new Date(d.dernierEvenement?.datePublicationGreffe ?? d.updatedAt).getTime()) / JOUR_MS)
+ const resumeEvenement = (t: string) => (t.length > 42 ? `${t.slice(0, 40)}…` : t)
+diff --git a/apps/web/components/layout/AppShell.tsx b/apps/web/components/layout/AppShell.tsx
+index 8c43c4e..cd9fc34 100644
+--- a/apps/web/components/layout/AppShell.tsx
++++ b/apps/web/components/layout/AppShell.tsx
+@@ -109,7 +109,13 @@ export function AppShell({ children }: AppShellProps) {
+   const { data: abo } = useApi<AbonnementCourant>(user && user.role !== 'ADMIN' ? '/abonnements/current' : null)
+   const [aboMasque, setAboMasque] = useState(false)
+   // Pastilles : délais critiques à agir, nombre de dossiers, alertes non lues.
+-  const { data: compteurs } = useApi<{ dossiers: number; critiques: number; nonLues: number; demandes?: number }>(user ? '/dashboard/compteurs' : null, [pathname])
++  const { data: compteurs, refetch: recompter } = useApi<{ dossiers: number; critiques: number; nonLues: number; demandes?: number }>(user ? '/dashboard/compteurs' : null, [pathname])
++  // Alerte lue sur la page des alertes : la pastille du menu suit sans attendre un changement de page
++  useEffect(() => {
++    const maj = () => { recompter() }
++    window.addEventListener('mp:alertes-lues', maj)
++    return () => window.removeEventListener('mp:alertes-lues', maj)
++  }, [recompter])
+ 
+   useEffect(() => {
+     if (!loading && !user) router.push('/login')
+-- 
+2.43.0
+

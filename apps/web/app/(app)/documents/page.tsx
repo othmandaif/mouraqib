@@ -297,7 +297,7 @@ export default function DocumentsPage() {
                 {generating ? <><Indicateur taille={18} courant />جارٍ التحرير…</> : <><Sparkles size={18} aria-hidden />تحرير المسودة</>}
               </button>
               <div role="group" aria-label="اللغة" style={{ display: 'inline-flex', gap: 6 }}>
-                {(['AR', 'FR'] as const).map((l) => <button key={l} type="button" className="mp-choix" aria-pressed={langue === l} onClick={() => setLangue(l)} style={{ ...BTN, minHeight: 40, ...(langue === l ? { background: '#E3F0EC', borderColor: '#0E5A4E', color: '#0B4A40' } : {}) }}>{l === 'AR' ? 'العربية' : 'Français'}</button>)}
+                {(['AR', 'FR'] as const).map((l) => <button key={l} type="button" className="mp-choix" aria-pressed={langue === l} onClick={() => setLangue(l)} style={{ ...BTN, minHeight: 40 }}>{l === 'AR' ? 'العربية' : 'Français'}</button>)}
               </div>
             </div>
           </section>

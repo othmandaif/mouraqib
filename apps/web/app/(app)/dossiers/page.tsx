@@ -47,7 +47,7 @@ const CHIP: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWei
 const CHIP_ON: React.CSSProperties = { ...CHIP, background: '#15201E', color: '#FFFFFF', border: 0 }
 const SELECT: React.CSSProperties = { fontSize: 14, background: '#FFFFFF', color: '#15201E', border: '1px solid #E4E0D6', borderRadius: 10, padding: '0 12px', minHeight: 44 }
 // Filtre appliqué = option choisie (orange clair, comme .mp-choix) : on voit d'un coup d'œil que la liste est filtrée
-const SELECT_ON: React.CSSProperties = { ...SELECT, background: 'var(--mp-choix-fond)', borderColor: 'var(--mp-choix-bord)', boxShadow: 'inset 0 0 0 1px var(--mp-choix-bord)', fontWeight: 600 }
+const SELECT_ON: React.CSSProperties = { ...SELECT, background: 'var(--mp-choix-fond)', border: '1px solid var(--mp-choix-bord)', boxShadow: 'inset 0 0 0 1px var(--mp-choix-bord)', fontWeight: 600 }
 const BARRE_BTN: React.CSSProperties = { fontFamily: 'inherit', fontSize: 14, fontWeight: 600, background: 'transparent', color: '#FFFFFF', border: '1px solid #5E6B67', borderRadius: 999, padding: '0 14px', minHeight: 40, cursor: 'pointer' }
 const sansMouvement = (d: Dossier) => Math.floor((Date.now() - new Date(d.dernierEvenement?.datePublicationGreffe ?? d.updatedAt).getTime()) / JOUR_MS)
 const resumeEvenement = (t: string) => (t.length > 42 ? `${t.slice(0, 40)}…` : t)

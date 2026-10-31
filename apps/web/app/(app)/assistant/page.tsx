@@ -237,8 +237,8 @@ export default function AssistantPage() {
                       <Link href={dossier ? `/documents?dossier=${dossier.id}` : '/documents'} style={{ ...BTN, background: '#15201E', color: '#FFFFFF', border: 0 }}><FileText size={16} aria-hidden />تحرير وثيقة</Link>
                       <button type="button" onClick={() => copier(m.contenu)} style={BTN}><Copy size={16} aria-hidden />نسخ</button>
                       <span style={{ flex: 1 }} />
-                      <button type="button" aria-label="إجابة مفيدة" aria-pressed={m.feedback === 1} disabled={!m.id} onClick={() => avis(m, 1)} style={{ ...ROND, ...(m.feedback === 1 ? { background: '#E3F0EC', color: '#0B4A40', borderColor: '#0E5A4E' } : {}) }}><ThumbsUp size={18} aria-hidden /></button>
-                      <button type="button" aria-label="إجابة غير دقيقة" aria-pressed={m.feedback === -1} disabled={!m.id} onClick={() => avis(m, -1)} style={{ ...ROND, ...(m.feedback === -1 ? { background: '#FBEAE7', color: '#9B2C20', borderColor: '#C0392B' } : {}) }}><ThumbsDown size={18} aria-hidden /></button>
+                      <button type="button" aria-label="إجابة مفيدة" aria-pressed={m.feedback === 1} disabled={!m.id} onClick={() => avis(m, 1)} style={{ ...ROND, ...(m.feedback === 1 ? { background: '#E3F0EC', color: '#0B4A40', border: '1px solid #0E5A4E' } : {}) }}><ThumbsUp size={18} aria-hidden /></button>
+                      <button type="button" aria-label="إجابة غير دقيقة" aria-pressed={m.feedback === -1} disabled={!m.id} onClick={() => avis(m, -1)} style={{ ...ROND, ...(m.feedback === -1 ? { background: '#FBEAE7', color: '#9B2C20', border: '1px solid #C0392B' } : {}) }}><ThumbsDown size={18} aria-hidden /></button>
                     </div>
                   </>}
                 </div>

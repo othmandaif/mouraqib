@@ -14,9 +14,16 @@ export interface AuthRequest extends Request {
    * À utiliser comme `userId: { in: req.equipe }` dans toute requête sur les dossiers.
    */
   equipe?: string[]
+  /** Droits retirés par le responsable du cabinet (voir DROITS). */
+  droitsRetires?: string[]
 }
 
+/** Droits qu'un responsable de cabinet peut retirer à un membre. */
+export const DROITS = ['SUPPRESSION_DOSSIERS', 'CRM', 'FACTURATION', 'IA'] as const
+export type Droit = (typeof DROITS)[number]
+
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  if (req.userId) { next(); return } // déjà authentifié par le routeur parent (contrôle des droits) : pas de 2e lecture
   const header = req.headers.authorization
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Token manquant' })
@@ -30,7 +37,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
 
     const session = await prisma.session.findUnique({
       where: { id: payload.sessionId },
-      select: { id: true, userId: true, expiresAt: true, user: { select: { role: true, statut: true, doitChangerMdp: true, cabinetId: true } } },
+      select: { id: true, userId: true, expiresAt: true, user: { select: { role: true, statut: true, doitChangerMdp: true, cabinetId: true, droitsRetires: true } } },
     })
 
     if (!session || session.expiresAt < new Date() || session.userId !== payload.userId) {
@@ -54,6 +61,8 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     req.userRole = session.user.role
     req.sessionId = session.id
     req.cabinetId = session.user.cabinetId
+    // Le responsable et l'avocat seul ont toujours tous les droits
+    req.droitsRetires = session.user.cabinetId && session.user.role !== 'ASSOCIE_GERANT' ? session.user.droitsRetires : []
     // Membres actifs du cabinet : un membre désactivé garde ses dossiers visibles pour l'équipe
     req.equipe = session.user.cabinetId
       ? (await prisma.user.findMany({ where: { cabinetId: session.user.cabinetId }, select: { id: true } })).map((u) => u.id)
@@ -64,11 +73,16 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-/** Actions qui retirent un dossier du suivi (suppression, archivage) : interdites au compte « كاتب ». */
-export function sansSecretaire(req: AuthRequest, res: Response, next: NextFunction): void {
-  if (req.userRole === 'SECRETAIRE') { res.status(403).json({ error: "Réservé à l'avocat" }); return }
-  next()
+/** Refuse l'accès si le responsable du cabinet a retiré ce droit au membre. */
+export function exigerDroit(droit: Droit) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (req.droitsRetires?.includes(droit)) { res.status(403).json({ error: 'Droit non accordé par le responsable du cabinet' }); return }
+    next()
+  }
 }
+
+/** Actions qui retirent un dossier du suivi (suppression, archivage) : selon le droit du membre. */
+export const sansSecretaire = exigerDroit('SUPPRESSION_DOSSIERS')
 
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {

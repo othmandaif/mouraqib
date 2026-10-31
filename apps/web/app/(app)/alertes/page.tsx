@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Gavel, Clock, Eye, CalendarDays, RefreshCw, MessageCircle, Bell } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
@@ -18,7 +18,9 @@ interface Alerte {
   echeance?: { id: string; descriptionAr: string | null; description: string; dateLimite: string; camp: 'AGIR' | 'SURVEILLER'; typeDelai: string } | null
   evenement?: { id: string; typeEvenement: string | null; natureJugement: string | null; dateAudience: string | null; texteArabe?: string } | null
 }
-type Filtre = 'tous' | 'nonlus' | 'jugements' | 'delais' | 'audiences' | 'sync'
+type Filtre = 'tous' | 'jugements' | 'delais' | 'audiences' | 'sync'
+type Vue = 'a-traiter' | 'historique'
+const TAILLE = 30 // taille d'une page côté API
 
 const CSS = `
 .al-chip{font-family:inherit;font-size:14px;font-weight:600;background:#FFFFFF;color:#3B4A47;border:1px solid #E4E0D6;border-radius:999px;padding:0 16px;min-height:44px;cursor:pointer}
@@ -36,7 +38,25 @@ const masquer = (t?: string | null) => (t ? t.replace(/(\d{2})\s?(\d{2})\s?(\d{2
 export default function AlertesPage() {
   const { toast } = useToast()
   const { tribunalAr } = useTribunaux()
-  const { data: alertes, loading, error, refetch } = useApi<Alerte[]>('/alertes')
+  // « للمعالجة » = non lues : une alerte lue ou traitée en sort aussitôt. « السجل » = le reste, par pages.
+  const [vue, setVue] = useState<Vue>('a-traiter')
+  const { data: page1, loading, error, refetch } = useApi<Alerte[]>(`/alertes?vue=${vue}`, [vue])
+  const { data: compte, refetch: recompter } = useApi<{ nonLues: number }>('/alertes/non-lues')
+  const [suite, setSuite] = useState<{ items: Alerte[]; dernierLot: number }>({ items: [], dernierLot: 0 })
+  const [masquees, setMasquees] = useState<Set<string>>(new Set()) // lues à l'instant : retirées sans attendre le serveur
+  useEffect(() => { setSuite({ items: [], dernierLot: 0 }); setMasquees(new Set()) }, [page1])
+  const alertes = page1 && [...page1, ...suite.items].filter((a) => !masquees.has(a.id))
+  const peutPlus = (suite.items.length ? suite.dernierLot : page1?.length ?? 0) === TAILLE
+  const [chargePlus, setChargePlus] = useState(false)
+  const chargerPlus = async () => {
+    const dernier = [...(page1 ?? []), ...suite.items].at(-1)
+    if (!dernier) return
+    setChargePlus(true)
+    try {
+      const lot = await apiFetch<Alerte[]>(`/alertes?vue=${vue}&avant=${encodeURIComponent(dernier.createdAt)}`)
+      setSuite((s) => ({ items: [...s.items, ...lot], dernierLot: lot.length }))
+    } catch { toast('تعذّر تحميل المزيد.', 'error') } finally { setChargePlus(false) }
+  }
   const { data: prefs } = useApi<{ whatsappNumero: string | null; whatsappVerifie: boolean; preferences: Preferences }>('/alertes/preferences')
   const [filtre, setFiltre] = useState<Filtre>('tous')
 
@@ -49,18 +69,24 @@ export default function AlertesPage() {
     return 'autre'
   }
   const filtres: Record<Filtre, (a: Alerte) => boolean> = {
-    tous: () => true, nonlus: (a) => !a.luAt && a.canal === 'IN_APP', jugements: (a) => famille(a) === 'jugement',
+    tous: () => true, jugements: (a) => famille(a) === 'jugement',
     delais: (a) => famille(a) === 'delai' || famille(a) === 'adverse', audiences: (a) => famille(a) === 'audience', sync: (a) => famille(a) === 'sync',
   }
   const liste = (alertes ?? []).filter(filtres[filtre])
-  const nonLues = (alertes ?? []).filter(filtres.nonlus).length
+  const nonLues = compte?.nonLues ?? 0
   const groupes = useMemo(() => {
     const g = new Map<string, Alerte[]>()
     for (const a of liste) g.set(jourLabel(a.createdAt), [...(g.get(jourLabel(a.createdAt)) ?? []), a])
     return Array.from(g.entries())
   }, [liste])
 
-  const marquerLu = (a: Alerte) => { if (!a.luAt && a.canal === 'IN_APP') apiFetch(`/alertes/${a.id}/lu`, { method: 'PATCH' }).then(refetch).catch(() => {}) }
+  const marquerLu = (a: Alerte) => {
+    if (a.luAt || a.canal !== 'IN_APP') return
+    setMasquees((m) => new Set(m).add(a.id))
+    apiFetch(`/alertes/${a.id}/lu`, { method: 'PATCH' })
+      .then(() => { recompter(); window.dispatchEvent(new Event('mp:alertes-lues')) }) // pastille du menu
+      .catch(() => setMasquees((m) => { const n = new Set(m); n.delete(a.id); return n }))
+  }
   // Une action à la fois ; la clé « <alerte>:<action> » désigne le bouton qui attend
   const { cle, occupe, lancer } = useEnvoi()
   const btn = (k: string, label: React.ReactNode, onClick: () => void, primaire?: boolean, texte = 'جارٍ الحفظ…') => (
@@ -69,7 +95,7 @@ export default function AlertesPage() {
     </button>
   )
   const toutLu = () => lancer('tout-lu', async () => {
-    try { await apiFetch('/alertes/lu-tout', { method: 'POST' }); await refetch() } catch { toast('تعذّر تعليم التنبيهات كمقروءة.', 'error') }
+    try { await apiFetch('/alertes/lu-tout', { method: 'POST' }); await Promise.all([refetch(), recompter()]); window.dispatchEvent(new Event('mp:alertes-lues')) } catch { toast('تعذّر تعليم التنبيهات كمقروءة.', 'error') }
   })
   const rappel = (a: Alerte) => lancer(`${a.id}:rappel`, async () => {
     if (!a.echeance) return
@@ -169,15 +195,22 @@ export default function AlertesPage() {
       </div>
 
       <div role="tablist" aria-label="تصفية التنبيهات" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {([['tous', 'الكل'], ['nonlus', 'غير مقروءة'], ['jugements', 'أحكام'], ['delais', 'آجال'], ['audiences', 'جلسات'], ['sync', 'المزامنة']] as [Filtre, string][]).map(([k, l]) => (
-          <button key={k} type="button" role="tab" aria-selected={filtre === k} onClick={() => setFiltre(k)} className={`al-chip${filtre === k ? ' on' : ''}`}>{l}{k === 'nonlus' && nonLues > 0 ? <> <span className="num">{nonLues}</span></> : null}</button>
+        {([['a-traiter', 'للمعالجة'], ['historique', 'السجل']] as [Vue, string][]).map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={vue === k} onClick={() => setVue(k)} className={`al-chip${vue === k ? ' on' : ''}`}>{l}{k === 'a-traiter' && nonLues > 0 ? <> <span className="num">{nonLues}</span></> : null}</button>
+        ))}
+      </div>
+      <div role="group" aria-label="نوع التنبيه" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: -8 }}>
+        {([['tous', 'الكل'], ['jugements', 'أحكام'], ['delais', 'آجال'], ['audiences', 'جلسات'], ['sync', 'المزامنة']] as [Filtre, string][]).map(([k, l]) => (
+          <button key={k} type="button" aria-pressed={filtre === k} onClick={() => setFiltre(k)} className={`al-chip${filtre === k ? ' on' : ''}`} style={{ minHeight: 36, fontSize: 13, padding: '0 12px' }}>{l}</button>
         ))}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
         <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {!alertes && error ? <ErreurChargement quoi="التنبيهات" onReessayer={refetch} /> : loading ? <SqueletteListe n={6} label="جارٍ تحميل التنبيهات" /> : liste.length === 0 ? (
-            <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '10px 0' }}>{(alertes ?? []).length === 0
+            <div style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '10px 0' }}>{vue === 'a-traiter' && filtre === 'tous'
+              ? <EtatVide Icon={Bell} texte="لا شيء للمعالجة. التنبيهات المقروءة في السجل." />
+              : (alertes ?? []).length === 0 && vue === 'historique'
               ? <EtatVide Icon={Bell} texte="لا تنبيهات بعد. ستظهر هنا مستجدات ملفاتكم وآجالها." action={<Link href="/dossiers?ajouter=1" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 16px', borderRadius: 12, border: '1px solid #CDE5DD', background: '#E3F0EC', color: '#0E5A4E', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>إضافة ملف للمراقبة</Link>} />
               : <EtatVide Icon={Bell} texte="لا تنبيهات في هذا القسم." />}</div>
           ) : groupes.map(([jour, l]) => (
@@ -196,13 +229,18 @@ export default function AlertesPage() {
                       <span style={{ fontSize: 14, color: '#3B4A47' }}>{c.sous}</span>
                       {c.hint && <span style={{ fontSize: 13, color: '#5E6B67' }}>{c.hint}</span>}
                     </div>
-                    {c.action && <div className="al-ac" style={{ display: 'flex', gap: 8, alignSelf: 'center' }} onClick={(e) => e.stopPropagation()}>{c.action}</div>}
+                    {c.action && <div className="al-ac" style={{ display: 'flex', gap: 8, alignSelf: 'center' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).closest('a')) marquerLu(a) }}>{c.action}</div>}
                     {nonLu && <span role="img" aria-label="غير مقروء" style={{ position: 'absolute', top: 14, left: 14, width: 10, height: 10, borderRadius: '50%', background: '#0E5A4E' }} />}
                   </article>
                 )
               })}
             </div>
           ))}
+          {peutPlus && !loading && (
+            <button type="button" onClick={chargerPlus} disabled={chargePlus} aria-busy={chargePlus} className="al-chip" style={{ alignSelf: 'center', marginTop: 4 }}>
+              <Attente actif={chargePlus} texte="جارٍ التحميل…" sombre>عرض المزيد</Attente>
+            </button>
+          )}
         </div>
 
         <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>

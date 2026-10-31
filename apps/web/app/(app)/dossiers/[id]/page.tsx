@@ -7,6 +7,7 @@ import { Route as IcRoute, Contact as IdCard, Microscope, Files, MessagesSquare,
 import Link from 'next/link'
 import { Archive, ArchiveRestore, Check, FileText, MessageSquare, RefreshCw, Sparkles } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
+import { useAuth, aDroit } from '@/hooks/useAuth'
 import { apiFetch } from '@/lib/api'
 import { useTribunaux } from '@/hooks/useTribunaux'
 import { useToast } from '@/components/Toast'
@@ -83,6 +84,8 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
   const [editRole, setEditRole] = useState(false)
   const { hidden, complete } = useCompleteWithUndo(refetch)
   const { cle, occupe, lancer } = useEnvoi()
+  const { user } = useAuth()
+  const peutArchiver = aDroit(user, 'SUPPRESSION_DOSSIERS'), peutIA = aDroit(user, 'IA')
 
   if (loading) return <SqueletteFiche />
   // Erreur réseau ≠ dossier introuvable (404) : on propose de réessayer
@@ -185,13 +188,14 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
               <button type="button" disabled={occupe} aria-busy={cle === 'scraper'} onClick={() => action('scraper', () => apiFetch(`/dossiers/${id}/scraper`, { method: 'POST' }), 'بدأ التحديث من محاكم.')} style={{ ...BTN, gap: 8, fontSize: 15 }}>
                 <Attente actif={cle === 'scraper'} texte="جارٍ الطلب…" sombre><RefreshCw size={18} aria-hidden />تحديث من محاكم</Attente>
               </button>
+              {peutArchiver && (
               <button type="button" aria-label={dossier.estActif === false ? 'استرجاع الملف' : 'أرشفة الملف'} title={dossier.estActif === false ? 'استرجاع' : 'أرشفة'}
                 disabled={occupe} aria-busy={cle === 'archive'}
                 onClick={() => action('archive', () => apiFetch(`/dossiers/${id}/${dossier.estActif === false ? 'restaurer' : 'archiver'}`, { method: 'PATCH' }), dossier.estActif === false ? 'استُرجع الملف.' : 'أُرشف الملف.')}
                 style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center', borderRadius: '50%' }}>
                 <Attente actif={cle === 'archive'} sombre>{dossier.estActif === false ? <ArchiveRestore size={18} aria-hidden /> : <Archive size={18} aria-hidden />}</Attente>
-              </button>
-              <Link className="mp-action" href={`/documents?dossier=${dossier.id}`} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 18px' }}><FileText size={18} aria-hidden />تحرير وثيقة</Link>
+              </button>)}
+              {peutIA && <Link className="mp-action" href={`/documents?dossier=${dossier.id}`} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 18px' }}><FileText size={18} aria-hidden />تحرير وثيقة</Link>}
             </div>
           </div>
           <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 16, borderTop: '1px solid #EEEAE1', paddingTop: 18 }}>
@@ -338,6 +342,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {peutIA && (
           <section style={{ background: '#083B34', color: '#CFE5DD', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h2 style={{ ...H2, color: '#FFFFFF' }}>قراءة الذكاء الاصطناعي</h2>
@@ -355,7 +360,7 @@ export default function DossierDetailPage({ params }: { params: Promise<{ id: st
                 <Attente actif={cle === 'analyser'} texte="جارٍ التحليل…"><Sparkles size={16} aria-hidden />{resumeIA.length ? 'تحديث القراءة' : 'تحليل الملف'}</Attente>
               </button>
             </div>
-          </section>
+          </section>)}
 
           <ClientDossier dossierId={dossier.id} client={dossier.client ?? null} honorairesConvenusCentimes={dossier.honorairesConvenusCentimes ?? null}
             partieAdverse={dossier.partieAdverse ?? null} nomSuggere={client} adversaireSuggere={adverse} onChange={refetch} />

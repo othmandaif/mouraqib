@@ -19,7 +19,12 @@ export interface User {
   createdAt?: string
   cabinet?: { id: string; nom: string } | null
   barreau?: string | null
+  /** Droits accordés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). */
+  droits?: string[]
 }
+
+/** Le compte a-t-il ce droit ? (absent = ancienne réponse de l'API : tout est permis, l'API contrôle de toute façon) */
+export const aDroit = (user: User | null | undefined, droit: string) => !user?.droits || user.droits.includes(droit)
 
 type LoginResult = { token: string; user: User } | { deuxFacteurs: true; ticket: string }
 

@@ -4,11 +4,11 @@ import jwt from 'jsonwebtoken'
 import { z } from 'zod'
 import { prisma } from '../utils/prisma'
 import { WhatsAppService } from '../services/whatsapp/whatsappService'
-import { requireAuth, AuthRequest } from '../middleware/auth'
+import { requireAuth, AuthRequest, DROITS } from '../middleware/auth'
 import { limiter } from '../middleware/securite'
 import { redisConnection } from '../jobs/queues'
 import { randomBytes, randomInt } from 'crypto'
-import { emailAutorise, champNom, champTelephone } from '../services/auth/comptes'
+import { emailAutorise, champNom, champTelephone, motDePasseProvisoire } from '../services/auth/comptes'
 import { abonnementDe } from '../services/abonnements/rappelsAbonnement'
 import { OFFRES } from '../services/abonnements/offres'
 import { emailConfigure, envoyerEmail, messageCodeReinitialisation } from '../services/email/emailService'
@@ -269,7 +269,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
       },
     },
   })
-  res.json(user)
+  res.json(user && { ...user, droits: DROITS.filter((d) => !req.droitsRetires!.includes(d)) })
 })
 
 const ProfilSchema = z.object({
@@ -354,7 +354,7 @@ router.delete('/suppression', requireAuth, async (req: AuthRequest, res: Respons
 router.get('/equipe', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { cabinetId: true, role: true } })
   const membres = me?.cabinetId
-    ? await prisma.user.findMany({ where: { cabinetId: me.cabinetId }, select: { id: true, nom: true, prenom: true, email: true, role: true }, orderBy: { createdAt: 'asc' } })
+    ? await prisma.user.findMany({ where: { cabinetId: me.cabinetId, suppressionDemandeeAt: null }, select: { id: true, nom: true, prenom: true, email: true, role: true, droitsRetires: true, doitChangerMdp: true }, orderBy: { createdAt: 'asc' } })
     : await prisma.user.findMany({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, email: true, role: true } })
   const invitations = await prisma.invitation.findMany({
     where: { accepteeAt: null, createdAt: { gt: new Date(Date.now() - INVITATION_JOURS * 86_400_000) }, invitant: me?.cabinetId ? { cabinetId: me.cabinetId } : { id: req.userId! } },
@@ -377,7 +377,7 @@ async function placesCabinet(userId: string, cabinetId: string | null) {
   const depuis = new Date(Date.now() - INVITATION_JOURS * 86_400_000)
   const [membres, enAttente] = cabinetId
     ? await Promise.all([
-        prisma.user.count({ where: { cabinetId } }),
+        prisma.user.count({ where: { cabinetId, suppressionDemandeeAt: null } }),
         prisma.invitation.count({ where: { accepteeAt: null, createdAt: { gt: depuis }, invitant: { cabinetId } } }),
       ])
     : [1, 0]
@@ -415,13 +415,91 @@ router.delete('/equipe/invitations/:id', requireAuth, async (req: AuthRequest, r
   res.json({ ok: true, supprimees: r.count })
 })
 
+const champDroits = z.array(z.enum(DROITS)).max(DROITS.length)
+const MembreSchema = z.object({
+  prenom: champNom, nom: champNom, email: z.string().trim().toLowerCase().email(),
+  role: z.enum(['AVOCAT', 'SECRETAIRE']), droitsRetires: champDroits.default([]),
+})
+const ModifMembreSchema = z.object({ role: z.enum(['AVOCAT', 'SECRETAIRE']).optional(), droitsRetires: champDroits.optional() })
+
+/** Responsable du cabinet (ou avocat seul avec une offre cabinet, avant la création du cabinet). */
+async function responsable(req: AuthRequest) {
+  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, cabinetId: true, role: true } })
+  return me && (!me.cabinetId || me.role === 'ASSOCIE_GERANT') ? me : null
+}
+/** Membre du cabinet du responsable (jamais lui-même). */
+async function membreDuCabinet(req: AuthRequest, id: string) {
+  const me = await responsable(req)
+  if (!me?.cabinetId || id === me.id) return null
+  const m = await prisma.user.findFirst({ where: { id, cabinetId: me.cabinetId, suppressionDemandeeAt: null }, select: { id: true, email: true } })
+  return m && { me, m }
+}
+
+// Le responsable crée directement le compte : mot de passe provisoire affiché, à changer à la 1re connexion
+router.post('/equipe/membres', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const parse = MembreSchema.safeParse(req.body)
+  if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
+  const d = parse.data
+  const me = await responsable(req)
+  if (!me) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
+  const places = await placesCabinet(me.id, me.cabinetId)
+  if (!places) { res.status(403).json({ error: 'Offre cabinet requise pour inviter' }); return }
+  if (places.max >= 0 && places.utilisees >= places.max) { res.status(403).json({ error: "Limite d'utilisateurs atteinte" }); return }
+  if (!emailAutorise(d.email)) { res.status(400).json({ error: 'Adresse e-mail non acceptée' }); return }
+  if (await prisma.user.findUnique({ where: { email: d.email }, select: { id: true } })) { res.status(409).json({ error: 'Email déjà utilisé' }); return }
+  const provisoire = motDePasseProvisoire()
+  const membre = await prisma.$transaction(async (tx) => {
+    let cabinetId = me.cabinetId
+    if (!cabinetId) { // premier membre : le cabinet est créé, l'avocat en devient le responsable
+      cabinetId = (await tx.cabinet.create({ data: { nom: `مكتب ذ. ${me.nom}` } })).id
+      await tx.user.update({ where: { id: me.id }, data: { cabinetId, role: 'ASSOCIE_GERANT' } })
+    }
+    return tx.user.create({
+      data: {
+        prenom: d.prenom, nom: d.nom, email: d.email, role: d.role, droitsRetires: d.droitsRetires, cabinetId,
+        statut: 'ACTIF', activeAt: new Date(), passwordHash: await bcrypt.hash(provisoire, 12), doitChangerMdp: true,
+      },
+      select: { id: true },
+    })
+  })
+  res.status(201).json({ id: membre.id, motDePasseProvisoire: provisoire })
+})
+
 router.patch('/equipe/membres/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const role = req.body?.role
-  if (role !== 'AVOCAT' && role !== 'SECRETAIRE') { res.status(400).json({ error: 'Rôle invalide' }); return }
-  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { cabinetId: true, role: true } })
-  if (!me?.cabinetId || me.role !== 'ASSOCIE_GERANT') { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
-  const r = await prisma.user.updateMany({ where: { id: req.params.id, cabinetId: me.cabinetId, NOT: { id: req.userId! } }, data: { role } })
-  res.json({ ok: true, maj: r.count })
+  const parse = ModifMembreSchema.safeParse(req.body)
+  if (!parse.success) { res.status(400).json({ error: 'Rôle invalide' }); return }
+  const ok = await membreDuCabinet(req, req.params.id)
+  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
+  await prisma.user.update({ where: { id: ok.m.id }, data: parse.data })
+  res.json({ ok: true, maj: 1 })
+})
+
+router.post('/equipe/membres/:id/reinitialiser-mdp', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const ok = await membreDuCabinet(req, req.params.id)
+  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
+  const provisoire = motDePasseProvisoire()
+  await prisma.user.update({ where: { id: ok.m.id }, data: { passwordHash: await bcrypt.hash(provisoire, 12), doitChangerMdp: true } })
+  await prisma.session.deleteMany({ where: { userId: ok.m.id } })
+  await redisConnection.del(`login-echec:${ok.m.email.toLowerCase()}`)
+  res.json({ motDePasseProvisoire: provisoire })
+})
+
+// Retrait d'un membre : ses dossiers et rendez-vous passent au responsable (le cabinet ne perd rien),
+// accès coupé tout de suite, compte effacé par la purge à J+30 (Paramètres › حذف الحساب).
+router.delete('/equipe/membres/:id', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+  const ok = await membreDuCabinet(req, req.params.id)
+  if (!ok) { res.status(403).json({ error: 'Réservé au responsable du cabinet' }); return }
+  const { me, m } = ok
+  await prisma.$transaction([
+    // Dossier déjà suivi aussi par le responsable : on garde le sien (contrainte d'unicité), l'autre part avec la purge
+    prisma.$executeRaw`UPDATE "Dossier" d SET "userId" = ${me.id} WHERE d."userId" = ${m.id} AND NOT EXISTS (
+      SELECT 1 FROM "Dossier" p WHERE p."userId" = ${me.id} AND p."anneeDossier" = d."anneeDossier" AND p."codeRole" = d."codeRole"
+        AND p."numeroDossier" = d."numeroDossier" AND p.tribunal = d.tribunal)`,
+    prisma.rendezVous.updateMany({ where: { userId: m.id }, data: { userId: me.id } }),
+    prisma.user.update({ where: { id: m.id }, data: { statut: 'DESACTIVE', suppressionDemandeeAt: new Date() } }),
+    prisma.session.deleteMany({ where: { userId: m.id } }),
+  ])
+  res.json({ ok: true })
 })
 
 const TelephoneSchema = z.object({ telephone: z.string().regex(/^\+?[\d\s]{9,16}$/) })
