@@ -2,6 +2,9 @@ import { EtatConnexion } from '@/components/layout/EtatConnexion'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français
+const SCRIPT_LANGUE = `try{if(localStorage.getItem('malafipro_langue')==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
+
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
 
 export const metadata: Metadata = {
@@ -31,8 +34,10 @@ export const viewport: Viewport = { themeColor: '#083B34', width: 'device-width'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl">
+    // La langue choisie (français) est appliquée avant l'affichage par le script ci-dessous
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_LANGUE }} />
         {/* Polices : connexion ouverte tôt + feuille chargée en parallèle (au lieu d'un @import bloquant dans le CSS) */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

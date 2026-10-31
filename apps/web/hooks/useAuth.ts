@@ -21,6 +21,8 @@ export interface User {
   barreau?: string | null
   /** Droits accordés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). */
   droits?: string[]
+  /** Photo de profil (data URL 192 px) */
+  avatar?: string | null
 }
 
 /** Le compte a-t-il ce droit ? (absent = ancienne réponse de l'API : tout est permis, l'API contrôle de toute façon) */

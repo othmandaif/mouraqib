@@ -1,0 +1,283 @@
+From 851b61e79a4d7d1d0a0901fa58a02299c42e95f5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 11:14:32 +0000
+Subject: [PATCH] =?UTF-8?q?Photo=20de=20profil=20;=20base=20du=20bilingue?=
+ =?UTF-8?q?=20arabe=20/=20fran=C3=A7ais=20(menu)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- User.avatar (migration 20261031000000_avatar) : image recadrée et réduite à 192 px par le navigateur,
+  PATCH /auth/me { avatar | null } ; affichée dans le menu et les paramètres (ajouter, changer, retirer)
+- lib/langue.ts : useLangue() { langue, t, changerLangue }, choix gardé sur l'appareil, sens de lecture
+  (rtl / ltr) appliqué avant l'affichage par app/layout.tsx ; bouton FR / ع dans la carte du compte ;
+  menu, barre du bas et espace admin traduits
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01D7ZppDnmu8ZRvoBj927TrA
+---
+ .../20261031000000_avatar/migration.sql       |  1 +
+ apps/api/prisma/schema.prisma                 |  2 +
+ apps/api/src/routes/auth.ts                   |  6 ++-
+ apps/web/app/(app)/parametres/page.tsx        | 21 +++++++-
+ apps/web/app/layout.tsx                       |  7 ++-
+ apps/web/components/layout/AppShell.tsx       | 21 +++++---
+ apps/web/hooks/useAuth.ts                     |  2 +
+ apps/web/lib/langue.ts                        | 48 +++++++++++++++++++
+ 8 files changed, 97 insertions(+), 11 deletions(-)
+ create mode 100644 apps/api/prisma/migrations/20261031000000_avatar/migration.sql
+ create mode 100644 apps/web/lib/langue.ts
+
+diff --git a/apps/api/prisma/migrations/20261031000000_avatar/migration.sql b/apps/api/prisma/migrations/20261031000000_avatar/migration.sql
+new file mode 100644
+index 0000000..2f10405
+--- /dev/null
++++ b/apps/api/prisma/migrations/20261031000000_avatar/migration.sql
+@@ -0,0 +1 @@
++ALTER TABLE "User" ADD COLUMN "avatar" TEXT;
+diff --git a/apps/api/prisma/schema.prisma b/apps/api/prisma/schema.prisma
+index 6ed10a8..6af5067 100644
+--- a/apps/api/prisma/schema.prisma
++++ b/apps/api/prisma/schema.prisma
+@@ -21,6 +21,8 @@ model User {
+   role            UserRole @default(AVOCAT)
+   /// Droits retirés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). Vide = tous les droits.
+   droitsRetires   String[] @default([])
++  /// Photo de profil : petite image (192 px) en data URL, redimensionnée par le navigateur
++  avatar          String?
+ 
+   // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
+   statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts
+diff --git a/apps/api/src/routes/auth.ts b/apps/api/src/routes/auth.ts
+index e748938..dbb72f8 100644
+--- a/apps/api/src/routes/auth.ts
++++ b/apps/api/src/routes/auth.ts
+@@ -260,7 +260,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
+     select: {
+       id: true, email: true, nom: true, prenom: true, telephone: true,
+       whatsappNumero: true, whatsappVerifie: true, role: true,
+-      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true,
++      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true, avatar: true,
+       cabinet: { select: { id: true, nom: true } },
+       // Champs choisis : la note interne du commercial ne doit pas arriver chez l'avocat
+       abonnements: {
+@@ -277,12 +277,14 @@ const ProfilSchema = z.object({
+   nom: champNom.optional(),
+   prenom: champNom.optional(),
+   telephone: champTelephone.optional(),
++  // Photo déjà réduite par le navigateur (192 px) ; null = retirer
++  avatar: z.string().max(300_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).nullable().optional(),
+ })
+ 
+ router.patch('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
+   const parse = ProfilSchema.safeParse(req.body)
+   if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
+-  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true } })
++  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true, avatar: true } })
+   res.json(u)
+ })
+ 
+diff --git a/apps/web/app/(app)/parametres/page.tsx b/apps/web/app/(app)/parametres/page.tsx
+index 0e06bec..8c92d4b 100644
+--- a/apps/web/app/(app)/parametres/page.tsx
++++ b/apps/web/app/(app)/parametres/page.tsx
+@@ -101,6 +101,16 @@ export default function ParametresPage() {
+   const att = (k: string, label: React.ReactNode, texte = 'جارٍ الحفظ…', sombre = true) => <Attente actif={cle === k} texte={texte} sombre={sombre}>{label}</Attente>
+ 
+   const enregistrerPrefs = () => run(async () => { const r = await apiFetch<{ preferences: Preferences }>('/alertes/preferences', { method: 'PUT', body: JSON.stringify(prefs) }); setPrefs(r.preferences); setPrefsOrigine(JSON.stringify(r.preferences)) }, 'حُفظت إعدادات التنبيهات.', 'prefs')
++  // Photo réduite à 192 px (JPEG) dans le navigateur : quelques dizaines de Ko, stockée sur le compte
++  const changerAvatar = (fichier: File) => run(async () => {
++    if (!fichier.type.startsWith('image/')) throw new Error('Choisissez une image')
++    const img = await createImageBitmap(fichier)
++    const cote = Math.min(img.width, img.height), T = 192
++    const c = document.createElement('canvas'); c.width = T; c.height = T
++    c.getContext('2d')!.drawImage(img, (img.width - cote) / 2, (img.height - cote) / 2, cote, cote, 0, 0, T, T) // recadrage carré centré
++    await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify({ avatar: c.toDataURL('image/jpeg', 0.85) }) })
++    await refresh()
++  }, 'حُفظت الصورة.', 'avatar')
+   const enregistrerProfil = () => run(async () => { await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify(profil) }); await refresh() }, 'حُفظ الملف الشخصي.', 'profil')
+   const setCanal = (k: keyof Preferences['matrice'], c: 'whatsapp' | 'app') => prefs && setPrefs({ ...prefs, matrice: { ...prefs.matrice, [k]: { ...prefs.matrice[k], [c]: !prefs.matrice[k][c] } } })
+   const basculerRappel = (n: number) => prefs && setPrefs({ ...prefs, rappels: prefs.rappels.includes(n) ? prefs.rappels.filter((x) => x !== n) : [...prefs.rappels, n].sort((a, b) => b - a) })
+@@ -177,7 +187,16 @@ export default function ParametresPage() {
+           <section id="acc" className="pr-card">
+             <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={UserRound} taille={40} />الحساب</h2>
+             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+-              <span aria-hidden style={{ width: 64, height: 64, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{`${user?.prenom?.[0] ?? ''} ${user?.nom?.[0] ?? ''}`.trim()}</span>
++              {user?.avatar
++                // eslint-disable-next-line @next/next/no-img-element
++                ? <img src={user.avatar} alt="صورة الحساب" width={64} height={64} style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
++                : <span aria-hidden style={{ width: 64, height: 64, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{`${user?.prenom?.[0] ?? ''} ${user?.nom?.[0] ?? ''}`.trim()}</span>}
++              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
++                <label className="pr-btn" style={{ cursor: 'pointer' }}>{att('avatar', user?.avatar ? 'تغيير الصورة' : 'إضافة صورة', 'جارٍ الحفظ…')}
++                  <input type="file" accept="image/*" hidden disabled={occupe} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) changerAvatar(f) }} />
++                </label>
++                {user?.avatar && <button type="button" className="pr-btn" disabled={occupe} onClick={() => run(async () => { await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify({ avatar: null }) }); await refresh() }, 'حُذفت الصورة.', 'avatar')}>حذف</button>}
++              </span>
+               <span style={{ fontSize: 14, color: '#3B4A47' }}>{user?.cabinet?.nom ?? 'حساب فردي'}</span>
+             </div>
+             <div className="pr-g2">
+diff --git a/apps/web/app/layout.tsx b/apps/web/app/layout.tsx
+index a1352d5..fbe2f76 100644
+--- a/apps/web/app/layout.tsx
++++ b/apps/web/app/layout.tsx
+@@ -2,6 +2,9 @@ import { EtatConnexion } from '@/components/layout/EtatConnexion'
+ import type { Metadata, Viewport } from 'next'
+ import './globals.css'
+ 
++// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français
++const SCRIPT_LANGUE = `try{if(localStorage.getItem('malafipro_langue')==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
++
+ const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
+ 
+ export const metadata: Metadata = {
+@@ -31,8 +34,10 @@ export const viewport: Viewport = { themeColor: '#083B34', width: 'device-width'
+ 
+ export default function RootLayout({ children }: { children: React.ReactNode }) {
+   return (
+-    <html lang="ar" dir="rtl">
++    // La langue choisie (français) est appliquée avant l'affichage par le script ci-dessous
++    <html lang="ar" dir="rtl" suppressHydrationWarning>
+       <head>
++        <script dangerouslySetInnerHTML={{ __html: SCRIPT_LANGUE }} />
+         {/* Polices : connexion ouverte tôt + feuille chargée en parallèle (au lieu d'un @import bloquant dans le CSS) */}
+         <link rel="preconnect" href="https://fonts.googleapis.com" />
+         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+diff --git a/apps/web/components/layout/AppShell.tsx b/apps/web/components/layout/AppShell.tsx
+index b0c7b7b..c650d22 100644
+--- a/apps/web/components/layout/AppShell.tsx
++++ b/apps/web/components/layout/AppShell.tsx
+@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
+ import Link from 'next/link'
+ import { usePathname, useRouter } from 'next/navigation'
+ import { useAuth, aDroit } from '@/hooks/useAuth'
++import { useLangue } from '@/lib/langue'
+ import { RechercheGlobale } from '@/components/layout/RechercheGlobale'
+ import type { AbonnementCourant } from '@/lib/abonnement'
+ import { useApi } from '@/hooks/useApi'
+@@ -99,6 +100,7 @@ const CSS = `
+ 
+ export function AppShell({ children }: AppShellProps) {
+   const { user, loading, logout } = useAuth()
++  const { langue, t, changerLangue } = useLangue()
+   const router = useRouter()
+   const pathname = usePathname()
+   const [menuOpen, setMenuOpen] = useState(false)
+@@ -164,12 +166,12 @@ export function AppShell({ children }: AppShellProps) {
+ 
+   // Rubriques dont le responsable du cabinet a retiré le droit : masquées (l'API refuse de toute façon)
+   const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((g) => ({ ...g, items: g.items.filter((i) => !i.droit || aDroit(user, i.droit)) })).filter((g) => g.items.length).map((grp, gi) => (
+-    <div key={gi} role="group" aria-label={grp.section} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
++    <div key={gi} role="group" aria-label={grp.section && t(grp.section)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+       {gi > 0 && <span className="mp-sep" aria-hidden />}
+       {grp.items.map(({ href, label, Icon, badge }) => (
+         <Link key={href} href={href} onClick={onClick} aria-current={isActive(href) ? 'page' : undefined}>
+           <Icon size={19} strokeWidth={1.8} aria-hidden />
+-          <span style={{ flex: 1 }}>{label}</span>
++          <span style={{ flex: 1 }}>{t(label)}</span>
+           {badge === 'deadlines' && nbCritiques > 0 && (
+             <span className="num" aria-label={`${nbCritiques} آجال حرجة`} style={{ fontSize: 12, fontWeight: 700, background: '#C0392B', color: '#FFFFFF', borderRadius: 999, padding: '1px 8px' }}>{nbCritiques}</span>
+           )}
+@@ -183,12 +185,17 @@ export function AppShell({ children }: AppShellProps) {
+ 
+   const userBlock = (
+     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14 }}>
+-      <span aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flex: 'none' }}>{initials}</span>
++      {user.avatar
++        // eslint-disable-next-line @next/next/no-img-element
++        ? <img src={user.avatar} alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flex: 'none' }} />
++        : <span aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flex: 'none' }}>{initials}</span>}
+       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3, minWidth: 0, flex: 1 }}>
+-        <span style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estAdmin ? '' : 'ذ. '}{user.prenom} {user.nom}</span>
++        <span style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estAdmin ? '' : t('ذ. ')}{user.prenom} {user.nom}</span>
+         <span style={{ fontSize: 12, color: '#9FC9BE', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.barreau || user.cabinet?.nom || user.email}</span>
+       </div>
+-      <button onClick={logout} aria-label="خروج" title="خروج" style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
++      {/* Langue de l'interface (gardée sur cet appareil) */}
++      <button type="button" onClick={() => changerLangue(langue === 'fr' ? 'ar' : 'fr')} aria-label={langue === 'fr' ? 'العربية' : 'Français'} title={t('اللغة')} style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: 'pointer', flex: 'none' }}>{langue === 'fr' ? 'ع' : 'FR'}</button>
++      <button onClick={logout} aria-label={t('خروج')} title={t('خروج')} style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
+         <LogOut size={18} aria-hidden />
+       </button>
+     </div>
+@@ -269,10 +276,10 @@ export function AppShell({ children }: AppShellProps) {
+                   <span aria-hidden style={{ position: 'absolute', top: -2, left: -4, width: 10, height: 10, borderRadius: '50%', background: '#C0392B', border: '2px solid #FFFFFF' }} />
+                 )}
+               </span>
+-              {label}
++              {t(label)}
+             </Link>
+           ))}
+-          <button onClick={() => setMenuOpen(true)}><Menu size={22} strokeWidth={1.8} aria-hidden />المزيد</button>
++          <button onClick={() => setMenuOpen(true)}><Menu size={22} strokeWidth={1.8} aria-hidden />{t('المزيد')}</button>
+         </nav>
+       </div>
+ 
+diff --git a/apps/web/hooks/useAuth.ts b/apps/web/hooks/useAuth.ts
+index f9a67f3..2e88990 100644
+--- a/apps/web/hooks/useAuth.ts
++++ b/apps/web/hooks/useAuth.ts
+@@ -21,6 +21,8 @@ export interface User {
+   barreau?: string | null
+   /** Droits accordés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). */
+   droits?: string[]
++  /** Photo de profil (data URL 192 px) */
++  avatar?: string | null
+ }
+ 
+ /** Le compte a-t-il ce droit ? (absent = ancienne réponse de l'API : tout est permis, l'API contrôle de toute façon) */
+diff --git a/apps/web/lib/langue.ts b/apps/web/lib/langue.ts
+new file mode 100644
+index 0000000..5bc4cbe
+--- /dev/null
++++ b/apps/web/lib/langue.ts
+@@ -0,0 +1,48 @@
++'use client'
++/**
++ * Langue de l'interface : arabe (par défaut) ou français.
++ * - Choix gardé sur l'appareil (localStorage), appliqué avant l'affichage par le script de app/layout.tsx.
++ * - `t('نص عربي')` rend la traduction française si la langue est « fr » et que le texte est dans FR ;
++ *   sinon le texte arabe. On traduit écran par écran en ajoutant les entrées ici.
++ * La clé localStorage est relue aussi par le script de app/layout.tsx (même nom).
++ */
++import { useSyncExternalStore } from 'react'
++
++export type Langue = 'ar' | 'fr'
++const CLE = 'malafipro_langue'
++
++const FR: Record<string, string> = {
++  // Menu
++  'الرئيسية': 'Accueil', 'الملفات': 'Dossiers', 'الآجال': 'Délais', 'الأجندة': 'Agenda',
++  'الذكاء الاصطناعي': 'Intelligence artificielle', 'المساعد القانوني': 'Assistant juridique', 'محرّر الوثائق': 'Rédaction',
++  'وثائقي': 'Mes documents', 'المتابعة': 'Suivi', 'التنبيهات': 'Alertes', 'الإعدادات': 'Paramètres', 'المساعد': 'Assistant',
++  'المزيد': 'Plus', 'تسجيل الخروج': 'Se déconnecter', 'القائمة': 'Menu',
++  // Espace admin
++  'طلبات التسجيل': 'Demandes', 'الحسابات والاشتراكات': 'Comptes et abonnements', 'المحاسبة': 'Comptabilité',
++  'سلامة النظام': 'Santé du système', 'المشرفون': 'Administrateurs', 'الطلبات': 'Demandes', 'الحسابات': 'Comptes', 'النظام': 'Système',
++  'خروج': 'Déconnexion', 'بحث': 'Rechercher', 'إغلاق': 'Fermer', 'اللغة': 'Langue', 'ذ. ': 'Me ',
++}
++
++function lire(): Langue {
++  try { return localStorage.getItem(CLE) === 'fr' ? 'fr' : 'ar' } catch { return 'ar' }
++}
++
++export function appliquerLangue(l: Langue) {
++  document.documentElement.lang = l
++  document.documentElement.dir = l === 'fr' ? 'ltr' : 'rtl'
++}
++
++export function changerLangue(l: Langue) {
++  try { localStorage.setItem(CLE, l) } catch {}
++  appliquerLangue(l)
++  window.dispatchEvent(new Event('mp:langue'))
++}
++
++const abonner = (f: () => void) => { window.addEventListener('mp:langue', f); return () => window.removeEventListener('mp:langue', f) }
++
++export function useLangue() {
++  const langue = useSyncExternalStore(abonner, lire, () => 'ar' as Langue)
++  const t = (ar: string) => (langue === 'fr' ? FR[ar] ?? ar : ar)
++  return { langue, t, changerLangue }
++}
++
+-- 
+2.43.0
+

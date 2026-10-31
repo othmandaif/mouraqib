@@ -260,7 +260,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
     select: {
       id: true, email: true, nom: true, prenom: true, telephone: true,
       whatsappNumero: true, whatsappVerifie: true, role: true,
-      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true,
+      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true, avatar: true,
       cabinet: { select: { id: true, nom: true } },
       // Champs choisis : la note interne du commercial ne doit pas arriver chez l'avocat
       abonnements: {
@@ -277,12 +277,14 @@ const ProfilSchema = z.object({
   nom: champNom.optional(),
   prenom: champNom.optional(),
   telephone: champTelephone.optional(),
+  // Photo déjà réduite par le navigateur (192 px) ; null = retirer
+  avatar: z.string().max(300_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).nullable().optional(),
 })
 
 router.patch('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const parse = ProfilSchema.safeParse(req.body)
   if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
-  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true } })
+  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true, avatar: true } })
   res.json(u)
 })
 

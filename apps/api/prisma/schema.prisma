@@ -21,6 +21,8 @@ model User {
   role            UserRole @default(AVOCAT)
   /// Droits retirés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). Vide = tous les droits.
   droitsRetires   String[] @default([])
+  /// Photo de profil : petite image (192 px) en data URL, redimensionnée par le navigateur
+  avatar          String?
 
   // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
   statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts

@@ -101,6 +101,16 @@ export default function ParametresPage() {
   const att = (k: string, label: React.ReactNode, texte = 'جارٍ الحفظ…', sombre = true) => <Attente actif={cle === k} texte={texte} sombre={sombre}>{label}</Attente>
 
   const enregistrerPrefs = () => run(async () => { const r = await apiFetch<{ preferences: Preferences }>('/alertes/preferences', { method: 'PUT', body: JSON.stringify(prefs) }); setPrefs(r.preferences); setPrefsOrigine(JSON.stringify(r.preferences)) }, 'حُفظت إعدادات التنبيهات.', 'prefs')
+  // Photo réduite à 192 px (JPEG) dans le navigateur : quelques dizaines de Ko, stockée sur le compte
+  const changerAvatar = (fichier: File) => run(async () => {
+    if (!fichier.type.startsWith('image/')) throw new Error('Choisissez une image')
+    const img = await createImageBitmap(fichier)
+    const cote = Math.min(img.width, img.height), T = 192
+    const c = document.createElement('canvas'); c.width = T; c.height = T
+    c.getContext('2d')!.drawImage(img, (img.width - cote) / 2, (img.height - cote) / 2, cote, cote, 0, 0, T, T) // recadrage carré centré
+    await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify({ avatar: c.toDataURL('image/jpeg', 0.85) }) })
+    await refresh()
+  }, 'حُفظت الصورة.', 'avatar')
   const enregistrerProfil = () => run(async () => { await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify(profil) }); await refresh() }, 'حُفظ الملف الشخصي.', 'profil')
   const setCanal = (k: keyof Preferences['matrice'], c: 'whatsapp' | 'app') => prefs && setPrefs({ ...prefs, matrice: { ...prefs.matrice, [k]: { ...prefs.matrice[k], [c]: !prefs.matrice[k][c] } } })
   const basculerRappel = (n: number) => prefs && setPrefs({ ...prefs, rappels: prefs.rappels.includes(n) ? prefs.rappels.filter((x) => x !== n) : [...prefs.rappels, n].sort((a, b) => b - a) })
@@ -177,7 +187,16 @@ export default function ParametresPage() {
           <section id="acc" className="pr-card">
             <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}><IconeRonde Icon={UserRound} taille={40} />الحساب</h2>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
-              <span aria-hidden style={{ width: 64, height: 64, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{`${user?.prenom?.[0] ?? ''} ${user?.nom?.[0] ?? ''}`.trim()}</span>
+              {user?.avatar
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={user.avatar} alt="صورة الحساب" width={64} height={64} style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
+                : <span aria-hidden style={{ width: 64, height: 64, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{`${user?.prenom?.[0] ?? ''} ${user?.nom?.[0] ?? ''}`.trim()}</span>}
+              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <label className="pr-btn" style={{ cursor: 'pointer' }}>{att('avatar', user?.avatar ? 'تغيير الصورة' : 'إضافة صورة', 'جارٍ الحفظ…')}
+                  <input type="file" accept="image/*" hidden disabled={occupe} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) changerAvatar(f) }} />
+                </label>
+                {user?.avatar && <button type="button" className="pr-btn" disabled={occupe} onClick={() => run(async () => { await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify({ avatar: null }) }); await refresh() }, 'حُذفت الصورة.', 'avatar')}>حذف</button>}
+              </span>
               <span style={{ fontSize: 14, color: '#3B4A47' }}>{user?.cabinet?.nom ?? 'حساب فردي'}</span>
             </div>
             <div className="pr-g2">

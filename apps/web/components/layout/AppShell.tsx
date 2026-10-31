@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth, aDroit } from '@/hooks/useAuth'
+import { useLangue } from '@/lib/langue'
 import { RechercheGlobale } from '@/components/layout/RechercheGlobale'
 import type { AbonnementCourant } from '@/lib/abonnement'
 import { useApi } from '@/hooks/useApi'
@@ -99,6 +100,7 @@ const CSS = `
 
 export function AppShell({ children }: AppShellProps) {
   const { user, loading, logout } = useAuth()
+  const { langue, t, changerLangue } = useLangue()
   const router = useRouter()
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -162,13 +164,19 @@ export function AppShell({ children }: AppShellProps) {
   const nbCritiques = compteurs?.critiques ?? 0
   const nbNonLues = compteurs?.nonLues ?? 0
 
+<<<<<<< ours
   const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((grp, gi) => (
     <div key={gi} role="group" aria-label={grp.section} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+=======
+  // Rubriques dont le responsable du cabinet a retiré le droit : masquées (l'API refuse de toute façon)
+  const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((g) => ({ ...g, items: g.items.filter((i) => !i.droit || aDroit(user, i.droit)) })).filter((g) => g.items.length).map((grp, gi) => (
+    <div key={gi} role="group" aria-label={grp.section && t(grp.section)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+>>>>>>> theirs
       {gi > 0 && <span className="mp-sep" aria-hidden />}
       {grp.items.map(({ href, label, Icon, badge }) => (
         <Link key={href} href={href} onClick={onClick} aria-current={isActive(href) ? 'page' : undefined}>
           <Icon size={19} strokeWidth={1.8} aria-hidden />
-          <span style={{ flex: 1 }}>{label}</span>
+          <span style={{ flex: 1 }}>{t(label)}</span>
           {badge === 'deadlines' && nbCritiques > 0 && (
             <span className="num" aria-label={`${nbCritiques} آجال حرجة`} style={{ fontSize: 12, fontWeight: 700, background: '#C0392B', color: '#FFFFFF', borderRadius: 999, padding: '1px 8px' }}>{nbCritiques}</span>
           )}
@@ -182,12 +190,17 @@ export function AppShell({ children }: AppShellProps) {
 
   const userBlock = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14 }}>
-      <span aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flex: 'none' }}>{initials}</span>
+      {user.avatar
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={user.avatar} alt="" width={36} height={36} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flex: 'none' }} />
+        : <span aria-hidden style={{ width: 36, height: 36, borderRadius: '50%', background: '#E3F0EC', color: '#083B34', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flex: 'none' }}>{initials}</span>}
       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3, minWidth: 0, flex: 1 }}>
-        <span style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estAdmin ? '' : 'ذ. '}{user.prenom} {user.nom}</span>
+        <span style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estAdmin ? '' : t('ذ. ')}{user.prenom} {user.nom}</span>
         <span style={{ fontSize: 12, color: '#9FC9BE', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.barreau || user.cabinet?.nom || user.email}</span>
       </div>
-      <button onClick={logout} aria-label="خروج" title="خروج" style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
+      {/* Langue de l'interface (gardée sur cet appareil) */}
+      <button type="button" onClick={() => changerLangue(langue === 'fr' ? 'ar' : 'fr')} aria-label={langue === 'fr' ? 'العربية' : 'Français'} title={t('اللغة')} style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', fontFamily: 'inherit', fontWeight: 700, fontSize: 14, cursor: 'pointer', flex: 'none' }}>{langue === 'fr' ? 'ع' : 'FR'}</button>
+      <button onClick={logout} aria-label={t('خروج')} title={t('خروج')} style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #6E9C90', background: 'transparent', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
         <LogOut size={18} aria-hidden />
       </button>
     </div>
@@ -268,10 +281,10 @@ export function AppShell({ children }: AppShellProps) {
                   <span aria-hidden style={{ position: 'absolute', top: -2, left: -4, width: 10, height: 10, borderRadius: '50%', background: '#C0392B', border: '2px solid #FFFFFF' }} />
                 )}
               </span>
-              {label}
+              {t(label)}
             </Link>
           ))}
-          <button onClick={() => setMenuOpen(true)}><Menu size={22} strokeWidth={1.8} aria-hidden />المزيد</button>
+          <button onClick={() => setMenuOpen(true)}><Menu size={22} strokeWidth={1.8} aria-hidden />{t('المزيد')}</button>
         </nav>
       </div>
 
