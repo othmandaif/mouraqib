@@ -19,7 +19,7 @@ import {
 
 interface AppShellProps { children: React.ReactNode }
 
-type NavItem = { href: string; label: string; Icon: typeof Home; badge?: 'deadlines' | 'dossiers' | 'alertes' | 'demandes' }
+type NavItem = { href: string; label: string; Icon: typeof Home; badge?: 'deadlines' | 'dossiers' | 'alertes' | 'demandes'; droit?: string }
 const NAV: { section?: string; items: NavItem[] }[] = [
   { items: [
     { href: '/dashboard', label: 'الرئيسية', Icon: Home },
@@ -28,9 +28,9 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     { href: '/calendrier', label: 'الأجندة', Icon: Calendar },
   ] },
   { section: 'الذكاء الاصطناعي', items: [
-    { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles },
-    { href: '/documents', label: 'محرّر الوثائق', Icon: FileText },
-    { href: '/documents/mes', label: 'وثائقي', Icon: Archive },
+    { href: '/assistant', label: 'المساعد القانوني', Icon: Sparkles, droit: 'IA' },
+    { href: '/documents', label: 'محرّر الوثائق', Icon: FileText, droit: 'IA' },
+    { href: '/documents/mes', label: 'وثائقي', Icon: Archive, droit: 'IA' },
   ] },
   { section: 'المتابعة', items: [
     { href: '/alertes', label: 'التنبيهات', Icon: Bell, badge: 'alertes' },
@@ -61,7 +61,7 @@ const BOTTOM = [
   { href: '/dashboard', label: 'الرئيسية', Icon: Home },
   { href: '/dossiers', label: 'الملفات', Icon: FolderOpen },
   { href: '/echeances', label: 'الآجال', Icon: Clock },
-  { href: '/assistant', label: 'المساعد', Icon: Sparkles },
+  { href: '/assistant', label: 'المساعد', Icon: Sparkles, droit: 'IA' },
 ]
 
 const CSS = `
@@ -164,14 +164,9 @@ export function AppShell({ children }: AppShellProps) {
   const nbCritiques = compteurs?.critiques ?? 0
   const nbNonLues = compteurs?.nonLues ?? 0
 
-<<<<<<< ours
-  const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((grp, gi) => (
-    <div key={gi} role="group" aria-label={grp.section} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-=======
   // Rubriques dont le responsable du cabinet a retiré le droit : masquées (l'API refuse de toute façon)
   const navLinks = (onClick?: () => void) => (estAdmin ? NAV_ADMIN : NAV).map((g) => ({ ...g, items: g.items.filter((i) => !i.droit || aDroit(user, i.droit)) })).filter((g) => g.items.length).map((grp, gi) => (
     <div key={gi} role="group" aria-label={grp.section && t(grp.section)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
->>>>>>> theirs
       {gi > 0 && <span className="mp-sep" aria-hidden />}
       {grp.items.map(({ href, label, Icon, badge }) => (
         <Link key={href} href={href} onClick={onClick} aria-current={isActive(href) ? 'page' : undefined}>
@@ -273,7 +268,7 @@ export function AppShell({ children }: AppShellProps) {
         <Suspense fallback={null}><BarreProgression /></Suspense>
 
         <nav className="mp-bnav" aria-label="التنقل السفلي">
-          {(estAdmin ? BOTTOM_ADMIN : BOTTOM).map(({ href, label, Icon }) => (
+          {(estAdmin ? BOTTOM_ADMIN : BOTTOM.filter((i) => !i.droit || aDroit(user, i.droit))).map(({ href, label, Icon }) => (
             <Link key={href} href={href} aria-current={isActive(href) ? 'page' : undefined}>
               <span style={{ position: 'relative', display: 'inline-flex' }}>
                 <Icon size={22} strokeWidth={1.8} aria-hidden />
