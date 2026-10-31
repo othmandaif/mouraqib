@@ -137,7 +137,7 @@ export const AR: Contenu = {
     pastille: 'الذكاء الاصطناعي', titre: 'ذكاء اصطناعي يعرف القانون المغربي وملفاتكم', texte: 'ليس روبوت محادثة عاماً: يشتغل على نصوص القانون المغربي وعلى معطيات ملفاتكم.',
     cartes: [
       { icone: 'scan', titre: 'يقرأ كل إجراء جديد', texte: 'حكم، تبليغ، تأجيل… يصنّفه ويستخرج الأجل الذي بدأ يسري.' },
-      { icone: 'sparkles', titre: 'مساعد قانوني بالعربية', texte: 'اسألوه كزميل: يجيب مع الإحالة على النصوص لتتحققوا بأنفسكم.' },
+      { icone: 'sparkles', titre: 'يجيب على أسئلتكم القانونية', texte: 'اسألوه كزميل: يجيب مع الإحالة على النصوص لتتحققوا بأنفسكم.' },
       { icone: 'file', titre: 'يحرّر المقالات', texte: 'مقال استئنافي، مذكرة جوابية، طلب تنفيذ… من معطيات الملف مباشرة.' },
       { icone: 'list', titre: 'يلخّص الملف', texte: 'أين وصل، آخر إجراء، وما المطلوب منكم: في سطرين قبل الجلسة.' },
     ],
@@ -276,7 +276,7 @@ export const FR: Contenu = {
     pastille: 'Intelligence artificielle', titre: 'Une IA qui connaît le droit marocain et vos dossiers', texte: 'Pas un chatbot générique : elle travaille sur les textes marocains et sur les données de vos dossiers.',
     cartes: [
       { icone: 'scan', titre: 'Lit chaque nouvel acte', texte: 'Jugement, notification, renvoi… elle le classe et en déduit le délai qui court.' },
-      { icone: 'sparkles', titre: 'Assistant juridique en arabe', texte: 'Posez vos questions comme à un confrère : réponses avec les textes cités.' },
+      { icone: 'sparkles', titre: 'Répond à vos questions juridiques', texte: 'Posez vos questions comme à un confrère : réponses avec les textes cités.' },
       { icone: 'file', titre: 'Rédige les actes', texte: 'Requête d’appel, mémoire en réponse, demande d’exécution… depuis le dossier.' },
       { icone: 'list', titre: 'Résume le dossier', texte: 'Où il en est, le dernier acte, ce qu’on attend de vous : en deux lignes.' },
     ],

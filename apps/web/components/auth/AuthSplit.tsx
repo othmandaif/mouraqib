@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useLangue } from '@/lib/langue'
 
@@ -17,18 +18,21 @@ const CSS = `
 
 /** Mise en page connexion / inscription : panneau de marque (masqué sur mobile) + formulaire. */
 export function AuthSplit({ aside, children, pied = 'اتصال مشفّر · سرّ المهنة أولاً' }: { aside: React.ReactNode; children: React.ReactNode; pied?: string }) {
-  const { t } = useLangue()
+  const { t, langue } = useLangue()
+  // Logo cliquable : retour à la landing dans la langue affichée (la page n'était reliée qu'à /login)
+  const accueil = langue === 'fr' ? '/fr' : '/'
+  const lien: React.CSSProperties = { textDecoration: 'none', alignSelf: 'flex-start' }
   return (
     <div className="mp-auth">
       <style>{CSS}</style>
       <section className="mp-auth-brand">
-        <Logo dark />
+        <Link href={accueil} aria-label="MalafiPro" style={lien}><Logo dark /></Link>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 460 }}>{aside}</div>
         <span style={{ fontSize: 13, color: '#9FC9BE' }}>{t(pied)}</span>
       </section>
       <main className="mp-auth-main">
         <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 22 }}>
-          <span className="mp-auth-logo-m"><Logo /></span>
+          <Link href={accueil} aria-label="MalafiPro" className="mp-auth-logo-m" style={lien}><Logo /></Link>
           {children}
         </div>
       </main>

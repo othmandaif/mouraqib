@@ -9,6 +9,7 @@ import {
 import { ANCRES, BIENTOT, type Contenu } from './contenu'
 import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
 import { CSS } from './styles'
+import { pagesConfiancePubliees } from '@/lib/pagesPubliques'
 
 export const TEL = process.env.NEXT_PUBLIC_CONTACT_TEL || process.env.CONTACT_COMMERCIAL_TEL || '+212607167594'
 export const EMAIL = process.env.CONTACT_COMMERCIAL_EMAIL || 'contact@malafipro.ma'
@@ -61,17 +62,18 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
               <Link href={t.autreLangue.href} hrefLang={ar ? 'fr' : 'ar'} lang={ar ? 'fr' : 'ar'} className="lp-langue" aria-label={t.autreLangue.label}>
                 <Globe size={17} aria-hidden /><span className="lp-langue-long">{t.autreLangue.label}</span><span className="lp-langue-court">{t.autreLangue.court}</span>
               </Link>
-              <Link href="/login" className="lp-connexion"><UserRound size={18} aria-hidden /><span>{t.nav.connexion}</span></Link>
+              <Link href="/login" rel="nofollow" className="lp-connexion"><UserRound size={18} aria-hidden /><span>{t.nav.connexion}</span></Link>
             </div>
           </nav>
 
           <div className="lp-hero-grille">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0 }}>
-              <Apparition><span className="lp-pastille-hero"><span className="lp-point" aria-hidden />{t.hero.badge}</span></Apparition>
-              <h1 className="lp-h1">
+              {/* H1 = ce que fait la page (« برنامج المحامي المغربي » / « logiciel de l'avocat marocain ») ; le slogan reste le grand titre visuel */}
+              <Apparition><h1 className="lp-pastille-hero" style={{ margin: 0, lineHeight: 'inherit' }}><span className="lp-point" aria-hidden />{t.hero.badge}</h1></Apparition>
+              <p className="lp-h1">
                 <MotsReveles texte={t.hero.titre1} style={{ display: 'block' }} />
                 <MotsReveles texte={t.hero.titre2} delai={0.35} style={{ display: 'block', color: '#9FE0C6' }} />
-              </h1>
+              </p>
               <Apparition delai={0.5}><p className="lp-sous">{t.hero.sousTitre}</p></Apparition>
               <Apparition delai={0.65} style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 <Link href="/register" className="lp-btn action mp-action">{t.hero.ctaEssai}<Fleche size={18} aria-hidden /></Link>
@@ -437,7 +439,8 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
               <p style={{ margin: 0, lineHeight: 1.8 }}>{t.pied.slogan}</p>
             </div>
             <nav aria-label={ar ? 'روابط' : 'Liens'} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px' }}>
-              {t.pied.liens.map(([h, l]) => <a key={h} href={h}>{l}</a>)}
+              {t.pied.liens.map(([h, l]) => <a key={h} href={h} rel={h === '/login' ? 'nofollow' : undefined}>{l}</a>)}
+              {pagesConfiancePubliees().map((p) => <Link key={p.ar} href={ar ? p.ar : p.fr}>{ar ? p.titreAr : p.titreFr}</Link>)}
               <Link href={t.autreLangue.href} hrefLang={ar ? 'fr' : 'ar'}>{t.autreLangue.label}</Link>
             </nav>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

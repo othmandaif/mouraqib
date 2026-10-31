@@ -1,12 +1,17 @@
 import type { MetadataRoute } from 'next'
+import { MAJ_LANDING, SITE, pagesConfiancePubliees } from '@/lib/pagesPubliques'
 
-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
-
+// Pages indexables uniquement (/register est en noindex : absente du sitemap).
+// lastmod = date réelle de modification du contenu (lib/pagesPubliques.ts), pas la date du build.
 export default function sitemap(): MetadataRoute.Sitemap {
-  const maj = new Date()
+  const langues = (ar: string, fr: string) => ({ languages: { 'ar-MA': `${SITE}${ar}`, 'fr-MA': `${SITE}${fr}`, 'x-default': `${SITE}${ar}` } })
+  const landing = langues('/', '/fr')
   return [
-    { url: `${SITE}/`, lastModified: maj, changeFrequency: 'weekly', priority: 1, alternates: { languages: { 'ar-MA': `${SITE}/`, 'fr-MA': `${SITE}/fr` } } },
-    { url: `${SITE}/fr`, lastModified: maj, changeFrequency: 'weekly', priority: 0.9, alternates: { languages: { 'ar-MA': `${SITE}/`, 'fr-MA': `${SITE}/fr` } } },
-    { url: `${SITE}/register`, lastModified: maj, changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${SITE}/`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 1, alternates: landing },
+    { url: `${SITE}/fr`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 0.9, alternates: landing },
+    ...pagesConfiancePubliees().flatMap((p) => [
+      { url: `${SITE}${p.ar}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
+      { url: `${SITE}${p.fr}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
+    ]),
   ]
 }
