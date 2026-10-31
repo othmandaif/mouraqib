@@ -10,30 +10,15 @@ import { ANCRES, BIENTOT, type Contenu } from './contenu'
 import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
 import { CSS } from './styles'
 import { pagesConfiancePubliees } from '@/lib/pagesPubliques'
+import { HubPages } from '@/components/pages/HubPages'
 
-export const TEL = process.env.NEXT_PUBLIC_CONTACT_TEL || process.env.CONTACT_COMMERCIAL_TEL || '+212607167594'
-export const EMAIL = process.env.CONTACT_COMMERCIAL_EMAIL || 'contact@malafipro.ma'
+import { TEL, EMAIL, lienWa, WA, Logo } from './commun'
+export { TEL, EMAIL } from './commun'
 
 const ICONES: Record<string, LucideIcon> = {
   search: Search, clock: Clock, calendar: CalendarDays, phone: Phone, wallet: Wallet, folder: FolderOpen, wifi: WifiOff, pen: PenLine,
   bell: Bell, users: Users, sparkles: Sparkles, file: FileText, laptop: Laptop, team: UsersRound, shield: ShieldCheck, scan: ScanText, list: ListChecks,
 }
-
-function lienWa(texte: string) {
-  return `https://wa.me/${TEL.replace(/[^\d]/g, '').replace(/^00/, '').replace(/^0/, '212')}?text=${encodeURIComponent(texte)}`
-}
-
-const WA = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z" /><path d="M9 10c0 3 2 5 5 5l1.2-1.2-1.8-1-.9.8c-.9-.4-1.7-1.2-2.1-2.1l.8-.9-1-1.8L9 10z" /></svg>
-)
-
-const Logo = ({ sombre }: { sombre?: boolean }) => (
-  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src={sombre ? '/brand/logo-symbol-white.svg' : '/brand/malafipro-symbol.svg'} alt="" width={38} height={38} />
-    <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 22, fontWeight: 600, color: sombre ? '#FFFFFF' : '#083B34' }}>Malafi<span style={{ fontWeight: 400 }}>Pro</span></span>
-  </span>
-)
 
 const Bientot = ({ t, sombre }: { t: Contenu; sombre?: boolean }) => <span className={`lp-bientot ${sombre ? 'sombre' : ''}`}>{t.bientot}</span>
 
@@ -415,6 +400,9 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
             <p className="lp-avert"><AlertTriangle size={16} aria-hidden />{t.avertissement}</p>
           </div>
         </section>
+
+        {/* ── Chaque fonction en détail : liens internes vers les pages « fonction » ── */}
+        <HubPages lang={t.lang} />
 
         {/* ── Dernier appel ───────────────────────────────────────── */}
         <section aria-labelledby="t-fin" className="lp-sec" style={{ paddingBottom: 56 }}>
