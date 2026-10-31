@@ -1,53 +1,27 @@
 import { Response, NextFunction } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../utils/prisma'
 import { AuthRequest } from './auth'
+import { abonnementDe } from '../services/abonnements/rappelsAbonnement'
+import { etatAbonnement } from '../services/abonnements/offres'
 
-const prisma = new PrismaClient()
 
-const PLAN_LIMITS: Record<string, number> = {
-  GRATUIT: 3,
-  STARTER: 25,
-  PRO: 100,
-  CABINET: 500,
-}
-
-export async function checkDossierLimit(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  const userId = req.userId!
-
-  const abonnement = await prisma.abonnement.findFirst({
-    where: { userId, statut: 'ACTIF' },
-    orderBy: { dateDebut: 'desc' },
-  })
-
-  const plan = abonnement?.plan ?? 'GRATUIT'
-  const maxDossiers = abonnement?.maxDossiers ?? PLAN_LIMITS[plan] ?? 3
-
-  const count = await prisma.dossier.count({ where: { userId, estActif: true } })
-
-  if (count >= maxDossiers) {
-    res.status(403).json({
-      error: 'Limite de dossiers atteinte',
-      plan,
-      maxDossiers,
-      dossierActuels: count,
-    })
+/**
+ * Ajout d'un dossier : refusé seulement si l'abonnement est expiré depuis plus de 15 jours
+ * ou si la limite de l'offre est atteinte. Les dossiers déjà suivis continuent d'être surveillés
+ * et alertés dans tous les cas : un délai ne doit jamais être manqué pour une question de facture.
+ */
+export async function verifierAjoutDossier(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  // Le compte admin gère les avocats et les abonnements : il ne suit pas de dossiers
+  if (req.userRole === 'ADMIN') { res.status(403).json({ error: 'Réservé aux avocats' }); return }
+  const a = await abonnementDe(req.userId!)
+  if (a && etatAbonnement(a).etat === 'EXPIRE') {
+    res.status(403).json({ error: 'Abonnement expiré' })
     return
   }
-
-  next()
-}
-
-export async function requireActiveSubscription(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  const userId = req.userId!
-
-  const abonnement = await prisma.abonnement.findFirst({
-    where: { userId, statut: 'ACTIF' },
-  })
-
-  if (!abonnement) {
-    res.status(403).json({ error: 'Abonnement actif requis' })
+  const max = a?.maxDossiers ?? -1
+  if (max >= 0 && (await prisma.dossier.count({ where: { userId: { in: req.equipe! }, estActif: true } })) >= max) {
+    res.status(403).json({ error: 'Limite de dossiers atteinte' })
     return
   }
-
   next()
 }

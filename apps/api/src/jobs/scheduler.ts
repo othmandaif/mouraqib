@@ -2,11 +2,22 @@ import { scraperQueue, nlpQueue, alertQueue, deadlineQueue } from './queues'
 import { logger } from '../utils/logger'
 
 export async function startScheduler(): Promise<void> {
-  // Scraping all active dossiers — every 4 hours
+  // Ancien « tout scraper toutes les 4 h » : supprimé de Redis s'il existe encore
+  await scraperQueue.removeJobScheduler('scrape-all-recurring').catch(() => {})
+
+  // Planification du scraping toutes les 30 min : un job par dossier dû, les plus urgents d'abord
   await scraperQueue.upsertJobScheduler(
-    'scrape-all-recurring',
-    { every: 4 * 60 * 60 * 1000 },
-    { name: 'scrape-all', data: {} }
+    'planifier-scraping',
+    { every: 30 * 60 * 1000 },
+    { name: 'planifier', data: {} }
+  )
+
+  // Passage du SOIR — 21:00 heure du Maroc (20:00 UTC) : tout dossier non vérifié depuis 6 h,
+  // pour que la journée suivante parte de données fraîches.
+  await scraperQueue.upsertJobScheduler(
+    'scrape-fin-journee',
+    { pattern: '0 20 * * *' },
+    { name: 'planifier', data: { force: true } }
   )
 
   // NLP classification — every 30 minutes
@@ -23,10 +34,11 @@ export async function startScheduler(): Promise<void> {
     { name: 'send-pending', data: {} }
   )
 
-  // Morning digest — every day at 7:00 AM Morocco time (UTC+1)
+  // Résumé du matin : le job tourne chaque heure ; chaque avocat le reçoit à l'heure
+  // choisie dans Paramètres (heure du Maroc, jours ouvrables), une fois par jour.
   await alertQueue.upsertJobScheduler(
     'digest-quotidien-recurring',
-    { pattern: '0 6 * * *' },
+    { pattern: '2 * * * *' },
     { name: 'digest-quotidien', data: {} }
   )
 
@@ -37,5 +49,5 @@ export async function startScheduler(): Promise<void> {
     { name: 'generate-deadlines', data: {} }
   )
 
-  logger.info('Scheduler démarré — 5 jobs récurrents configurés')
+  logger.info('Scheduler démarré — planification du scraping (30 min + soir), NLP, alertes, résumé, délais')
 }

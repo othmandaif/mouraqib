@@ -1,0 +1,339 @@
+From 765a2cc55519e2f783eca30ee1d6144fb2b31593 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 16:40:33 +0000
+Subject: [PATCH] seo: correctifs techniques (titres, descriptions, H1,
+ JSON-LD, sitemap, robots, /register noindex)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Titres <= 60 car. et descriptions <= 160 car. sur / et /fr ; meta keywords supprimées
+- H1 = badge métier (برنامج المحامي المغربي / logiciel de l'avocat marocain) ; slogan en <p>, rendu identique
+- H3 en double renommé (carte IA « مساعد قانوني بالعربية » / « Assistant juridique en arabe »)
+- JSON-LD : operatingSystem Web, featureList sans les fonctions « bientôt », prix mensuels (UnitPriceSpecification MON)
+- sitemap : lastmod réel (lib/pagesPubliques.ts), x-default, /register retiré
+- robots.txt : Host retiré, Allow /register retiré, /clients et /facturation bloqués
+- /register : noindex, follow ; H2 décoratif -> <p> ; logo des pages d'accès relié à la landing
+- Liens /login en rel=nofollow
+- Structure prête pour À propos, mentions légales, confidentialité, CGU (non publiées, aucun contenu inventé)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016UdfiS24mRYndmD73rypaM
+---
+ apps/web/app/(auth)/register/layout.tsx |  4 ++-
+ apps/web/app/(auth)/register/page.tsx   |  2 +-
+ apps/web/app/robots.ts                  | 14 +++++-----
+ apps/web/app/sitemap.ts                 | 17 ++++++++-----
+ apps/web/components/auth/AuthSplit.tsx  | 10 +++++---
+ apps/web/components/landing/Landing.tsx | 13 ++++++----
+ apps/web/components/landing/contenu.ts  |  4 +--
+ apps/web/components/landing/seo.ts      | 30 +++++++++++++---------
+ apps/web/lib/pagesPubliques.ts          | 34 +++++++++++++++++++++++++
+ 9 files changed, 92 insertions(+), 36 deletions(-)
+ create mode 100644 apps/web/lib/pagesPubliques.ts
+
+diff --git a/apps/web/app/(auth)/register/layout.tsx b/apps/web/app/(auth)/register/layout.tsx
+index 0858b25..65acb8a 100644
+--- a/apps/web/app/(auth)/register/layout.tsx
++++ b/apps/web/app/(auth)/register/layout.tsx
+@@ -1,10 +1,12 @@
+ import type { Metadata } from 'next'
+ 
+-// Formulaire de demande d'accès : page publique indexée
++// Formulaire de demande d'accès : page publique mais sans intérêt dans les résultats de recherche
++// (contenu mince) → noindex, follow ; absente du sitemap, non bloquée dans robots.txt pour que le noindex soit lu.
+ export const metadata: Metadata = {
+   title: 'طلب التسجيل',
+   description: 'اطلبوا حسابكم على ملفاتي: نتصل بكم خلال يوم عمل لتقديم الخدمة وتفعيل متابعة ملفاتكم وآجالكم على محاكم.',
+   alternates: { canonical: '/register' },
++  robots: { index: false, follow: true, googleBot: { index: false, follow: true } },
+ }
+ 
+ export default function Layout({ children }: { children: React.ReactNode }) {
+diff --git a/apps/web/app/(auth)/register/page.tsx b/apps/web/app/(auth)/register/page.tsx
+index 3bbe159..99947e1 100644
+--- a/apps/web/app/(auth)/register/page.tsx
++++ b/apps/web/app/(auth)/register/page.tsx
+@@ -72,7 +72,7 @@ export default function RegisterPage() {
+ 
+   return (
+     <AuthSplit pied="لا نشارك بياناتكم مع أي طرف" aside={<>
+-      <h2 style={{ margin: 0, fontSize: 38, fontWeight: 600, lineHeight: 1.35, color: '#FFFFFF' }}>{t(invitation ? 'دقيقتان، ثم يعمل ملفاتي من أجلكم.' : 'اطلبوا حسابكم، ونتكفل بالباقي.')}</h2>
++      <p style={{ margin: 0, fontSize: 38, fontWeight: 600, lineHeight: 1.35, color: '#FFFFFF' }}>{t(invitation ? 'دقيقتان، ثم يعمل ملفاتي من أجلكم.' : 'اطلبوا حسابكم، ونتكفل بالباقي.')}</p>
+       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 16 }}>
+         {ETAPES.map((e, i) => (
+           <li key={e} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+diff --git a/apps/web/app/robots.ts b/apps/web/app/robots.ts
+index 33f0ff5..77b3e9b 100644
+--- a/apps/web/app/robots.ts
++++ b/apps/web/app/robots.ts
+@@ -1,16 +1,18 @@
+ import type { MetadataRoute } from 'next'
++import { SITE } from '@/lib/pagesPubliques'
+ 
+-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
+-
+-// Seules les pages publiques sont explorées ; l'espace connecté (dossiers des avocats) ne doit jamais l'être
++// Seules les pages publiques sont explorées ; l'espace connecté (dossiers des avocats) ne doit jamais l'être.
++// Une seule règle « * » : elle s'applique aussi aux robots IA (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot,
++// Google-Extended…). Ne pas ajouter de groupe propre à un robot sans recopier ces Disallow : un robot qui a son
++// propre groupe ignore celui-ci.
++// /register reste explorable (non bloqué) pour que Google lise sa balise noindex.
+ export default function robots(): MetadataRoute.Robots {
+   return {
+     rules: [{
+       userAgent: '*',
+-      allow: ['/', '/register'],
+-      disallow: ['/api/', '/dashboard', '/dossiers', '/echeances', '/calendrier', '/assistant', '/documents', '/alertes', '/parametres', '/abonnement', '/admin', '/onboarding', '/activer', '/login', '/mot-de-passe-provisoire'],
++      allow: '/',
++      disallow: ['/api/', '/dashboard', '/dossiers', '/echeances', '/calendrier', '/assistant', '/documents', '/alertes', '/clients', '/facturation', '/parametres', '/abonnement', '/admin', '/onboarding', '/activer', '/login', '/mot-de-passe-provisoire'],
+     }],
+     sitemap: `${SITE}/sitemap.xml`,
+-    host: SITE,
+   }
+ }
+diff --git a/apps/web/app/sitemap.ts b/apps/web/app/sitemap.ts
+index c99a821..4350f20 100644
+--- a/apps/web/app/sitemap.ts
++++ b/apps/web/app/sitemap.ts
+@@ -1,12 +1,17 @@
+ import type { MetadataRoute } from 'next'
++import { MAJ_LANDING, SITE, pagesConfiancePubliees } from '@/lib/pagesPubliques'
+ 
+-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
+-
++// Pages indexables uniquement (/register est en noindex : absente du sitemap).
++// lastmod = date réelle de modification du contenu (lib/pagesPubliques.ts), pas la date du build.
+ export default function sitemap(): MetadataRoute.Sitemap {
+-  const maj = new Date()
++  const langues = (ar: string, fr: string) => ({ languages: { 'ar-MA': `${SITE}${ar}`, 'fr-MA': `${SITE}${fr}`, 'x-default': `${SITE}${ar}` } })
++  const landing = langues('/', '/fr')
+   return [
+-    { url: `${SITE}/`, lastModified: maj, changeFrequency: 'weekly', priority: 1, alternates: { languages: { 'ar-MA': `${SITE}/`, 'fr-MA': `${SITE}/fr` } } },
+-    { url: `${SITE}/fr`, lastModified: maj, changeFrequency: 'weekly', priority: 0.9, alternates: { languages: { 'ar-MA': `${SITE}/`, 'fr-MA': `${SITE}/fr` } } },
+-    { url: `${SITE}/register`, lastModified: maj, changeFrequency: 'monthly', priority: 0.8 },
++    { url: `${SITE}/`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 1, alternates: landing },
++    { url: `${SITE}/fr`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 0.9, alternates: landing },
++    ...pagesConfiancePubliees().flatMap((p) => [
++      { url: `${SITE}${p.ar}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
++      { url: `${SITE}${p.fr}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
++    ]),
+   ]
+ }
+diff --git a/apps/web/components/auth/AuthSplit.tsx b/apps/web/components/auth/AuthSplit.tsx
+index 5c0a1f9..46ed1ad 100644
+--- a/apps/web/components/auth/AuthSplit.tsx
++++ b/apps/web/components/auth/AuthSplit.tsx
+@@ -1,6 +1,7 @@
+ 'use client'
+ 
+ import { useState } from 'react'
++import Link from 'next/link'
+ import { Eye, EyeOff, AlertCircle } from 'lucide-react'
+ import { useLangue } from '@/lib/langue'
+ 
+@@ -17,18 +18,21 @@ const CSS = `
+ 
+ /** Mise en page connexion / inscription : panneau de marque (masqué sur mobile) + formulaire. */
+ export function AuthSplit({ aside, children, pied = 'اتصال مشفّر · سرّ المهنة أولاً' }: { aside: React.ReactNode; children: React.ReactNode; pied?: string }) {
+-  const { t } = useLangue()
++  const { t, langue } = useLangue()
++  // Logo cliquable : retour à la landing dans la langue affichée (la page n'était reliée qu'à /login)
++  const accueil = langue === 'fr' ? '/fr' : '/'
++  const lien: React.CSSProperties = { textDecoration: 'none', alignSelf: 'flex-start' }
+   return (
+     <div className="mp-auth">
+       <style>{CSS}</style>
+       <section className="mp-auth-brand">
+-        <Logo dark />
++        <Link href={accueil} aria-label="MalafiPro" style={lien}><Logo dark /></Link>
+         <div style={{ display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 460 }}>{aside}</div>
+         <span style={{ fontSize: 13, color: '#9FC9BE' }}>{t(pied)}</span>
+       </section>
+       <main className="mp-auth-main">
+         <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 22 }}>
+-          <span className="mp-auth-logo-m"><Logo /></span>
++          <Link href={accueil} aria-label="MalafiPro" className="mp-auth-logo-m" style={lien}><Logo /></Link>
+           {children}
+         </div>
+       </main>
+diff --git a/apps/web/components/landing/Landing.tsx b/apps/web/components/landing/Landing.tsx
+index 8837db3..bd3869e 100644
+--- a/apps/web/components/landing/Landing.tsx
++++ b/apps/web/components/landing/Landing.tsx
+@@ -9,6 +9,7 @@ import {
+ import { ANCRES, BIENTOT, type Contenu } from './contenu'
+ import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
+ import { CSS } from './styles'
++import { pagesConfiancePubliees } from '@/lib/pagesPubliques'
+ 
+ export const TEL = process.env.NEXT_PUBLIC_CONTACT_TEL || process.env.CONTACT_COMMERCIAL_TEL || '+212607167594'
+ export const EMAIL = process.env.CONTACT_COMMERCIAL_EMAIL || 'contact@malafipro.ma'
+@@ -61,17 +62,18 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
+               <Link href={t.autreLangue.href} hrefLang={ar ? 'fr' : 'ar'} lang={ar ? 'fr' : 'ar'} className="lp-langue" aria-label={t.autreLangue.label}>
+                 <Globe size={17} aria-hidden /><span className="lp-langue-long">{t.autreLangue.label}</span><span className="lp-langue-court">{t.autreLangue.court}</span>
+               </Link>
+-              <Link href="/login" className="lp-connexion"><UserRound size={18} aria-hidden /><span>{t.nav.connexion}</span></Link>
++              <Link href="/login" rel="nofollow" className="lp-connexion"><UserRound size={18} aria-hidden /><span>{t.nav.connexion}</span></Link>
+             </div>
+           </nav>
+ 
+           <div className="lp-hero-grille">
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0 }}>
+-              <Apparition><span className="lp-pastille-hero"><span className="lp-point" aria-hidden />{t.hero.badge}</span></Apparition>
+-              <h1 className="lp-h1">
++              {/* H1 = ce que fait la page (« برنامج المحامي المغربي » / « logiciel de l'avocat marocain ») ; le slogan reste le grand titre visuel */}
++              <Apparition><h1 className="lp-pastille-hero" style={{ margin: 0, lineHeight: 'inherit' }}><span className="lp-point" aria-hidden />{t.hero.badge}</h1></Apparition>
++              <p className="lp-h1">
+                 <MotsReveles texte={t.hero.titre1} style={{ display: 'block' }} />
+                 <MotsReveles texte={t.hero.titre2} delai={0.35} style={{ display: 'block', color: '#9FE0C6' }} />
+-              </h1>
++              </p>
+               <Apparition delai={0.5}><p className="lp-sous">{t.hero.sousTitre}</p></Apparition>
+               <Apparition delai={0.65} style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                 <Link href="/register" className="lp-btn action mp-action">{t.hero.ctaEssai}<Fleche size={18} aria-hidden /></Link>
+@@ -437,7 +439,8 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
+               <p style={{ margin: 0, lineHeight: 1.8 }}>{t.pied.slogan}</p>
+             </div>
+             <nav aria-label={ar ? 'روابط' : 'Liens'} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px' }}>
+-              {t.pied.liens.map(([h, l]) => <a key={h} href={h}>{l}</a>)}
++              {t.pied.liens.map(([h, l]) => <a key={h} href={h} rel={h === '/login' ? 'nofollow' : undefined}>{l}</a>)}
++              {pagesConfiancePubliees().map((p) => <Link key={p.ar} href={ar ? p.ar : p.fr}>{ar ? p.titreAr : p.titreFr}</Link>)}
+               <Link href={t.autreLangue.href} hrefLang={ar ? 'fr' : 'ar'}>{t.autreLangue.label}</Link>
+             </nav>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+diff --git a/apps/web/components/landing/contenu.ts b/apps/web/components/landing/contenu.ts
+index 517abd8..c3ab54b 100644
+--- a/apps/web/components/landing/contenu.ts
++++ b/apps/web/components/landing/contenu.ts
+@@ -137,7 +137,7 @@ export const AR: Contenu = {
+     pastille: 'الذكاء الاصطناعي', titre: 'ذكاء اصطناعي يعرف القانون المغربي وملفاتكم', texte: 'ليس روبوت محادثة عاماً: يشتغل على نصوص القانون المغربي وعلى معطيات ملفاتكم.',
+     cartes: [
+       { icone: 'scan', titre: 'يقرأ كل إجراء جديد', texte: 'حكم، تبليغ، تأجيل… يصنّفه ويستخرج الأجل الذي بدأ يسري.' },
+-      { icone: 'sparkles', titre: 'مساعد قانوني بالعربية', texte: 'اسألوه كزميل: يجيب مع الإحالة على النصوص لتتحققوا بأنفسكم.' },
++      { icone: 'sparkles', titre: 'يجيب على أسئلتكم القانونية', texte: 'اسألوه كزميل: يجيب مع الإحالة على النصوص لتتحققوا بأنفسكم.' },
+       { icone: 'file', titre: 'يحرّر المقالات', texte: 'مقال استئنافي، مذكرة جوابية، طلب تنفيذ… من معطيات الملف مباشرة.' },
+       { icone: 'list', titre: 'يلخّص الملف', texte: 'أين وصل، آخر إجراء، وما المطلوب منكم: في سطرين قبل الجلسة.' },
+     ],
+@@ -276,7 +276,7 @@ export const FR: Contenu = {
+     pastille: 'Intelligence artificielle', titre: 'Une IA qui connaît le droit marocain et vos dossiers', texte: 'Pas un chatbot générique : elle travaille sur les textes marocains et sur les données de vos dossiers.',
+     cartes: [
+       { icone: 'scan', titre: 'Lit chaque nouvel acte', texte: 'Jugement, notification, renvoi… elle le classe et en déduit le délai qui court.' },
+-      { icone: 'sparkles', titre: 'Assistant juridique en arabe', texte: 'Posez vos questions comme à un confrère : réponses avec les textes cités.' },
++      { icone: 'sparkles', titre: 'Répond à vos questions juridiques', texte: 'Posez vos questions comme à un confrère : réponses avec les textes cités.' },
+       { icone: 'file', titre: 'Rédige les actes', texte: 'Requête d’appel, mémoire en réponse, demande d’exécution… depuis le dossier.' },
+       { icone: 'list', titre: 'Résume le dossier', texte: 'Où il en est, le dernier acte, ce qu’on attend de vous : en deux lignes.' },
+     ],
+diff --git a/apps/web/components/landing/seo.ts b/apps/web/components/landing/seo.ts
+index aa824c9..b98cf92 100644
+--- a/apps/web/components/landing/seo.ts
++++ b/apps/web/components/landing/seo.ts
+@@ -1,22 +1,22 @@
+ // SEO de la landing : métadonnées par langue (hreflang), données structurées et places fondateurs.
+ import type { Metadata } from 'next'
+-import { PRIX, type Contenu } from './contenu'
++import { BIENTOT, PRIX, type Contenu } from './contenu'
+ import { EMAIL, TEL } from './Landing'
++import { SITE } from '@/lib/pagesPubliques'
+ 
+-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
+ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+ 
++// Titres ≤ 60 caractères et descriptions ≤ 160 (sinon tronqués dans Google).
++// Pas de mention du hors-ligne (encore « bientôt ») ni du prix fondateur (offre limitée) dans les extraits.
+ const META = {
+   ar: {
+-    titre: 'ملفاتي MalafiPro — برنامج المحامي في المغرب: متابعة محاكم، آجال الطعن، الموكلون والوثائق',
+-    description: 'ملفاتي يتابع ملفاتكم على محاكم تلقائياً، يحسب آجال الاستئناف والتعرض والنقض، ينبّهكم على واتساب، ويجمع موكليكم وأتعابكم ووثائقكم. سحابة أو على حاسوبكم بدون إنترنت. تجربة مجانية 20 يوماً، من 149 درهماً في الشهر.',
+-    keywords: ['برنامج للمحامين', 'برنامج مكتب المحاماة', 'محاكم', 'متابعة الملفات', 'آجال الطعن', 'أجل الاستئناف', 'إدارة الموكلين', 'أتعاب المحامي', 'تنبيهات واتساب', 'مساعد قانوني بالذكاء الاصطناعي'],
++    titre: 'ملفاتي MalafiPro — برنامج المحامي بالمغرب وآجال الطعن',
++    description: `ملفاتي يتابع ملفاتكم على بوابة محاكم، يحسب آجال الاستئناف والتعرض والنقض، وينبّهكم على واتساب قبل آخر أجل. تجربة مجانية ${PRIX.essaiJours} يوماً.`,
+     alt: 'ملفاتي MalafiPro على حاسوب محامٍ في مكتبه', locale: 'ar_MA', autre: 'fr_MA', url: '/',
+   },
+   fr: {
+-    titre: 'MalafiPro — Logiciel pour avocats au Maroc : suivi mahakim, délais, clients et documents',
+-    description: 'MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation, vous alerte sur WhatsApp et gère vos clients, honoraires et documents. Cloud ou sur votre PC, même hors ligne. Essai gratuit 20 jours, dès 149 DH/mois.',
+-    keywords: ['logiciel avocat Maroc', 'logiciel cabinet d’avocats', 'suivi dossiers mahakim', 'délais de recours', 'CRM avocat', 'gestion honoraires avocat', 'logiciel avocat hors ligne', 'alertes WhatsApp avocat', 'IA juridique Maroc'],
++    titre: 'MalafiPro — Logiciel avocat au Maroc : mahakim et délais',
++    description: `MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation et vous alerte sur WhatsApp. Essai gratuit ${PRIX.essaiJours} jours.`,
+     alt: 'MalafiPro sur l’ordinateur d’un avocat dans son cabinet', locale: 'fr_MA', autre: 'ar_MA', url: '/fr',
+   },
+ }
+@@ -26,7 +26,6 @@ export function metaLanding(lang: 'ar' | 'fr'): Metadata {
+   return {
+     title: { absolute: m.titre },
+     description: m.description,
+-    keywords: m.keywords,
+     alternates: { canonical: m.url, languages: { 'ar-MA': '/', 'fr-MA': '/fr', 'x-default': '/' } },
+     openGraph: {
+       type: 'website', locale: m.locale, alternateLocale: [m.autre], url: m.url, siteName: 'MalafiPro — ملفاتي',
+@@ -39,7 +38,13 @@ export function metaLanding(lang: 'ar' | 'fr'): Metadata {
+ 
+ export function jsonLd(t: Contenu) {
+   const m = META[t.lang]
+-  const offre = (nom: string, prix: number) => ({ '@type': 'Offer', name: nom, price: prix, priceCurrency: 'MAD', url: `${SITE}${m.url}`, availability: 'https://schema.org/InStock' })
++  // Prix mensuels publics (PRIX = copie de l'API) ; unitCode MON = par mois
++  const offre = (nom: string, prix: number) => ({
++    '@type': 'Offer', name: nom, price: prix, priceCurrency: 'MAD', url: `${SITE}${m.url}`, availability: 'https://schema.org/InStock',
++    priceSpecification: { '@type': 'UnitPriceSpecification', price: prix, priceCurrency: 'MAD', unitCode: 'MON' },
++  })
++  // Seules les fonctions déjà livrées (pas celles marquées « bientôt »)
++  const livrees = t.fonctions.cartes.filter((c) => !(c.bientot && (c.icone === 'laptop' ? BIENTOT.horsLigne : BIENTOT.crm)))
+   return {
+     '@context': 'https://schema.org',
+     '@graph': [
+@@ -50,8 +55,9 @@ export function jsonLd(t: Contenu) {
+       { '@type': 'WebSite', '@id': `${SITE}/#site`, url: SITE, name: 'MalafiPro — ملفاتي', inLanguage: ['ar', 'fr'], publisher: { '@id': `${SITE}/#organisation` } },
+       {
+         '@type': 'SoftwareApplication', name: 'MalafiPro — ملفاتي', applicationCategory: 'BusinessApplication', applicationSubCategory: 'Legal practice management',
+-        operatingSystem: 'Web, Android, iOS, Windows', inLanguage: t.lang, url: `${SITE}${m.url}`, image: `${SITE}/og-malafipro.jpg`, description: m.description,
+-        featureList: t.fonctions.cartes.map((c) => c.titre), publisher: { '@id': `${SITE}/#organisation` },
++        // Application web (navigateur, ordinateur et mobile) ; l'application PC hors ligne n'est pas encore livrée
++        operatingSystem: 'Web', inLanguage: t.lang, url: `${SITE}${m.url}`, image: `${SITE}/og-malafipro.jpg`, description: m.description,
++        featureList: livrees.map((c) => c.titre), publisher: { '@id': `${SITE}/#organisation` },
+         offers: [offre(t.tarifs.offres[0].nom, PRIX.solo.mois), offre(t.tarifs.offres[1].nom, PRIX.cabinet.mois)],
+       },
+       { '@type': 'FAQPage', inLanguage: t.lang, mainEntity: t.faq.items.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.r } })) },
+diff --git a/apps/web/lib/pagesPubliques.ts b/apps/web/lib/pagesPubliques.ts
+new file mode 100644
+index 0000000..908321d
+--- /dev/null
++++ b/apps/web/lib/pagesPubliques.ts
+@@ -0,0 +1,34 @@
++// Pages publiques du site (source unique pour le sitemap et le pied de page de la landing).
++// lastmod : date RÉELLE de la dernière modification du contenu de la page. À mettre à jour à chaque changement
++// de texte (pas à chaque build : une date qui change sans raison n'est plus prise en compte par Google).
++
++export const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
++
++/** Landing arabe (/) et française (/fr) : dernière modification du contenu. */
++export const MAJ_LANDING = '2026-10-31'
++
++type PageConfiance = { ar: string; fr: string; titreAr: string; titreFr: string; publiee: boolean; maj: string }
++
++/**
++ * Pages de confiance prévues (À propos, mentions légales, confidentialité, CGU).
++ * Elles n'existent pas encore : aucun contenu juridique n'est inventé. Pour en publier une :
++ * 1. créer app/<chemin>/page.tsx et app/fr/<chemin>/page.tsx avec le texte validé (metadata : metaPagePublique) ;
++ * 2. passer `publiee` à true et renseigner `maj` → elle entre dans le sitemap (avec hreflang) et dans le pied de page.
++ */
++export const PAGES_CONFIANCE: PageConfiance[] = [
++  { ar: '/a-propos', fr: '/fr/a-propos', titreAr: 'من نحن', titreFr: 'À propos', publiee: false, maj: '' },
++  { ar: '/mentions-legales', fr: '/fr/mentions-legales', titreAr: 'الإشعار القانوني', titreFr: 'Mentions légales', publiee: false, maj: '' },
++  { ar: '/confidentialite', fr: '/fr/confidentialite', titreAr: 'سياسة الخصوصية', titreFr: 'Confidentialité', publiee: false, maj: '' },
++  { ar: '/cgu', fr: '/fr/cgu', titreAr: 'شروط الاستعمال', titreFr: 'CGU', publiee: false, maj: '' },
++]
++
++export const pagesConfiancePubliees = () => PAGES_CONFIANCE.filter((p) => p.publiee)
++
++/** Métadonnées d'une page publique bilingue : canonical + hreflang ar-MA / fr-MA / x-default (version arabe). */
++export function metaPagePublique(lang: 'ar' | 'fr', chemins: { ar: string; fr: string }, titre: string, description: string) {
++  return {
++    title: titre,
++    description,
++    alternates: { canonical: chemins[lang], languages: { 'ar-MA': chemins.ar, 'fr-MA': chemins.fr, 'x-default': chemins.ar } },
++  }
++}
+-- 
+2.43.0
+

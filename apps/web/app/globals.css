@@ -1,54 +1,166 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── MalafiPro V2 « Agir ou surveiller » — voir claude/DESIGN_UI_MALAFIPRO.md ─── */
 :root {
-  --bg-page: #F7F4F0;
-  --bg-surface: #FFFFFF;
-  --bg-surface-alt: #F0ECE6;
+  --green: #0E5A4E;          /* marque, structure (menu, en-têtes, liens) */
+  /* Orange Action (oct. 2026) : boutons principaux, état appuyé, élément actif du menu, options choisies.
+     Texte blanc sur l'orange plein (choix de la marque ; contraste 2,3, 2,7 au survol, 3,2 à l'appui).
+     Distinct de l'ambre, réservé aux alertes et délais. */
+  --mp-action: #F69320;
+  --mp-action-texte: #FFFFFF;
+  --mp-choix-texte: #15201E; /* option choisie (fond orange clair) : texte encre */
+  --mp-choix-fond: #FEF0DC;
+  --mp-choix-bord: #C2620C;  /* contraste 3,75 sur blanc : l'état choisi reste visible */
+  --green-deep: #083B34;     /* scène, barre latérale */
+  --green-hover: #0B4A40;
+  --amber: #F2A93B;          /* UNIQUEMENT délai à agir ≤ 7 j, badges — texte dessus = encre */
+  --amber-text: #7A4E06;
+  --amber-soft: #FDF1DC;
+  --red: #C0392B;            /* UNIQUEMENT à agir ≤ 48 h, erreurs */
+  --red-text: #9B2C20;
+  --red-soft: #FBEAE7;
+  --ink: #15201E;
+  --text-2: #3B4A47;
+  --muted: #5E6B67;
+  --slate: #4D5B57;          /* délais « à surveiller » (adversaire) */
+  --dash: #8C877C;
+  --paper: #F5F3EE;
+  --mint: #E3F0EC;
+  --line: #E4E0D6;
+  --line-soft: #EEEAE1;
+  --field: #CFCAC0;
+  --focus: #CDE5DD;
+  --shadow: 0 1px 0 rgba(8,59,52,.04), 0 14px 30px -18px rgba(8,59,52,.28);
 
-  --primary: #1B2A4A;
-  --primary-light: #2D4373;
-  --primary-dark: #0F1A30;
+  /* Compat : anciens noms encore lus par quelques composants */
+  --primary: var(--green);
+  --accent: var(--green);
+  --text-primary: var(--ink);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--muted);
+  --border: var(--line);
+}
 
-  --accent: #B8943C;
-  --accent-light: #D4B66A;
-  --accent-subtle: #F5EDD6;
-
-  --text-primary: #1C1814;
-  --text-secondary: #5C5348;
-  --text-muted: #9C9488;
-
-  --border: #E5DDD4;
-  --border-light: #F0EBE3;
-
-  --danger: #9B2C2C;
-  --danger-bg: #FDF2F2;
-  --success: #2D6A4F;
-  --success-bg: #F0F7F4;
-  --warning: #B8860B;
-  --warning-bg: #FFFBEB;
-
-  --shadow-sm: 0 1px 2px rgba(28, 24, 20, 0.04);
-  --shadow-md: 0 4px 12px rgba(28, 24, 20, 0.06);
-  --shadow-lg: 0 8px 30px rgba(28, 24, 20, 0.08);
+html, body {
+  font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif;
 }
 
 body {
-  color: var(--text-primary);
-  background: var(--bg-page);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display), Georgia, serif;
-  color: var(--primary);
+  font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif;
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-[dir="rtl"], [lang="ar"] {
-  font-family: 'Noto Naskh Arabic', var(--font-sans), system-ui, sans-serif;
+a { color: var(--green); }
+a:hover { color: var(--green-deep); }
+
+/* Compat : les anciennes classes pointent vers la police de l'UI */
+.font-display, .font-sans, .font-arabic {
+  font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif !important;
 }
+
+/* Règle unique pour tout nombre, date, heure ou numéro de dossier en contexte arabe */
+.num {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+[dir="ltr"] { unicode-bidi: isolate; }
+
+input, select, textarea, button {
+  font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dash); }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--focus); }
+input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--green) !important; }
+
+.sr-only-ar {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ── Chargement : squelettes, indicateur, écran de démarrage (components/ui/Chargement.tsx) ── */
+@keyframes mp-skeleton { 0% { opacity: .55 } 50% { opacity: 1 } 100% { opacity: .55 } }
+@media (prefers-reduced-motion: no-preference) {
+  .mp-skeleton { animation: mp-skeleton 1.4s ease-in-out infinite; }
+}
+@keyframes mp-tourne { to { transform: rotate(360deg) } }
+@keyframes mp-reflet { 0% { background-position: 150% 0 } 100% { background-position: -150% 0 } }
+@keyframes mp-barre { 0% { transform: translateX(100%) } 100% { transform: translateX(-260%) } }
+@keyframes mp-respire { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(.94); opacity: .85 } }
+@keyframes mp-apparait { from { opacity: 0 } to { opacity: 1 } }
+.mp-sq { display: block; flex: none; border-radius: 8px; background: #EEEAE1; }
+.mp-sq-carte { background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Reflet de droite à gauche (sens de lecture arabe) */
+  .mp-sq { background: linear-gradient(90deg, #EEEAE1 0%, #EEEAE1 35%, #F7F5F0 50%, #EEEAE1 65%, #EEEAE1 100%); background-size: 250% 100%; animation: mp-reflet 1.5s ease-in-out infinite; }
+  .mp-spin { animation: mp-tourne .8s linear infinite; transform-origin: center; }
+  .mp-splash-logo { animation: mp-respire 1.6s ease-in-out infinite; }
+  .mp-splash-barre > i { animation: mp-barre 1.3s ease-in-out infinite; }
+  .mp-fade { animation: mp-apparait .2s ease-out both; }
+  .mp-barre-nav { animation: mp-avance 8s cubic-bezier(.1,.6,.3,1) forwards; }
+}
+@keyframes mp-avance { from { width: 15% } to { width: 85% } }
+
+/* ── Orange Action : bouton principal (.mp-action) et option choisie (.mp-choix) ──
+   Survol / appui : on change la variable sur l'élément, ce qui marche aussi avec un style en ligne
+   `background: 'var(--mp-action)'`. */
+.mp-action { transition: background-color .15s ease, transform .1s ease; }
+.mp-action:hover:not(:disabled) { --mp-action: #E8871E; }
+.mp-action:active:not(:disabled) { --mp-action: #D9771A; transform: translateY(1px); }
+.mp-action:focus-visible { outline: none; box-shadow: 0 0 0 4px #FCD9AE; }
+/* Option choisie : puce, segment, onglet, radio, bouton bascule. Liseré intérieur = pas de saut de mise en page. */
+.mp-choix { transition: background-color .15s ease, transform .1s ease; }
+.mp-choix:active:not(:disabled) { transform: translateY(1px); }
+.mp-choix[aria-pressed="true"], .mp-choix[aria-checked="true"], .mp-choix[aria-selected="true"] {
+  background: var(--mp-choix-fond) !important;
+  color: var(--mp-choix-texte) !important;
+  border-color: var(--mp-choix-bord) !important;
+  box-shadow: inset 0 0 0 1px var(--mp-choix-bord) !important;
+  font-weight: 600;
+}
+.mp-choix:focus-visible { outline: none; box-shadow: 0 0 0 4px #FCD9AE !important; }
+/* Cases à cocher et boutons radio natifs : une option choisie est orange (coche blanche lisible : 4,2) */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--mp-choix-bord); }
+
+/* Envoi en cours (lib/api.ts + useEnvoi) : curseur « en cours », bouton qui attend reconnaissable */
+html[data-envoi], html[data-envoi] button { cursor: progress; }
+button[aria-busy="true"] { cursor: progress; }
+button[aria-busy="true"]:disabled { opacity: 1; }
+button:disabled:not([aria-busy="true"]) { cursor: not-allowed; opacity: .6; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Français (ltr) : les flèches et chevrons « suivant / retour » pointent dans le sens de lecture */
+html[dir=ltr] .lucide-chevron-left,html[dir=ltr] .lucide-chevron-right,html[dir=ltr] .lucide-arrow-left,html[dir=ltr] .lucide-arrow-right{transform:scaleX(-1)}

@@ -12,3 +12,8 @@ prisma/migrations/
 .scraper-debug/
 *.tsbuildinfo
 next-env.d.ts
+
+# Secrets de production (VPS)
+.env.prod
+deploy/.env.prod
+apps/api/collecte-mahakim/

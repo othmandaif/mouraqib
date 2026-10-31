@@ -113,4 +113,16 @@ describe('classifyWithRules — mentions de greffe arabes', () => {
       expect(r?.typeEvenement).toBe(TypeEvenement.RENVOI_EXPERT)
     })
   })
+
+  describe('Dispositifs de jugement (mahakim)', () => {
+    it.each(['حكم — الحكم بأداء المدعى عليه مبلغ 20000 درهم', 'حكمت المحكمة برفض الطلب', 'قرار استئنافي بتأييد الحكم المستأنف', 'الحكم بعدم قبول الدعوى'])('« %s » → JUGEMENT_RENDU', (t) => {
+      expect(classifyWithRules(t)?.typeEvenement).toBe(TypeEvenement.JUGEMENT_RENDU)
+    })
+    it('« حجز الملف للنطق بالحكم » reste un délibéré', () => {
+      expect(classifyWithRules('حجز الملف للنطق بالحكم بجلسة 20/11/2026')?.typeEvenement).toBe(TypeEvenement.MISE_EN_DELIBERE)
+    })
+    it('« تأخير للنطق بالحكم » est un renvoi, pas un jugement', () => {
+      expect(classifyWithRules('تأخير للنطق بالحكم')?.typeEvenement).not.toBe(TypeEvenement.JUGEMENT_RENDU)
+    })
+  })
 })

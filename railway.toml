@@ -9,7 +9,7 @@ source = "apps/api"
 dockerfilePath = "Dockerfile"
 
 [services.deploy]
-startCommand = "node dist/server.js"
+startCommand = "sh -c 'npx prisma migrate deploy && node dist/server.js'"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 

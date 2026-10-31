@@ -1,4 +1,6 @@
-# MOURAQIB — Spécification Technique Complète
+# MalafiPro (ex-Mouraqib) — Spécification Technique Complète
+
+> **Note de rebranding (octobre 2026)** : le produit s'appelle désormais **MalafiPro — ملفاتي**. Les extraits de code ci-dessous gardent les anciens identifiants (`mouraqib`, `MOURAQIB`, `mouraqib.ma`) tels qu'ils existent dans le code ; les textes visibles par l'utilisateur (messages WhatsApp, user-agent, titres) seront migrés lors du rebranding du code. Marque : `docs/MARQUE.md`.
 ## Agent de Surveillance Procédurale pour Avocats Marocains
 
 > **Pour l'agent IA / Claude Code :** Ce document est un guide d'implémentation exhaustif. Lis-le intégralement avant d'écrire la moindre ligne de code. Chaque section est une étape séquentielle. Ne passe à l'étape suivante que lorsque la précédente est testée et validée.
@@ -28,7 +30,7 @@
 ## 1. Vue d'ensemble
 
 ### Objectif
-Mouraqib est une plateforme SaaS qui surveille automatiquement les dossiers judiciaires sur le portail mahakim.ma, interprète les événements de procédure en arabe, calcule les délais légaux qui en découlent, et envoie des alertes proactives aux avocats via WhatsApp.
+MalafiPro (anciennement Mouraqib) est une plateforme SaaS qui surveille automatiquement les dossiers judiciaires sur le portail mahakim.ma, interprète les événements de procédure en arabe, calcule les délais légaux qui en découlent, et envoie des alertes proactives aux avocats via WhatsApp.
 
 ### Flux principal
 ```

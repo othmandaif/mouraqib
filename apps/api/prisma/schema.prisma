@@ -19,6 +19,32 @@ model User {
   whatsappNumero  String?  // Peut différer du téléphone
   whatsappVerifie Boolean  @default(false)
   role            UserRole @default(AVOCAT)
+  /// Droits retirés par le responsable du cabinet (SUPPRESSION_DOSSIERS, CRM, FACTURATION, IA). Vide = tous les droits.
+  droitsRetires   String[] @default([])
+  /// Photo de profil : petite image (192 px) en data URL, redimensionnée par le navigateur
+  avatar          String?
+  /// Langue de l'interface choisie dans Paramètres : "ar" (défaut) ou "fr". Sert aussi aux réponses de l'assistant.
+  langue          String   @default("ar")
+  /// Mémoire de l'assistant activée (Paramètres › ذاكرة المساعد)
+  memoireActive   Boolean  @default(true)
+
+  // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
+  statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts
+  demande             Json?     // infos du formulaire d'inscription (ville, nombre de dossiers, message)
+  activeAt            DateTime?
+  desactiveAt         DateTime?
+  motifDesactivation  String?
+
+  // ─── Design V2 ───
+  barreau              String?   // هيئة المحامين (ex. « هيئة الدار البيضاء »)
+  preferences          Json?     // { matrice, digestHeure, calmeDebut, calmeFin, rappels }
+  calendarToken        String?   @unique // inutilisé (synchronisation agenda retirée), gardé pour ne pas migrer
+  deuxFacteurs         Boolean   @default(false) // code WhatsApp à chaque nouvelle connexion
+  motDePasseChangeAt   DateTime?
+  doitChangerMdp       Boolean   @default(false) // mot de passe provisoire donné par l'admin : à changer à la connexion
+  suppressionDemandeeAt DateTime? // suppression définitive 30 jours après
+  invitationsEnvoyees  Invitation[]
+  rendezVous           RendezVous[]
 
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
   cabinetId String?
@@ -30,9 +56,22 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  messagesChat MessageChat[]  
+  conversations Conversation[]
+  memoires     MemoireAvocat[]
+  modelesDocument ModeleDocument[]
+  documents       Document[]
 
   @@index([email])
   @@index([cabinetId])
+  @@index([statut])
+}
+
+
+enum StatutCompte {
+  EN_ATTENTE // inscrit sur le site, à contacter puis activer
+  ACTIF
+  DESACTIVE  // accès fermé, plus de synchronisation ni d'alertes
 }
 
 enum UserRole {
@@ -51,6 +90,9 @@ model Cabinet {
   membres    User[]
   dossiers   Dossier[]
   abonnement Abonnement?
+
+  modelesDocument ModeleDocument[]
+  documents       Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,11 +124,22 @@ model Dossier {
   typeProcedure TypeProcedure @default(CIVILE)
   titreAffaire  String?
   partieAdverse String?
+  roleClient    RoleClient    @default(INCONNU) // sépare « عليكم » de « على الخصم »
+
+  // ─── Analyse IA (DeepSeek) ───
+  statutIA   StatutDossier @default(INCONNU) // ouvert / en délibéré / clos
+  resumeIA   String?                          // résumé court en arabe
+  analyseIA  Json?                            // { resume, prochainesEcheances[], conseils[] }
+  analyseAt  DateTime?                        // dernière analyse IA (cache anti-rappel)
+
 
   // Suivi
   estActif       Boolean   @default(true)
   derniereVerif  DateTime?
   prochaineVerif DateTime?
+
+
+
 
   // Relations
   userId    String
@@ -94,9 +147,18 @@ model Dossier {
   cabinetId String?
   cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
 
+  // ─── CRM : موكل الملف et honoraires convenus (en centimes de dirham) ───
+  clientId                  String?
+  client                    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  honorairesConvenusCentimes Int?
+  factures                  Facture[]
+  reglements                Reglement[]
+  interactions              InteractionClient[]
+
   evenements Evenement[]
   echeances  Echeance[]
   alertes    Alerte[]
+  documents       Document[]
 
   // Données brutes du scraping mahakim.ma
   rawData Json?
@@ -104,9 +166,32 @@ model Dossier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  messagesChat MessageChat[] 
+  conversations Conversation[]
+  rendezVous    RendezVous[]
+
   @@unique([anneeDossier, codeRole, numeroDossier, tribunal, userId])
   @@index([userId])
   @@index([numeroDossier])
+  @@index([userId, estActif])
+  @@index([clientId])
+}
+
+
+enum RoleClient {
+  DEMANDEUR // مدعٍ
+  DEFENDEUR // مدعى عليه
+  INCONNU
+}
+
+enum NatureJugement {
+  CONTRADICTOIRE // حضوري
+  DEFAUT         // غيابي
+}
+
+enum CampDelai {
+  AGIR       // عليكم
+  SURVEILLER // على الخصم
 }
 
 enum TypeProcedure {
@@ -118,6 +203,14 @@ enum TypeProcedure {
   FAMILLE
   REFERE
 }
+
+enum StatutDossier {
+  OUVERT       // قضية جارية
+  EN_DELIBERE  // حجز للمداولة
+  CLOS         // قضية منتهية / محكوم فيها
+  INCONNU      // غير محدد بعد
+}
+
 
 // ─── ÉVÉNEMENTS PROCÉDURAUX ───────────────────────────────────────────────────
 
@@ -135,6 +228,7 @@ model Evenement {
   typeEvenement TypeEvenement?
   sousType      String?
   confiance     Float?          // Score de confiance du classifieur (0-1)
+  natureJugement NatureJugement? // demandé une fois à l'avocat quand un jugement est rendu
 
   // Métadonnées
   estNouvel Boolean @default(true)
@@ -148,6 +242,7 @@ model Evenement {
 
   @@index([dossierId])
   @@index([typeEvenement])
+  @@index([dossierId, datePublicationGreffe])
   @@index([estTraite])
 }
 
@@ -204,6 +299,9 @@ model Echeance {
   estCritique Boolean @default(false) // < 7 jours
   estExpire   Boolean @default(false)
   estComplete Boolean @default(false) // Avocat a coché "fait"
+  completeAt  DateTime?
+  camp        CampDelai @default(AGIR)
+  rappelAt    DateTime? // « ذكّروني يوم … »
 
   alertesEnvoyees Alerte[]
 
@@ -212,7 +310,9 @@ model Echeance {
 
   @@index([dossierId])
   @@index([dateLimite])
+  @@index([dossierId, estComplete, dateLimite])
   @@index([estCritique])
+  @@index([rappelAt])
 }
 
 enum TypeDelai {
@@ -250,11 +350,14 @@ model Alerte {
   erreur     String?
 
   envoyeAt  DateTime?
+  luAt      DateTime?
   createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([statut])
   @@index([canal])
+  @@index([userId, canal, luAt])
+  @@index([statut, canal])
 }
 
 enum CanalAlerte {
@@ -272,6 +375,10 @@ enum TypeAlerte {
   DELAI_EXPIRE      // Délai expiré
   DIGEST_QUOTIDIEN  // Résumé matinal
   RENVOI_DETECTE    // Audience renvoyée (évite déplacement)
+  NOUVEAU_DELAI     // Un délai vient de s'ouvrir
+  RAPPEL_DELAI      // Rappel demandé par l'avocat (« ذكّروني يوم … »)
+  RAPPORT_SYNC      // Échec de synchronisation mahakim
+  ABONNEMENT        // Fin de période offerte / payée proche
 }
 
 enum StatutAlerte {
@@ -299,6 +406,13 @@ model Abonnement {
   dateFin            DateTime?
   dateRenouvellement DateTime?
 
+  // Vente directe (commercial) : pas de paiement en ligne
+  estFondateur Boolean   @default(false) // programme « 50 membres fondateurs » : prix bloqué à vie
+  prixMensuel  Float? // prix négocié en DH/mois (null = prix public de l'offre)
+  essaiJusquAu DateTime? // fin de la période offerte
+  payeJusquAu  DateTime? // couvert par les paiements enregistrés jusqu'à cette date
+  note         String? // note interne du commercial
+
   paiements Paiement[]
 
   createdAt DateTime @default(now())
@@ -310,6 +424,7 @@ enum PlanAbonnement {
   SOLO    // 190 DH/mois, 100 dossiers
   PRO     // 390 DH/mois, illimité + délais
   CABINET // 790 DH/mois, multi-users
+  SUR_MESURE // Cabinet+ (6 utilisateurs et plus) ou installation sur les serveurs du cabinet : sur devis
 }
 
 enum StatutAbonnement {
@@ -347,4 +462,395 @@ model Tribunal {
 
   @@index([ville])
   @@index([type])
+}
+
+
+
+model MessageChat {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?    @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  role      RoleChat    // USER ou ASSISTANT
+  contenu   String      @db.Text
+  sources   Json?       // [{ titre, article, url }] renvoyées par le RAG
+  feedback  Int?        // 1 = utile, -1 = pas exact
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+
+  @@index([userId])
+  @@index([dossierId])
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+}
+
+enum RoleChat {
+  USER
+  ASSISTANT
+}
+
+
+model Conversation {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  titre     String        @default("محادثة جديدة")
+  messages  MessageChat[]
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model ModeleDocument {
+  id          String          @id @default(cuid())
+  // null = modèle global (fourni par la plateforme) ; sinon = modèle privé du cabinet/user
+  userId      String?
+  user        User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cabinetId   String?
+  cabinet     Cabinet?        @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+
+  typeActe    String          // clé du registre (ex: "BAIL_HABITATION", "CDI", "MISE_EN_DEMEURE")
+  categorie   CategorieActe   @default(AUTRE)
+  titre       String          // ex: "عقد كراء سكني"
+  langue      LangueDocument  @default(AR)
+  description String?
+
+  // Contenu du modèle avec variables {{nom}}. Peut être vide (modèle "libre" piloté par prompt).
+  contenu     String          @db.Text
+  // Variables attendues : [{ cle, label, type, requis }]
+  variables   Json?
+
+  estActif    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  documents   Document[]
+
+  styleResume       String?  @db.Text
+  importeParAvocat  Boolean  @default(false)
+
+  @@index([typeActe])
+  @@index([userId])
+  @@index([cabinetId])
+}
+
+model Document {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cabinetId   String?
+  cabinet     Cabinet?        @relation(fields: [cabinetId], references: [id], onDelete: SetNull)
+  // Dossier lié (optionnel) : permet de pré-remplir depuis les données du client
+  dossierId   String?
+  dossier     Dossier?        @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  // Modèle utilisé (optionnel : null = génération libre sans modèle)
+  modeleId    String?
+  modele      ModeleDocument? @relation(fields: [modeleId], references: [id], onDelete: SetNull)
+
+  typeActe    String
+  categorie   CategorieActe   @default(AUTRE)
+  titre       String
+  langue      LangueDocument  @default(AR)
+
+  contenu     String          @db.Text   // texte final (éditable par l'avocat)
+  variables   Json?                       // valeurs des variables utilisées
+  promptLibre String?         @db.Text    // si génération libre : la demande de l'avocat
+
+  statut      StatutDocument  @default(BROUILLON)
+  version     Int             @default(1)
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([dossierId])
+  @@index([typeActe])
+}
+
+
+enum CategorieActe {
+  CONTRAT          // عقود
+  REQUETE          // مقالات ومذكرات قضائية
+  CORRESPONDANCE   // مراسلات وإنذارات
+  SOCIETE          // عقود ووثائق الشركات
+  AUTRE
+}
+
+enum LangueDocument {
+  AR
+  FR
+}
+
+enum StatutDocument {
+  BROUILLON   // généré, en cours d'édition
+  FINALISE    // validé par l'avocat
+  ARCHIVE
+}
+
+
+
+// ─── ÉQUIPE (Paramètres › الفريق) ───────────────────────────────────────────
+
+model Invitation {
+  id          String    @id @default(cuid())
+  email       String
+  role        UserRole  @default(AVOCAT)
+  token       String    @unique
+  invitantId  String
+  invitant    User      @relation(fields: [invitantId], references: [id], onDelete: Cascade)
+  accepteeAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([invitantId])
+  @@index([email])
+}
+
+// ─── AGENDA : rendez-vous saisis par l'avocat (Agenda › إضافة موعد) ─────────
+
+model RendezVous {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier? @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  titre     String
+  lieu      String?
+  debut     DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, debut])
+}
+
+// ─── CRM : الموكلون ─────────────────────────────────────────────────────────────
+// Visibles par toute l'équipe (`userId: { in: req.equipe }`), comme les dossiers.
+
+model Client {
+  id        String     @id @default(cuid())
+  userId    String     // créateur
+  cabinetId String?
+  type      TypeClient @default(PERSONNE)
+
+  nom               String  // nom complet ou raison sociale
+  cin               String? // بطاقة التعريف (personne)
+  ice               String? // 15 chiffres (société) : obligatoire sur une facture B2B
+  rc                String? // السجل التجاري
+  identifiantFiscal String?
+  representant      String? // ممثل الشركة (gérant)
+  telephone         String?
+  email             String?
+  adresse           String?
+  ville             String?
+  notes             String? @db.Text
+  estArchive        Boolean @default(false)
+
+  dossiers     Dossier[]
+  interactions InteractionClient[]
+  factures     Facture[]
+  reglements   Reglement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([cabinetId])
+  @@index([nom])
+}
+
+enum TypeClient {
+  PERSONNE // شخص ذاتي
+  SOCIETE  // شخص معنوي
+}
+
+/// Journal des échanges avec le client (سجل التواصل).
+model InteractionClient {
+  id        String          @id @default(cuid())
+  clientId  String
+  client    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dossierId String?
+  dossier   Dossier?        @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  userId    String          // auteur
+  type      TypeInteraction @default(NOTE)
+  resume    String          @db.Text
+  date      DateTime        @default(now())
+  createdAt DateTime        @default(now())
+
+  @@index([clientId, date])
+}
+
+enum TypeInteraction {
+  APPEL
+  RENDEZ_VOUS
+  MESSAGE
+  EMAIL
+  NOTE
+}
+
+// ─── FACTURATION (فواتير ومذكرات الأتعاب) ──────────────────────────────────────
+// « espace » = cabinetId du compte, sinon son userId : une seule série de numéros par cabinet.
+// Montants en centimes (entiers) : aucun arrondi flottant sur les totaux.
+
+/// En-tête des factures (art. 145 CGI : ICE, IF, TP…).
+model ProfilFacturation {
+  id                  String   @id @default(cuid())
+  espace              String   @unique
+  nom                 String   // « الأستاذ … » ou nom du cabinet
+  barreau             String?
+  adresse             String?
+  ville               String?
+  telephone           String?
+  email               String?
+  ice                 String?
+  identifiantFiscal   String?
+  taxeProfessionnelle String?
+  rib                 String?
+  banque              String?
+  piedPage            String?  @db.Text
+  updatedAt           DateTime @updatedAt
+}
+
+/// Dernier numéro attribué par espace et par année (numérotation continue, sans trou).
+model SequenceFacture {
+  espace  String
+  annee   Int
+  dernier Int    @default(0)
+
+  @@id([espace, annee])
+}
+
+model Facture {
+  id        String        @id @default(cuid())
+  espace    String
+  userId    String        // créateur
+  cabinetId String?
+  type      TypeFacture   @default(NOTE_HONORAIRES)
+  statut    StatutFacture @default(BROUILLON)
+  numero    String?       // attribué à l'émission (« 2026-0007 ») ; null tant que brouillon
+
+  clientId  String
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+
+  // Avoir : facture annulée qu'il compense
+  factureOrigineId String?   @unique
+  factureOrigine   Facture?  @relation("Avoir", fields: [factureOrigineId], references: [id], onDelete: Restrict)
+  avoir            Facture?  @relation("Avoir")
+
+  dateEmission DateTime?
+  dateEcheance DateTime?
+  lignes       Json          // [{ designation, quantite, prixUnitaireCentimes }]
+  tauxTva      Float         // en %, choisi sur chaque facture (0, 7, 10, 14, 20)
+  totalHtCentimes  Int       @default(0)
+  tvaCentimes      Int       @default(0)
+  totalTtcCentimes Int       @default(0)
+  modePaiement String?
+  notes        String?       @db.Text
+
+  // Copies figées à l'émission : la facture émise ne change plus si le profil ou le client changent
+  emetteur     Json?
+  destinataire Json?
+
+  emiseAt   DateTime?
+  annuleeAt DateTime?
+  reglements Reglement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([espace, numero])
+  @@index([espace, statut])
+  @@index([clientId])
+  @@index([dossierId])
+}
+
+enum TypeFacture {
+  FACTURE          // فاتورة
+  NOTE_HONORAIRES  // مذكرة الأتعاب
+  AVOIR            // فاتورة مضادة (annulation)
+}
+
+enum StatutFacture {
+  BROUILLON
+  EMISE
+  ANNULEE
+}
+
+/// Encaissement. Sans facture = provision (تسبيق), imputable plus tard.
+model Reglement {
+  id        String        @id @default(cuid())
+  userId    String
+  cabinetId String?
+  clientId  String
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dossierId String?
+  dossier   Dossier?      @relation(fields: [dossierId], references: [id], onDelete: SetNull)
+  factureId String?
+  facture   Facture?      @relation(fields: [factureId], references: [id], onDelete: SetNull)
+
+  montantCentimes Int
+  date            DateTime
+  mode            ModeReglement
+  reference       String?   // n° de chèque, de virement…
+  note            String?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([dossierId])
+  @@index([factureId])
+  @@index([userId, date])
+}
+
+enum ModeReglement {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  EFFET
+  AUTRE
+}
+
+// ─── Comptabilité du service (panneau admin) ───────────────────────────────────
+model Depense {
+  id         String   @id @default(cuid())
+  date       DateTime
+  categorie  String   // HEBERGEMENT, WHATSAPP, IA, DOMAINE, MARKETING, LOGICIEL, AUTRE
+  libelle    String
+  montant    Float    // en dirhams
+  recurrente Boolean  @default(false) // charge mensuelle (rappel visuel seulement)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+}
+
+/// Mémoire de l'assistant pour un avocat : règles courtes apprises de ses corrections et préférences.
+/// Injectée dans le prompt du chat. Jamais de noms de parties, numéros de dossier ni montants.
+model MemoireAvocat {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         TypeMemoire
+  texte        String
+  source       String?      // "chat" (appris d'un message) ou "manuel" (ajouté par l'avocat)
+  actif        Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId, actif])
+}
+
+enum TypeMemoire {
+  PREFERENCE // façon de répondre (longueur, ton, structure)
+  PRATIQUE   // domaine, juridictions, type de clientèle
+  CORRECTION // erreur de l'assistant rectifiée par l'avocat
+  FORMULE    // formules et tournures de rédaction
 }

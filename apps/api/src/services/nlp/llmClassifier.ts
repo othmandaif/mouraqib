@@ -3,7 +3,9 @@ import { TypeEvenement } from '@prisma/client'
 import { ClassificationResult } from './arabicRulesClassifier'
 import { logger } from '../../utils/logger'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Client créé à la demande : sans OPENAI_API_KEY, le serveur doit quand même démarrer
+// (le fallback LLM est optionnel, les règles arabes suffisent).
+let openai: OpenAI | null = null
 
 const SYSTEM_PROMPT = `Tu es un expert en procédure judiciaire marocaine.
 Classifie les mentions de greffe en arabe marocain judiciaire.
@@ -22,7 +24,11 @@ Réponds UNIQUEMENT en JSON: {"type":"TYPE","confiance":0.0-1.0}`
 const VALID_TYPES = new Set(Object.values(TypeEvenement))
 
 export async function classifyWithLLM(texteArabe: string): Promise<ClassificationResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { typeEvenement: TypeEvenement.AUTRE, confiance: 0.3, methode: 'FALLBACK' }
+  }
   try {
+    openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [

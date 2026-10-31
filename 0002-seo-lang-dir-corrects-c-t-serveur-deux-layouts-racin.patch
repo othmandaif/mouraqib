@@ -1,0 +1,392 @@
+From d0c30b83cb3685e52b819646990c5942e4098a94 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 16:47:31 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?seo:=20lang/dir=20corrects=20c=C3=B4t=C3=A9?=
+ =?UTF-8?q?=20serveur=20(deux=20layouts=20racines=20ar=20/=20fr)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Cause : un seul layout racine écrivait <html lang="ar" dir="rtl"> pour toutes les routes ;
+/fr n'était corrigé qu'au navigateur par un script, donc invisible pour les robots.
+
+- app/(site)/layout.tsx : racine arabe (/, connexion, inscription, espace connecté) ;
+  routes déplacées dans le groupe (site) sans changement d'URL (renommages purs)
+- app/fr/layout.tsx : racine française (/fr et futures pages /fr/...)
+- components/layout/Racine.tsx : document HTML, metadata et viewport communs (ex-app/layout.tsx)
+- app/global-not-found.tsx + experimental.globalNotFound : page 404 complète en lang="ar"
+- Rendu statique de / et /fr conservé (pas de headers()) ; aucune route, API ou auth modifiée
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016UdfiS24mRYndmD73rypaM
+---
+ .../(app)/abonnement/echec/page.tsx           |  0
+ .../{ => (site)}/(app)/abonnement/page.tsx    |  0
+ .../(app)/abonnement/success/page.tsx         |  0
+ .../(app)/admin/[onglet]/page.tsx             |  0
+ .../web/app/{ => (site)}/(app)/admin/page.tsx |  0
+ .../app/{ => (site)}/(app)/alertes/page.tsx   |  0
+ .../{ => (site)}/(app)/assistant/Markdown.tsx |  0
+ .../app/{ => (site)}/(app)/assistant/page.tsx |  0
+ .../{ => (site)}/(app)/calendrier/page.tsx    |  0
+ .../{ => (site)}/(app)/clients/[id]/page.tsx  |  0
+ .../app/{ => (site)}/(app)/clients/page.tsx   |  0
+ .../app/{ => (site)}/(app)/dashboard/page.tsx |  0
+ .../{ => (site)}/(app)/documents/mes/page.tsx |  0
+ .../app/{ => (site)}/(app)/documents/page.tsx |  0
+ .../{ => (site)}/(app)/dossiers/[id]/page.tsx |  0
+ .../app/{ => (site)}/(app)/dossiers/page.tsx  |  0
+ .../app/{ => (site)}/(app)/echeances/page.tsx |  0
+ .../(app)/facturation/[id]/page.tsx           |  0
+ .../{ => (site)}/(app)/facturation/page.tsx   |  0
+ apps/web/app/{ => (site)}/(app)/layout.tsx    |  0
+ apps/web/app/{ => (site)}/(app)/loading.tsx   |  0
+ .../{ => (site)}/(app)/parametres/page.tsx    |  0
+ .../(app)/parametres/whatsapp/page.tsx        |  0
+ .../app/{ => (site)}/(auth)/login/layout.tsx  |  0
+ .../app/{ => (site)}/(auth)/login/page.tsx    |  0
+ .../{ => (site)}/(auth)/register/layout.tsx   |  0
+ .../app/{ => (site)}/(auth)/register/page.tsx |  0
+ apps/web/app/{ => (site)}/activer/layout.tsx  |  0
+ apps/web/app/{ => (site)}/activer/page.tsx    |  0
+ apps/web/app/(site)/layout.tsx                | 11 ++++++++
+ .../mot-de-passe-provisoire/layout.tsx        |  0
+ .../mot-de-passe-provisoire/page.tsx          |  0
+ .../app/{ => (site)}/onboarding/layout.tsx    |  0
+ apps/web/app/{ => (site)}/onboarding/page.tsx |  0
+ apps/web/app/{ => (site)}/page.tsx            |  0
+ apps/web/app/fr/layout.tsx                    | 10 ++++++++
+ apps/web/app/global-not-found.tsx             | 25 +++++++++++++++++++
+ .../layout/Racine.tsx}                        | 24 ++++++++++--------
+ apps/web/lib/langue.ts                        |  4 +--
+ apps/web/next.config.ts                       |  4 ++-
+ 40 files changed, 64 insertions(+), 14 deletions(-)
+ rename apps/web/app/{ => (site)}/(app)/abonnement/echec/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/abonnement/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/abonnement/success/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/admin/[onglet]/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/admin/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/alertes/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/assistant/Markdown.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/assistant/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/calendrier/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/clients/[id]/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/clients/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/dashboard/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/documents/mes/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/documents/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/dossiers/[id]/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/dossiers/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/echeances/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/facturation/[id]/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/facturation/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/loading.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/parametres/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(app)/parametres/whatsapp/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(auth)/login/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/(auth)/login/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/(auth)/register/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/(auth)/register/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/activer/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/activer/page.tsx (100%)
+ create mode 100644 apps/web/app/(site)/layout.tsx
+ rename apps/web/app/{ => (site)}/mot-de-passe-provisoire/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/mot-de-passe-provisoire/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/onboarding/layout.tsx (100%)
+ rename apps/web/app/{ => (site)}/onboarding/page.tsx (100%)
+ rename apps/web/app/{ => (site)}/page.tsx (100%)
+ create mode 100644 apps/web/app/fr/layout.tsx
+ create mode 100644 apps/web/app/global-not-found.tsx
+ rename apps/web/{app/layout.tsx => components/layout/Racine.tsx} (67%)
+
+diff --git a/apps/web/app/(app)/abonnement/echec/page.tsx b/apps/web/app/(site)/(app)/abonnement/echec/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/abonnement/echec/page.tsx
+rename to apps/web/app/(site)/(app)/abonnement/echec/page.tsx
+diff --git a/apps/web/app/(app)/abonnement/page.tsx b/apps/web/app/(site)/(app)/abonnement/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/abonnement/page.tsx
+rename to apps/web/app/(site)/(app)/abonnement/page.tsx
+diff --git a/apps/web/app/(app)/abonnement/success/page.tsx b/apps/web/app/(site)/(app)/abonnement/success/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/abonnement/success/page.tsx
+rename to apps/web/app/(site)/(app)/abonnement/success/page.tsx
+diff --git a/apps/web/app/(app)/admin/[onglet]/page.tsx b/apps/web/app/(site)/(app)/admin/[onglet]/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/admin/[onglet]/page.tsx
+rename to apps/web/app/(site)/(app)/admin/[onglet]/page.tsx
+diff --git a/apps/web/app/(app)/admin/page.tsx b/apps/web/app/(site)/(app)/admin/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/admin/page.tsx
+rename to apps/web/app/(site)/(app)/admin/page.tsx
+diff --git a/apps/web/app/(app)/alertes/page.tsx b/apps/web/app/(site)/(app)/alertes/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/alertes/page.tsx
+rename to apps/web/app/(site)/(app)/alertes/page.tsx
+diff --git a/apps/web/app/(app)/assistant/Markdown.tsx b/apps/web/app/(site)/(app)/assistant/Markdown.tsx
+similarity index 100%
+rename from apps/web/app/(app)/assistant/Markdown.tsx
+rename to apps/web/app/(site)/(app)/assistant/Markdown.tsx
+diff --git a/apps/web/app/(app)/assistant/page.tsx b/apps/web/app/(site)/(app)/assistant/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/assistant/page.tsx
+rename to apps/web/app/(site)/(app)/assistant/page.tsx
+diff --git a/apps/web/app/(app)/calendrier/page.tsx b/apps/web/app/(site)/(app)/calendrier/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/calendrier/page.tsx
+rename to apps/web/app/(site)/(app)/calendrier/page.tsx
+diff --git a/apps/web/app/(app)/clients/[id]/page.tsx b/apps/web/app/(site)/(app)/clients/[id]/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/clients/[id]/page.tsx
+rename to apps/web/app/(site)/(app)/clients/[id]/page.tsx
+diff --git a/apps/web/app/(app)/clients/page.tsx b/apps/web/app/(site)/(app)/clients/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/clients/page.tsx
+rename to apps/web/app/(site)/(app)/clients/page.tsx
+diff --git a/apps/web/app/(app)/dashboard/page.tsx b/apps/web/app/(site)/(app)/dashboard/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/dashboard/page.tsx
+rename to apps/web/app/(site)/(app)/dashboard/page.tsx
+diff --git a/apps/web/app/(app)/documents/mes/page.tsx b/apps/web/app/(site)/(app)/documents/mes/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/documents/mes/page.tsx
+rename to apps/web/app/(site)/(app)/documents/mes/page.tsx
+diff --git a/apps/web/app/(app)/documents/page.tsx b/apps/web/app/(site)/(app)/documents/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/documents/page.tsx
+rename to apps/web/app/(site)/(app)/documents/page.tsx
+diff --git a/apps/web/app/(app)/dossiers/[id]/page.tsx b/apps/web/app/(site)/(app)/dossiers/[id]/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/dossiers/[id]/page.tsx
+rename to apps/web/app/(site)/(app)/dossiers/[id]/page.tsx
+diff --git a/apps/web/app/(app)/dossiers/page.tsx b/apps/web/app/(site)/(app)/dossiers/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/dossiers/page.tsx
+rename to apps/web/app/(site)/(app)/dossiers/page.tsx
+diff --git a/apps/web/app/(app)/echeances/page.tsx b/apps/web/app/(site)/(app)/echeances/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/echeances/page.tsx
+rename to apps/web/app/(site)/(app)/echeances/page.tsx
+diff --git a/apps/web/app/(app)/facturation/[id]/page.tsx b/apps/web/app/(site)/(app)/facturation/[id]/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/facturation/[id]/page.tsx
+rename to apps/web/app/(site)/(app)/facturation/[id]/page.tsx
+diff --git a/apps/web/app/(app)/facturation/page.tsx b/apps/web/app/(site)/(app)/facturation/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/facturation/page.tsx
+rename to apps/web/app/(site)/(app)/facturation/page.tsx
+diff --git a/apps/web/app/(app)/layout.tsx b/apps/web/app/(site)/(app)/layout.tsx
+similarity index 100%
+rename from apps/web/app/(app)/layout.tsx
+rename to apps/web/app/(site)/(app)/layout.tsx
+diff --git a/apps/web/app/(app)/loading.tsx b/apps/web/app/(site)/(app)/loading.tsx
+similarity index 100%
+rename from apps/web/app/(app)/loading.tsx
+rename to apps/web/app/(site)/(app)/loading.tsx
+diff --git a/apps/web/app/(app)/parametres/page.tsx b/apps/web/app/(site)/(app)/parametres/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/parametres/page.tsx
+rename to apps/web/app/(site)/(app)/parametres/page.tsx
+diff --git a/apps/web/app/(app)/parametres/whatsapp/page.tsx b/apps/web/app/(site)/(app)/parametres/whatsapp/page.tsx
+similarity index 100%
+rename from apps/web/app/(app)/parametres/whatsapp/page.tsx
+rename to apps/web/app/(site)/(app)/parametres/whatsapp/page.tsx
+diff --git a/apps/web/app/(auth)/login/layout.tsx b/apps/web/app/(site)/(auth)/login/layout.tsx
+similarity index 100%
+rename from apps/web/app/(auth)/login/layout.tsx
+rename to apps/web/app/(site)/(auth)/login/layout.tsx
+diff --git a/apps/web/app/(auth)/login/page.tsx b/apps/web/app/(site)/(auth)/login/page.tsx
+similarity index 100%
+rename from apps/web/app/(auth)/login/page.tsx
+rename to apps/web/app/(site)/(auth)/login/page.tsx
+diff --git a/apps/web/app/(auth)/register/layout.tsx b/apps/web/app/(site)/(auth)/register/layout.tsx
+similarity index 100%
+rename from apps/web/app/(auth)/register/layout.tsx
+rename to apps/web/app/(site)/(auth)/register/layout.tsx
+diff --git a/apps/web/app/(auth)/register/page.tsx b/apps/web/app/(site)/(auth)/register/page.tsx
+similarity index 100%
+rename from apps/web/app/(auth)/register/page.tsx
+rename to apps/web/app/(site)/(auth)/register/page.tsx
+diff --git a/apps/web/app/activer/layout.tsx b/apps/web/app/(site)/activer/layout.tsx
+similarity index 100%
+rename from apps/web/app/activer/layout.tsx
+rename to apps/web/app/(site)/activer/layout.tsx
+diff --git a/apps/web/app/activer/page.tsx b/apps/web/app/(site)/activer/page.tsx
+similarity index 100%
+rename from apps/web/app/activer/page.tsx
+rename to apps/web/app/(site)/activer/page.tsx
+diff --git a/apps/web/app/(site)/layout.tsx b/apps/web/app/(site)/layout.tsx
+new file mode 100644
+index 0000000..5db791f
+--- /dev/null
++++ b/apps/web/app/(site)/layout.tsx
+@@ -0,0 +1,11 @@
++// Layout racine arabe : landing (/), pages d'accès et espace connecté → <html lang="ar" dir="rtl"> côté serveur.
++// La version française publique a sa propre racine : app/fr/layout.tsx.
++import { Racine, metadataRacine, viewportRacine } from '@/components/layout/Racine'
++import '../globals.css'
++
++export const metadata = metadataRacine
++export const viewport = viewportRacine
++
++export default function RootLayout({ children }: { children: React.ReactNode }) {
++  return <Racine lang="ar">{children}</Racine>
++}
+diff --git a/apps/web/app/mot-de-passe-provisoire/layout.tsx b/apps/web/app/(site)/mot-de-passe-provisoire/layout.tsx
+similarity index 100%
+rename from apps/web/app/mot-de-passe-provisoire/layout.tsx
+rename to apps/web/app/(site)/mot-de-passe-provisoire/layout.tsx
+diff --git a/apps/web/app/mot-de-passe-provisoire/page.tsx b/apps/web/app/(site)/mot-de-passe-provisoire/page.tsx
+similarity index 100%
+rename from apps/web/app/mot-de-passe-provisoire/page.tsx
+rename to apps/web/app/(site)/mot-de-passe-provisoire/page.tsx
+diff --git a/apps/web/app/onboarding/layout.tsx b/apps/web/app/(site)/onboarding/layout.tsx
+similarity index 100%
+rename from apps/web/app/onboarding/layout.tsx
+rename to apps/web/app/(site)/onboarding/layout.tsx
+diff --git a/apps/web/app/onboarding/page.tsx b/apps/web/app/(site)/onboarding/page.tsx
+similarity index 100%
+rename from apps/web/app/onboarding/page.tsx
+rename to apps/web/app/(site)/onboarding/page.tsx
+diff --git a/apps/web/app/page.tsx b/apps/web/app/(site)/page.tsx
+similarity index 100%
+rename from apps/web/app/page.tsx
+rename to apps/web/app/(site)/page.tsx
+diff --git a/apps/web/app/fr/layout.tsx b/apps/web/app/fr/layout.tsx
+new file mode 100644
+index 0000000..3361773
+--- /dev/null
++++ b/apps/web/app/fr/layout.tsx
+@@ -0,0 +1,10 @@
++// Layout racine français : /fr et ses sous-pages → <html lang="fr" dir="ltr"> côté serveur.
++import { Racine, metadataRacine, viewportRacine } from '@/components/layout/Racine'
++import '../globals.css'
++
++export const metadata = metadataRacine
++export const viewport = viewportRacine
++
++export default function RootLayoutFr({ children }: { children: React.ReactNode }) {
++  return <Racine lang="fr">{children}</Racine>
++}
+diff --git a/apps/web/app/global-not-found.tsx b/apps/web/app/global-not-found.tsx
+new file mode 100644
+index 0000000..abc46ae
+--- /dev/null
++++ b/apps/web/app/global-not-found.tsx
+@@ -0,0 +1,25 @@
++// Page 404 des adresses inconnues. Avec deux layouts racines ((site) en arabe, fr en français), Next n'a plus de
++// layout commun pour ces adresses : ce fichier fournit le document complet (option experimental.globalNotFound).
++import type { Metadata } from 'next'
++import { metadataRacine, viewportRacine } from '@/components/layout/Racine'
++import './globals.css'
++
++export const metadata: Metadata = { ...metadataRacine, title: 'الصفحة غير موجودة · Page introuvable', robots: { index: false, follow: true } }
++export const viewport = viewportRacine
++
++export default function GlobalNotFound() {
++  return (
++    <html lang="ar" dir="rtl">
++      <body>
++        <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center', fontFamily: "'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif" }}>
++          <h1 style={{ margin: 0 }}>الصفحة غير موجودة</h1>
++          <p lang="fr" dir="ltr" style={{ margin: 0, color: '#3B4A47' }}>Page introuvable</p>
++          <p style={{ margin: 0, display: 'flex', gap: 20 }}>
++            <a href="/">الصفحة الرئيسية</a>
++            <a href="/fr" lang="fr" hrefLang="fr">Accueil</a>
++          </p>
++        </main>
++      </body>
++    </html>
++  )
++}
+diff --git a/apps/web/app/layout.tsx b/apps/web/components/layout/Racine.tsx
+similarity index 67%
+rename from apps/web/app/layout.tsx
+rename to apps/web/components/layout/Racine.tsx
+index 672c96f..62cb2a8 100644
+--- a/apps/web/app/layout.tsx
++++ b/apps/web/components/layout/Racine.tsx
+@@ -1,16 +1,19 @@
++// Document HTML commun aux deux layouts racines :
++// - app/(site)/layout.tsx → <html lang="ar" dir="rtl"> (landing arabe, connexion, espace connecté) ;
++// - app/fr/layout.tsx     → <html lang="fr" dir="ltr"> (landing française et futures pages /fr/…).
++// lang/dir sont ainsi corrects dans le HTML envoyé par le serveur (SEO), sans attendre le JavaScript.
++// Passer d'une racine à l'autre (/ ↔ /fr) recharge la page entière : normal pour un changement de langue.
+ import { EtatConnexion } from '@/components/layout/EtatConnexion'
+ import { TitreTraduit } from '@/components/layout/TitreTraduit'
+ import type { Metadata, Viewport } from 'next'
+-import './globals.css'
++import { SITE } from '@/lib/pagesPubliques'
+ 
+-// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français.
+-// La landing a sa langue dans l'adresse (/ = arabe, /fr = français) : elle fixe aussi celle des pages
+-// de connexion qui suivent (visiteur non connecté) ; une fois connecté, la langue du compte (Paramètres) l'emporte.
++// Mémorise la langue de la landing (/ = arabe, /fr = français) pour les pages de connexion qui suivent
++// (visiteur non connecté) ; ailleurs, applique la langue choisie (lib/langue.ts, même clé) avant l'affichage.
++// Ce script ne sert plus au SEO : sur / et /fr, lang/dir viennent déjà du serveur.
+ const SCRIPT_LANGUE = `try{var p=location.pathname,l=p==='/fr'||p.indexOf('/fr/')===0?'fr':p==='/'?'ar':null;if(l){if(!localStorage.getItem('malafipro_token'))localStorage.setItem('malafipro_langue',l)}else l=localStorage.getItem('malafipro_langue');if(l==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
+ 
+-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
+-
+-export const metadata: Metadata = {
++export const metadataRacine: Metadata = {
+   metadataBase: new URL(SITE), // URLs absolues pour Open Graph, canonical et sitemap
+   title: { default: 'MalafiPro — ملفاتي · متابعة ملفات المحاكم المغربية', template: '%s · MalafiPro — ملفاتي' },
+   description: 'ملفاتي يتابع ملفاتكم على محاكم، يحسب آجال الطعن، وينبّهكم على واتساب قبل آخر أجل.',
+@@ -33,12 +36,11 @@ export const metadata: Metadata = {
+   appleWebApp: { capable: true, title: 'MalafiPro', statusBarStyle: 'default' },
+ }
+ 
+-export const viewport: Viewport = { themeColor: '#083B34', width: 'device-width', initialScale: 1, viewportFit: 'cover' }
++export const viewportRacine: Viewport = { themeColor: '#083B34', width: 'device-width', initialScale: 1, viewportFit: 'cover' }
+ 
+-export default function RootLayout({ children }: { children: React.ReactNode }) {
++export function Racine({ lang, children }: { lang: 'ar' | 'fr'; children: React.ReactNode }) {
+   return (
+-    // La langue choisie (français) est appliquée avant l'affichage par le script ci-dessous
+-    <html lang="ar" dir="rtl" suppressHydrationWarning>
++    <html lang={lang} dir={lang === 'fr' ? 'ltr' : 'rtl'} suppressHydrationWarning>
+       <head>
+         <script dangerouslySetInnerHTML={{ __html: SCRIPT_LANGUE }} />
+         {/* Polices : connexion ouverte tôt + feuille chargée en parallèle (au lieu d'un @import bloquant dans le CSS) */}
+diff --git a/apps/web/lib/langue.ts b/apps/web/lib/langue.ts
+index 3f63573..0629b54 100644
+--- a/apps/web/lib/langue.ts
++++ b/apps/web/lib/langue.ts
+@@ -4,7 +4,7 @@
+  *
+  * - C'est un réglage du COMPTE (User.langue, modifié dans Paramètres). Une copie locale (localStorage) permet
+  *   l'affichage immédiat et sert aux pages hors connexion ; useAuth la met à jour depuis le compte.
+- * - Le sens de lecture est porté par <html dir> : appliqué avant l'affichage par le script de app/layout.tsx,
++ * - Le sens de lecture est porté par <html dir> : appliqué avant l'affichage par le script de components/layout/Racine.tsx,
+  *   puis par changerLangue(). Les écrans n'écrivent plus dir="rtl" en dur.
+  * - t('نص عربي', { n: 3 }) → texte français (lib/i18n/fr.ts) si la langue est « fr », sinon l'arabe.
+  *   Les variables s'écrivent {n} dans les deux langues. tx() accepte des éléments React comme variables.
+@@ -14,7 +14,7 @@ import { Fragment, createElement, useSyncExternalStore, type ReactNode } from 'r
+ import { FR } from '@/lib/i18n/fr'
+ 
+ export type Langue = 'ar' | 'fr'
+-const CLE = 'malafipro_langue' // même clé que le script de app/layout.tsx
++const CLE = 'malafipro_langue' // même clé que le script de components/layout/Racine.tsx
+ 
+ /** Langue courante hors composant (messages d'erreur, utilitaires). */
+ export function langueCourante(): Langue {
+diff --git a/apps/web/next.config.ts b/apps/web/next.config.ts
+index 8574ab2..e3458d2 100644
+--- a/apps/web/next.config.ts
++++ b/apps/web/next.config.ts
+@@ -15,7 +15,9 @@ const nextConfig: NextConfig = {
+   poweredByHeader: false,
+   compress: true,
+   // Le proxy /api coupait à 30 s : génération d'actes et synchronisation peuvent durer plus longtemps
+-  experimental: { proxyTimeout: 300_000 }, // 5 min : réponses longues de l'assistant (relecture juridique comprise) en local
++  // proxyTimeout 5 min : réponses longues de l'assistant (relecture juridique comprise) en local.
++  // globalNotFound : page 404 complète (app/global-not-found.tsx), nécessaire avec deux layouts racines (ar / fr).
++  experimental: { proxyTimeout: 300_000, globalNotFound: true },
+   async headers() {
+     return [{ source: '/:path*', headers: SECURITE }]
+   },
+-- 
+2.43.0
+

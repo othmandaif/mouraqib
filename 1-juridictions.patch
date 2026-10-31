@@ -1,0 +1,1625 @@
+From 98f1d8142d44b63abde94f43fa47de1995cd64e0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 30 Oct 2026 21:08:19 +0000
+Subject: [PATCH 1/3] =?UTF-8?q?Juridictions=20:=20r=C3=A9f=C3=A9rentiel=20?=
+ =?UTF-8?q?unique=20tir=C3=A9=20de=20mahakim,=20choix=20guid=C3=A9=20par?=
+ =?UTF-8?q?=20le=20code=20du=20dossier?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Cause des dossiers « introuvables » (ex. 2026/8210/283, commerce Marrakech / Béni Mellal) :
+- liste figée des seules juridictions ordinaires (ni commerce, ni administratif, ni centres judiciaires,
+  ni la cour d'appel de Taroudant), en trois exemplaires (site, robot, base) ;
+- le code du dossier n'était pas exploité, alors que mahakim propose des listes différentes selon le code ;
+- un tribunal hors de l'ancienne liste était perdu à l'enregistrement (`?? courAppel`) : les synchronisations
+  cherchaient au niveau de la cour d'appel ;
+- le robot devinait le menu d'après le texte (« الإستئناف التجارية » non reconnu).
+
+Correction :
+- services/juridictions : mahakim.json (listes réelles collectées sur mahakim, par type de code) et
+  referentiel.ts (type du code, libellés exacts, comparaison tolérante à l'arabe) ;
+- GET /tribunaux/juridictions?code= ; le formulaire n'affiche que les juridictions du type du code ;
+- ajout / recherche : juridiction validée pour le code (400 sinon), tribunal conservé (libellé exact) ;
+- robot : menus choisis par rôle (cour / tribunal), libellés recalés sur le code du dossier (corrige aussi
+  les anciens dossiers de Taroudant), erreur JuridictionIntrouvable distincte (pas de nouvelle tentative,
+  pas de coupe-circuit, message précis à l'avocat) ;
+- scripts/collecter-juridictions.ts --ecrire : rafraîchit le référentiel si mahakim change ;
+- lib/coursAppel.ts (web) supprimé ; 8 tests unitaires.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01D7ZppDnmu8ZRvoBj927TrA
+---
+ apps/api/scripts/collecter-juridictions.ts    |  12 +-
+ apps/api/src/jobs/workers/searchWorker.ts     |   5 +-
+ apps/api/src/routes/dossiers.ts               |  17 +-
+ apps/api/src/routes/tribunaux.ts              |  10 +
+ .../__tests__/referentiel.test.ts             |  54 ++
+ .../src/services/juridictions/mahakim.json    | 887 ++++++++++++++++++
+ .../src/services/juridictions/referentiel.ts  |  80 ++
+ .../src/services/scraper/mahakimScraper.ts    |  35 +-
+ apps/web/components/legal/AjoutDossier.tsx    |  34 +-
+ apps/web/lib/api.ts                           |   2 +
+ apps/web/lib/coursAppel.ts                    | 173 ----
+ apps/web/lib/erreurs.ts                       |   1 +
+ 12 files changed, 1111 insertions(+), 199 deletions(-)
+ create mode 100644 apps/api/src/services/juridictions/__tests__/referentiel.test.ts
+ create mode 100644 apps/api/src/services/juridictions/mahakim.json
+ create mode 100644 apps/api/src/services/juridictions/referentiel.ts
+ delete mode 100644 apps/web/lib/coursAppel.ts
+
+diff --git a/apps/api/scripts/collecter-juridictions.ts b/apps/api/scripts/collecter-juridictions.ts
+index 18546e3..c2ec3a7 100644
+--- a/apps/api/scripts/collecter-juridictions.ts
++++ b/apps/api/scripts/collecter-juridictions.ts
+@@ -3,6 +3,7 @@
+  *   cd apps/api
+  *   npx ts-node scripts/collecter-juridictions.ts            (navigateur visible)
+  *   npx ts-node scripts/collecter-juridictions.ts --cache    (sans fenêtre)
++ *   … --ecrire : met aussi à jour le référentiel de l'app (src/services/juridictions/mahakim.json)
+  *
+  * Pour chaque type de code (ordinaire, famille, pénal, commerce, administratif) : saisit le code,
+  * lit la liste des cours d'appel proposée par mahakim, puis pour chaque cour la liste des tribunaux
+@@ -13,7 +14,7 @@
+  * Lecture seule : aucune donnée n'est envoyée à mahakim à part ces recherches de listes.
+  */
+ import { chromium, Page, Locator } from 'playwright'
+-import { mkdirSync, writeFileSync } from 'fs'
++import { copyFileSync, mkdirSync, writeFileSync } from 'fs'
+ import { join } from 'path'
+ 
+ const URL_MAHAKIM = process.env.MAHAKIM_URL || 'https://www.mahakim.ma/#/suivi/dossier-suivi'
+@@ -140,7 +141,9 @@ async function capture(page: Page, nom: string) {
+         r.cours.push(entree)
+         if (!(await ouvrir(page, ddCa)) || !(await choisir(page, nom))) { console.log(`   ! sélection impossible : ${nom}`); continue }
+         await pause(500)
+-        if (!(await cocherTribunaux(page))) { console.log(`   (pas de case « tribunaux de 1re instance » pour ${nom})`); continue }
++        let coche = false
++        for (let essai = 0; essai < 3 && !coche; essai++) { coche = await cocherTribunaux(page); if (!coche) await pause(1000) }
++        if (!coche) { console.log(`   (pas de case « tribunaux de 1re instance » pour ${nom})`); continue }
+         await pause(500)
+         const ddTp = await menu(page, 'tribunaux_primaires', 1)
+         if (!ddTp || !(await ouvrir(page, ddTp))) { entree.tribunaux = []; continue }
+@@ -157,6 +160,11 @@ async function capture(page: Page, nom: string) {
+   }
+ 
+   writeFileSync(join(SORTIE, 'reseau.json'), JSON.stringify(reseau, null, 2))
++  if (process.argv.includes('--ecrire')) {
++    const erreurs = Object.entries(resultat).filter(([, v]) => v.erreur || !v.cours.length)
++    if (erreurs.length) console.log(`\n⚠ Référentiel NON mis à jour : collecte incomplète (${erreurs.map(([t]) => t).join(', ')}).`)
++    else { copyFileSync(join(SORTIE, 'juridictions.json'), join(__dirname, '..', 'src', 'services', 'juridictions', 'mahakim.json')); console.log('\nRéférentiel de l\'app mis à jour : src/services/juridictions/mahakim.json') }
++  }
+   await navigateur.close()
+   console.log(`\nTerminé. Fichiers dans ${SORTIE} : juridictions.json, reseau.json (${reseau.length} appels réseau).`)
+ })()
+diff --git a/apps/api/src/jobs/workers/searchWorker.ts b/apps/api/src/jobs/workers/searchWorker.ts
+index 0bfac53..95a44d7 100644
+--- a/apps/api/src/jobs/workers/searchWorker.ts
++++ b/apps/api/src/jobs/workers/searchWorker.ts
+@@ -1,6 +1,7 @@
+ import { Worker, Job } from 'bullmq'
+ import { redisConnection, searchResultKey } from '../queues'
+ import { MahakimScraper } from '../../services/scraper/mahakimScraper'
++import { JuridictionIntrouvable } from '../../services/juridictions/referentiel'
+ import { logger, refDossier } from '../../utils/logger'
+ 
+ // Une seule instance de scraper réutilisée (browser persistant) — clé de la performance.
+@@ -50,10 +51,12 @@ export const searchWorker = new Worker(
+         logger.info(`Recherche live OK pour ${refDossier(numComplet)}: ${data.evenements.length} événements`)
+       }
+     } catch (err) {
++      // Juridiction absente du menu de mahakim : message précis à l'avocat (≠ panne de mahakim)
++      const juridiction = err instanceof JuridictionIntrouvable
+       logger.error(`Recherche live échouée pour ${refDossier(numComplet)}:`, err)
+       payload = {
+         trouve: false, titreAffaire: null, evenements: [], infosCarte: null,
+-        parties: [], expertises: [], recours: [], dossiersLies: [], erreur: true,
++        parties: [], expertises: [], recours: [], dossiersLies: [], erreur: true, ...(juridiction ? { cause: 'juridiction' } : {}),
+       }
+     }
+ 
+diff --git a/apps/api/src/routes/dossiers.ts b/apps/api/src/routes/dossiers.ts
+index 2a8ecfc..e9933f7 100644
+--- a/apps/api/src/routes/dossiers.ts
++++ b/apps/api/src/routes/dossiers.ts
+@@ -7,6 +7,7 @@ import { limiter } from '../middleware/securite'
+ import { verifierAjoutDossier } from '../middleware/subscription'
+ import { scraperQueue, nlpQueue, searchQueue, deadlineQueue, redisConnection, searchResultKey } from '../jobs/queues'
+ import { findTribunalCode } from '../services/scraper/mahakimScraper'
++import { libellesMahakim } from '../services/juridictions/referentiel'
+ import { logger } from '../utils/logger'
+ import { DeadlineService } from '../services/deadlines/deadlineService'
+ 
+@@ -316,7 +317,11 @@ router.post('/rechercher', requireAuth, limiter('recherche', 20, 600), async (re
+     return
+   }
+ 
+-  const { anneeDossier, codeRole, numeroDossier, courAppel, tribunalPrimaire } = parse.data
++  const { anneeDossier, codeRole, numeroDossier } = parse.data
++  // Libellés exacts de mahakim pour le type du code (8xxx → juridictions de commerce…)
++  const lib = libellesMahakim(codeRole, parse.data.courAppel, parse.data.tribunalPrimaire)
++  if (!lib) { res.status(400).json({ error: 'Juridiction incompatible avec le code du dossier' }); return }
++  const { courAppel, tribunalPrimaire } = lib
+ 
+   try {
+     const job = await searchQueue.add(
+@@ -395,7 +400,10 @@ router.post('/', requireAuth, verifierAjoutDossier, async (req: AuthRequest, res
+       return
+     }
+ 
+-    const { anneeDossier, codeRole, numeroDossier, courAppel, tribunalPrimaire, titreAffaire, typeProcedure, rawData, roleClient } = parse.data
++    const { anneeDossier, codeRole, numeroDossier, titreAffaire, typeProcedure, rawData, roleClient } = parse.data
++    const lib = libellesMahakim(codeRole, parse.data.courAppel, parse.data.tribunalPrimaire)
++    if (!lib) { res.status(400).json({ error: 'Juridiction incompatible avec le code du dossier' }); return }
++    const { courAppel, tribunalPrimaire } = lib
+     // Un acte dont la date est illisible (format inattendu sur mahakim) est ignoré : il ne doit pas empêcher
+     // l'ajout du dossier. La synchronisation suivante le relira.
+     const evenements = parse.data.evenements
+@@ -403,7 +411,10 @@ router.post('/', requireAuth, verifierAjoutDossier, async (req: AuthRequest, res
+       .map((ev) => ({ ...ev, dateAudience: dateLisible(ev.dateAudience) ? ev.dateAudience : null }))
+     const numComplet = `${anneeDossier}/${codeRole}/${numeroDossier}`
+ 
+-    const tribunal = findTribunalCode(courAppel, tribunalPrimaire) ?? courAppel
++    // Ancien code du référentiel si la juridiction y figure, sinon le libellé exact de mahakim.
++    // (Avant : `?? courAppel` → un tribunal hors de l'ancienne liste était perdu, et les synchronisations
++    //  cherchaient au niveau de la cour d'appel : dossier « introuvable ».)
++    const tribunal = findTribunalCode(courAppel, tribunalPrimaire) ?? tribunalPrimaire ?? courAppel
+     const estCourAppel = !tribunalPrimaire
+ 
+     // Même dossier déjà suivi par soi ou par un membre du cabinet (le numéro est stocké complet : « 2026/1201/55 »)
+diff --git a/apps/api/src/routes/tribunaux.ts b/apps/api/src/routes/tribunaux.ts
+index 0bc8eee..ce8b61b 100644
+--- a/apps/api/src/routes/tribunaux.ts
++++ b/apps/api/src/routes/tribunaux.ts
+@@ -1,6 +1,7 @@
+ import { Router, Response } from 'express'
+ import { prisma } from '../utils/prisma'
+ import { requireAuth, AuthRequest } from '../middleware/auth'
++import { juridictionsPour, LIBELLE_TYPE } from '../services/juridictions/referentiel'
+ 
+ const router = Router()
+ 
+@@ -21,4 +22,13 @@ router.get('/map', requireAuth, async (_req: AuthRequest, res: Response): Promis
+   res.json(map)
+ })
+ 
++/* GET /api/v1/tribunaux/juridictions?code=8210 → cours d'appel et tribunaux proposés par mahakim pour ce code */
++router.get('/juridictions', requireAuth, (req: AuthRequest, res: Response): void => {
++  const code = String(req.query.code ?? '')
++  if (!/^\d{4}$/.test(code)) { res.status(400).json({ error: 'Code dossier invalide (4 chiffres)' }); return }
++  const { type, cours } = juridictionsPour(code)
++  res.set('Cache-Control', 'private, max-age=3600')
++  res.json({ type, libelle: LIBELLE_TYPE[type], cours })
++})
++
+ export default router
+\ No newline at end of file
+diff --git a/apps/api/src/services/juridictions/__tests__/referentiel.test.ts b/apps/api/src/services/juridictions/__tests__/referentiel.test.ts
+new file mode 100644
+index 0000000..70a1808
+--- /dev/null
++++ b/apps/api/src/services/juridictions/__tests__/referentiel.test.ts
+@@ -0,0 +1,54 @@
++import { describe, it, expect, vi } from 'vitest'
++// Le module du robot charge la base, Redis et les verrous : inutiles ici
++vi.mock('../../../utils/prisma', () => ({ prisma: {} }))
++vi.mock('../../../jobs/queues', () => ({ redisConnection: {} }))
++import { typeDuCode, juridictionsPour, libellesMahakim, cleArabe } from '../referentiel'
++import { resolveTribunalNames } from '../../scraper/mahakimScraper'
++
++describe('référentiel des juridictions mahakim', () => {
++  it('déduit le type du code comme mahakim', () => {
++    expect(typeDuCode('1201')).toBe('ordinaire')
++    expect(typeDuCode('1626')).toBe('famille')
++    expect(typeDuCode('2101')).toBe('penal')
++    expect(typeDuCode('8210')).toBe('commerce')
++    expect(typeDuCode('7101')).toBe('administratif')
++  })
++
++  it('code commercial : seulement les cours de commerce', () => {
++    const { cours } = juridictionsPour('8210')
++    expect(cours.length).toBe(5)
++    expect(cours.every((c) => c.nom.includes('التجارية'))).toBe(true)
++  })
++
++  it('dossier 2026/8210/283 : Marrakech commerce + Béni Mellal (cas réel signalé)', () => {
++    expect(libellesMahakim('8210', 'محكمة الإستئناف التجارية بمراكش', 'المحكمة التجارية بني ملال')).toEqual({
++      courAppel: 'محكمة الإستئناف التجارية بمراكش', tribunalPrimaire: 'المحكمة التجارية ببني ملال',
++    })
++  })
++
++  it('refuse une juridiction ordinaire pour un code commercial', () => {
++    expect(libellesMahakim('8210', 'محكمة الاستئناف بمراكش', 'المحكمة الابتدائية بمراكش')).toBeNull()
++  })
++
++  it('tolère hamza et espaces, et rend le libellé exact de mahakim', () => {
++    expect(cleArabe('محكمة الإستئناف')).toBe(cleArabe('محكمة  الاستئناف'))
++    expect(libellesMahakim('1201', 'محكمة الاستئناف بالرباط')).toEqual({ courAppel: 'محكمة الاستئناف بالرباط' })
++  })
++
++  it('libellé pénal différent du civil pour le même tribunal', () => {
++    expect(libellesMahakim('2101', '', 'المحكمة الإبتدائية بسوق السبت أولاد النمة')?.tribunalPrimaire)
++      .toBe('المحكمة الإبتدائية سوق السبت أولاد النمة')
++  })
++
++  it("ancien dossier de Taroudant : la cour d'appel est recalée (n'est plus Agadir)", () => {
++    expect(resolveTribunalNames('TPI_TAROUDANT', '1201')).toEqual({
++      courAppel: 'محكمة الاستئناف بتارودانت', tribunalPrimaire: 'المحكمة الابتدائية بتارودانت',
++    })
++  })
++
++  it('nouveau dossier enregistré par libellé de tribunal', () => {
++    expect(resolveTribunalNames('المحكمة التجارية ببني ملال', '8210')).toEqual({
++      courAppel: 'محكمة الإستئناف التجارية بمراكش', tribunalPrimaire: 'المحكمة التجارية ببني ملال',
++    })
++  })
++})
+diff --git a/apps/api/src/services/juridictions/mahakim.json b/apps/api/src/services/juridictions/mahakim.json
+new file mode 100644
+index 0000000..1c4603b
+--- /dev/null
++++ b/apps/api/src/services/juridictions/mahakim.json
+@@ -0,0 +1,887 @@
++{
++  "ordinaire": {
++    "code": "1201",
++    "cours": [
++      {
++        "nom": "محكمة الاستئناف بالرباط",
++        "tribunaux": [
++          "المحكمة الابتدائية بالرباط",
++          "المحكمة الابتدائية بسلا",
++          "المحكمة الابتدائية بتمارة",
++          "المحكمة الابتدائية بالخميسات",
++          "المحكمة الإبتدائية بتيفلت",
++          "المحكمة الابتدائية بالرماني",
++          "المحكمة الابتدائية بالرباط - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسلا - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالخميسات - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالدار البيضاء",
++        "tribunaux": [
++          "المحكمة الابتدائية المدنية بالدار البيضاء",
++          "المحكمة الابتدائية الاجتماعية بالدار البيضاء",
++          "المحكمة الابتدائية الزجرية بالدار البيضاء",
++          "المحكمة الابتدائية بالمحمدية",
++          "المحكمة الابتدائية ببنسليمان",
++          "المحكمة الابتدائية ببنسليمان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بأكادير",
++        "tribunaux": [
++          "المحكمة الابتدائية بأكادير",
++          "المحكمة الابتدائية بانزكان",
++          "المحكمة الابتدائية بتيزنيت",
++          "المحكمة الابتدائية ببيوكرى",
++          "المحكمة الإبتدائية بتزنيت - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بانزكان - قسم قضاء الأسرة",
++          "المحكمة الابتدائية ببيوكرى - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتارودانت",
++        "tribunaux": [
++          "المحكمة الابتدائية بأولاد تايمة",
++          "المحكمة الابتدائية بطاطا",
++          "المحكمة الابتدائية بتارودانت",
++          "المحكمة الابتدائية بتارودانت - قسم قضاء الأسرة",
++          "المركز القضائي بأولاد برحيل",
++          "المركز القضائي بتافنكولت",
++          "المركز القضائي بتالوين"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بورزازات",
++        "tribunaux": [
++          "المحكمة الابتدائية بورزازات",
++          "المحكمة الإبتدائية بتنغير",
++          "المحكمة الابتدائية بزاكورة",
++          "المحكمة الابتدائية بورزازات - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بزاكورة - قسم قضاء الأسرة",
++          "المركز القضائي بقلعة مكونة",
++          "المركز القضائي بأكدز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف ببني ملال",
++        "tribunaux": [
++          "المحكمة الابتدائية ببني ملال",
++          "المحكمة الابتدائية بقصبة تادلة",
++          "المحكمة الابتدائية بالفقيه بن صالح",
++          "المحكمة الإبتدائية بسوق السبت أولاد النمة",
++          "المحكمة الابتدائية بخنيفرة",
++          "المحكمة الابتدائية بأزيلال",
++          "المحكمة الابتدائية ببني ملال - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالفقيه بن صالح - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بخنيفرة- قسم قضاء الأسرة",
++          "المحكمة الابتدائية بقصبة تادلة- قسم قضاء الأسرة",
++          "المركز القضائي بتاكزيرت",
++          "المركز القضائي بالقصيبة",
++          "المركز القضائي بزاوية الشيخ",
++          "المركز القضائي باغبالة",
++          "المركز القضائي بدار ولد زيدوح",
++          "المركز القضائي بابزو",
++          "المركز القضائي بدمنات",
++          "المركز القضائي بأفورار",
++          "المركز القضائي بواويزغت",
++          "المركز القضائي بتاكلفت",
++          "المركز القضائي بتيلوكيت",
++          "المركز القضائي بالقباب",
++          "المركز القضائي بمريرت",
++          "المركز القضائي بايت اعتاب"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمراكش",
++        "tribunaux": [
++          "المحكمة الابتدائية بمراكش",
++          "المحكمة الابتدائية بامنتانوت",
++          "المحكمة الابتدائية بقلعة السراغنة",
++          "المحكمة الابتدائية بابن جرير",
++          "المحكمة الابتدائية بمراكش - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بقلعة السراغنة - قسم قضاء الأسرة",
++          "المركز القضائي بأيت اورير",
++          "المركز القضائي بشيشاوة",
++          "المركز القضائي بسيدي رحال"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بكلميم",
++        "tribunaux": [
++          "المحكمةالابتدائية بسيدي افني",
++          "المحكمة الابتدائية بكلميم",
++          "المحكمة الابتدائية بآسا الزاك",
++          "المحكمة الابتدائية بطانطان",
++          "المحكمة الابتدائية بكلميم - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بطانطان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالحسيمة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالحسيمة",
++          "المحكمة الإبتدائية بتارجيست",
++          "المحكمة الابتدائية بتارجيست - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتازة",
++        "tribunaux": [
++          "المحكمة الابتدائية بتازة",
++          "المحكمة الابتدائية بجرسيف",
++          "المحكمة الابتدائية بتازة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بجرسيف - قسم قضاء الأسرة",
++          "المركز القضائي بواد امليل",
++          "المركز القضائي بتاهلة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمكناس",
++        "tribunaux": [
++          "المحكمة الابتدائية بمكناس",
++          "المحكمة الابتدائية بالحاجب",
++          "المحكمة الابتدائية بآزرو",
++          "المحكمة الابتدائية بمكناس - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بآزرو - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالرشيدية",
++        "tribunaux": [
++          "المحكمة الابتدائية بالرشيدية",
++          "المحكمة الابتدائية بميدلت",
++          "المركز القضائي بارفود",
++          "المركز القضائي بالريصاني",
++          "المركز القضائي بكلميمة",
++          "المركز القضائي بالريش"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالناضور",
++        "tribunaux": [
++          "المحكمة الابتدائية بالناضور",
++          "المحكمة الإبتدائية بالدريوش",
++          "المحكمة الابتدائية بالناضور - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بآسفي",
++        "tribunaux": [
++          "المحكمة الابتدائية بآسفي",
++          "المحكمة الابتدائية باليوسفية",
++          "المحكمة الابتدائية بالصويرة",
++          "المحكمة الابتدائية بآسفي - قسم قضاء الأسرة",
++          "المحكمة الابتدائية باليوسفية - قسم قضاء الأسرة",
++          "المركز القضائي بجمعة اسحيم",
++          "المركز القضائي بسبت كزولة",
++          "المركز القضائي بالشماعية",
++          "المركز القضائي بالحنشان"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بخريبكة",
++        "tribunaux": [
++          "المحكمة الابتدائية بخريبكة",
++          "المحكمة الابتدائية بواد زم",
++          "المحكمة الابتدائية بأبي الجعد",
++          "المحكمة الابتدائية بخريبكة - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتطوان",
++        "tribunaux": [
++          "المحكمة الابتدائية بتطوان",
++          "المحكمة الابتدائية بشفشاون",
++          "المحكمة الابتدائية بوزان",
++          "المحكمة الابتدائية بوزان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بفاس",
++        "tribunaux": [
++          "المحكمة الابتدائية بفاس",
++          "المحكمة الابتدائية بصفرو",
++          "المحكمة الإبتدائية لبولمان بميسور",
++          "المحكمة الابتدائية بتاونات",
++          "المحكمة الابتدائية بفاس - قسم قضاء الأسرة",
++          "المحكمة الابتدائية لبولمان بميسور - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بتاونات - قسم قضاء الأسرة",
++          "المركز القضائي بتيسة",
++          "المركز القضائي بأوطاط الحاج",
++          "المركز القضائي بقرية با محمد"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بطنجة",
++        "tribunaux": [
++          "المحكمة الابتدائية بطنجة",
++          "المحكمة الابتدائية بأصيلة",
++          "المحكمة الابتدائية بالعرائش",
++          "المحكمة الابتدائية بالقصر الكبير",
++          "المحكمة الابتدائية بطنجة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالعرائش - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالقصر الكبير - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالقنيطرة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالقنيطرة",
++          "المحكمة الابتدائية بسيدي سليمان",
++          "المحكمة الابتدائي بسوق الأريعاء",
++          "المحكمة الابتدائية بسيدي قاسم",
++          "المحكمة الإبتدائية بمشرع بلقصيري",
++          "المحكمة الابتدائية بالقنيطرة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسيدي قاسم - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالعيون",
++        "tribunaux": [
++          "المحكمة الابتدائية بالعيون",
++          "المحكمة الابتدائية ببوجدور",
++          "المحكمة الابتدائية بالسمارة",
++          "المحكمة الابتدائية بالداخلة",
++          "المحكمة الابتدائية بالسمارة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالعيون - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالداخلة - قسم قضاء الأسرة",
++          "المركز القضائي بطرفاية",
++          "المركز القضائي ببئر كندوز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالجديدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالجديدة",
++          "المحكمة الابتدائية بسيدي بنور",
++          "المحكمة الابتدائية بالجديدة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسيدي بنور - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بسطات",
++        "tribunaux": [
++          "المحكمة الابتدائية بسطات",
++          "المحكمة الابتدائية ببرشيد",
++          "المحكمة الابتدائية ببن أحمد",
++          "المحكمة الابتدائية ببرشيد - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية ببن أحمد - قسم قضاء الأسرة",
++          "المركز القضائي بالبروج"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بوجدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بوجدة",
++          "المحكمة الابتدائية بجرادة",
++          "المحكمة الابتدائية ببركان",
++          "المحكمة الإبتدائية لفجيج ببوعرفة",
++          "المحكمة الابتدائية بتاوريرت",
++          "المحكمة الإبتدائية بوجدة - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية بتاوريرت - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية ببركان - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية بجرادة - قسم قضاء الأسرة"
++        ]
++      }
++    ]
++  },
++  "famille": {
++    "code": "1626",
++    "cours": [
++      {
++        "nom": "محكمة الاستئناف بالرباط",
++        "tribunaux": [
++          "المحكمة الابتدائية بالرباط",
++          "المحكمة الابتدائية بسلا",
++          "المحكمة الابتدائية بتمارة",
++          "المحكمة الابتدائية بالخميسات",
++          "المحكمة الإبتدائية بتيفلت",
++          "المحكمة الابتدائية بالرماني",
++          "المحكمة الابتدائية بالرباط - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسلا - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالخميسات - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالدار البيضاء",
++        "tribunaux": [
++          "المحكمة الابتدائية المدنية بالدار البيضاء",
++          "المحكمة الابتدائية الاجتماعية بالدار البيضاء",
++          "المحكمة الابتدائية الزجرية بالدار البيضاء",
++          "المحكمة الابتدائية بالمحمدية",
++          "المحكمة الابتدائية ببنسليمان",
++          "المحكمة الابتدائية ببنسليمان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بأكادير",
++        "tribunaux": [
++          "المحكمة الابتدائية بأكادير",
++          "المحكمة الابتدائية بانزكان",
++          "المحكمة الابتدائية بتيزنيت",
++          "المحكمة الابتدائية ببيوكرى",
++          "المحكمة الإبتدائية بتزنيت - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بانزكان - قسم قضاء الأسرة",
++          "المحكمة الابتدائية ببيوكرى - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتارودانت",
++        "tribunaux": [
++          "المحكمة الابتدائية بأولاد تايمة",
++          "المحكمة الابتدائية بطاطا",
++          "المحكمة الابتدائية بتارودانت",
++          "المحكمة الابتدائية بتارودانت - قسم قضاء الأسرة",
++          "المركز القضائي بأولاد برحيل",
++          "المركز القضائي بتافنكولت",
++          "المركز القضائي بتالوين"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بورزازات",
++        "tribunaux": [
++          "المحكمة الابتدائية بورزازات",
++          "المحكمة الإبتدائية بتنغير",
++          "المحكمة الابتدائية بزاكورة",
++          "المحكمة الابتدائية بورزازات - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بزاكورة - قسم قضاء الأسرة",
++          "المركز القضائي بقلعة مكونة",
++          "المركز القضائي بأكدز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف ببني ملال",
++        "tribunaux": [
++          "المحكمة الابتدائية ببني ملال",
++          "المحكمة الابتدائية بقصبة تادلة",
++          "المحكمة الابتدائية بالفقيه بن صالح",
++          "المحكمة الإبتدائية بسوق السبت أولاد النمة",
++          "المحكمة الابتدائية بخنيفرة",
++          "المحكمة الابتدائية بأزيلال",
++          "المحكمة الابتدائية ببني ملال - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالفقيه بن صالح - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بخنيفرة- قسم قضاء الأسرة",
++          "المحكمة الابتدائية بقصبة تادلة- قسم قضاء الأسرة",
++          "المركز القضائي بتاكزيرت",
++          "المركز القضائي بالقصيبة",
++          "المركز القضائي بزاوية الشيخ",
++          "المركز القضائي باغبالة",
++          "المركز القضائي بدار ولد زيدوح",
++          "المركز القضائي بابزو",
++          "المركز القضائي بدمنات",
++          "المركز القضائي بأفورار",
++          "المركز القضائي بواويزغت",
++          "المركز القضائي بتاكلفت",
++          "المركز القضائي بتيلوكيت",
++          "المركز القضائي بالقباب",
++          "المركز القضائي بمريرت",
++          "المركز القضائي بايت اعتاب"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمراكش",
++        "tribunaux": [
++          "المحكمة الابتدائية بمراكش",
++          "المحكمة الابتدائية بامنتانوت",
++          "المحكمة الابتدائية بقلعة السراغنة",
++          "المحكمة الابتدائية بابن جرير",
++          "المحكمة الابتدائية بمراكش - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بقلعة السراغنة - قسم قضاء الأسرة",
++          "المركز القضائي بأيت اورير",
++          "المركز القضائي بشيشاوة",
++          "المركز القضائي بسيدي رحال"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بكلميم",
++        "tribunaux": [
++          "المحكمةالابتدائية بسيدي افني",
++          "المحكمة الابتدائية بكلميم",
++          "المحكمة الابتدائية بآسا الزاك",
++          "المحكمة الابتدائية بطانطان",
++          "المحكمة الابتدائية بكلميم - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بطانطان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالحسيمة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالحسيمة",
++          "المحكمة الإبتدائية بتارجيست",
++          "المحكمة الابتدائية بتارجيست - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتازة",
++        "tribunaux": [
++          "المحكمة الابتدائية بتازة",
++          "المحكمة الابتدائية بجرسيف",
++          "المحكمة الابتدائية بتازة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بجرسيف - قسم قضاء الأسرة",
++          "المركز القضائي بواد امليل",
++          "المركز القضائي بتاهلة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمكناس",
++        "tribunaux": [
++          "المحكمة الابتدائية بمكناس",
++          "المحكمة الابتدائية بالحاجب",
++          "المحكمة الابتدائية بآزرو",
++          "المحكمة الابتدائية بمكناس - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بآزرو - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالرشيدية",
++        "tribunaux": [
++          "المحكمة الابتدائية بالرشيدية",
++          "المحكمة الابتدائية بميدلت",
++          "المركز القضائي بارفود",
++          "المركز القضائي بالريصاني",
++          "المركز القضائي بكلميمة",
++          "المركز القضائي بالريش"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالناضور",
++        "tribunaux": [
++          "المحكمة الابتدائية بالناضور",
++          "المحكمة الإبتدائية بالدريوش",
++          "المحكمة الابتدائية بالناضور - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بآسفي",
++        "tribunaux": [
++          "المحكمة الابتدائية بآسفي",
++          "المحكمة الابتدائية باليوسفية",
++          "المحكمة الابتدائية بالصويرة",
++          "المحكمة الابتدائية بآسفي - قسم قضاء الأسرة",
++          "المحكمة الابتدائية باليوسفية - قسم قضاء الأسرة",
++          "المركز القضائي بجمعة اسحيم",
++          "المركز القضائي بسبت كزولة",
++          "المركز القضائي بالشماعية",
++          "المركز القضائي بالحنشان"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بخريبكة",
++        "tribunaux": [
++          "المحكمة الابتدائية بخريبكة",
++          "المحكمة الابتدائية بواد زم",
++          "المحكمة الابتدائية بأبي الجعد",
++          "المحكمة الابتدائية بخريبكة - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتطوان",
++        "tribunaux": [
++          "المحكمة الابتدائية بتطوان",
++          "المحكمة الابتدائية بشفشاون",
++          "المحكمة الابتدائية بوزان",
++          "المحكمة الابتدائية بوزان - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بفاس",
++        "tribunaux": [
++          "المحكمة الابتدائية بفاس",
++          "المحكمة الابتدائية بصفرو",
++          "المحكمة الإبتدائية لبولمان بميسور",
++          "المحكمة الابتدائية بتاونات",
++          "المحكمة الابتدائية بفاس - قسم قضاء الأسرة",
++          "المحكمة الابتدائية لبولمان بميسور - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بتاونات - قسم قضاء الأسرة",
++          "المركز القضائي بتيسة",
++          "المركز القضائي بأوطاط الحاج",
++          "المركز القضائي بقرية با محمد"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بطنجة",
++        "tribunaux": [
++          "المحكمة الابتدائية بطنجة",
++          "المحكمة الابتدائية بأصيلة",
++          "المحكمة الابتدائية بالعرائش",
++          "المحكمة الابتدائية بالقصر الكبير",
++          "المحكمة الابتدائية بطنجة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالعرائش - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالقصر الكبير - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالقنيطرة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالقنيطرة",
++          "المحكمة الابتدائية بسيدي سليمان",
++          "المحكمة الابتدائي بسوق الأريعاء",
++          "المحكمة الابتدائية بسيدي قاسم",
++          "المحكمة الإبتدائية بمشرع بلقصيري",
++          "المحكمة الابتدائية بالقنيطرة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسيدي قاسم - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالعيون",
++        "tribunaux": [
++          "المحكمة الابتدائية بالعيون",
++          "المحكمة الابتدائية ببوجدور",
++          "المحكمة الابتدائية بالسمارة",
++          "المحكمة الابتدائية بالداخلة",
++          "المحكمة الابتدائية بالسمارة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالعيون - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بالداخلة - قسم قضاء الأسرة",
++          "المركز القضائي بطرفاية",
++          "المركز القضائي ببئر كندوز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالجديدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالجديدة",
++          "المحكمة الابتدائية بسيدي بنور",
++          "المحكمة الابتدائية بالجديدة - قسم قضاء الأسرة",
++          "المحكمة الابتدائية بسيدي بنور - قسم قضاء الأسرة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بسطات",
++        "tribunaux": [
++          "المحكمة الابتدائية بسطات",
++          "المحكمة الابتدائية ببرشيد",
++          "المحكمة الابتدائية ببن أحمد",
++          "المحكمة الابتدائية ببرشيد - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية ببن أحمد - قسم قضاء الأسرة",
++          "المركز القضائي بالبروج"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بوجدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بوجدة",
++          "المحكمة الابتدائية بجرادة",
++          "المحكمة الابتدائية ببركان",
++          "المحكمة الإبتدائية لفجيج ببوعرفة",
++          "المحكمة الابتدائية بتاوريرت",
++          "المحكمة الإبتدائية بوجدة - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية بتاوريرت - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية ببركان - قسم قضاء الأسرة",
++          "المحكمة الإبتدائية بجرادة - قسم قضاء الأسرة"
++        ]
++      }
++    ]
++  },
++  "penal": {
++    "code": "2101",
++    "cours": [
++      {
++        "nom": "محكمة الاستئناف بالرباط",
++        "tribunaux": [
++          "المحكمة الابتدائية بالرباط",
++          "المحكمة الابتدائية بسلا",
++          "المحكمة الابتدائية بتمارة",
++          "المحكمة الابتدائية بالخميسات",
++          "المحكمة الإبتدائية بتيفلت",
++          "المحكمة الابتدائية بالرماني"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالدار البيضاء",
++        "tribunaux": [
++          "المحكمة الابتدائية الزجرية بالدار البيضاء",
++          "المحكمة الابتدائية بالمحمدية",
++          "المحكمة الابتدائية ببنسليمان"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بأكادير",
++        "tribunaux": [
++          "المحكمة الابتدائية بأكادير",
++          "المحكمة الابتدائية بانزكان",
++          "المحكمة الابتدائية بتيزنيت",
++          "المحكمة الابتدائية ببيوكرى"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتارودانت",
++        "tribunaux": [
++          "المحكمة الابتدائية بأولاد تايمة",
++          "المحكمة الابتدائية بطاطا",
++          "المحكمة الابتدائية بتارودانت"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بورزازات",
++        "tribunaux": [
++          "المحكمة الابتدائية بورزازات",
++          "المحكمة الإبتدائية بتنغير",
++          "المحكمة الابتدائية بزاكورة",
++          "المركز القضائي بقلعة مكونة",
++          "المركز القضائي بأكدز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف ببني ملال",
++        "tribunaux": [
++          "المحكمة الابتدائية ببني ملال",
++          "المحكمة الابتدائية بقصبة تادلة",
++          "المحكمة الابتدائية بالفقيه بن صالح",
++          "المحكمة الإبتدائية سوق السبت أولاد النمة",
++          "المحكمة الابتدائية بخنيفرة",
++          "المحكمة الابتدائية بأزيلال",
++          "المركز القضائي بالقصيبة",
++          "المركز القضائي بتاكزيرت",
++          "المركز القضائي بزاوية الشيخ",
++          "المركز القضائي باغبالة",
++          "المركز القضائي بدار ولد زيدوح",
++          "المركز القضائي بايت اعتاب",
++          "المركز القضائي بابزو",
++          "المركز القضائي بدمنات",
++          "المركز القضائي بأفورار",
++          "المركز القضائي بواويزغت",
++          "المركز القضائي بتاكلفت",
++          "المركز القضائي بتيلوكيت",
++          "المركز القضائي بالقباب"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمراكش",
++        "tribunaux": [
++          "المحكمة الابتدائية بمراكش",
++          "المحكمة الابتدائية بامنتانوت",
++          "المحكمة الابتدائية بقلعة السراغنة",
++          "المحكمة الابتدائية بابن جرير",
++          "المركز القضائي بأيت اورير",
++          "المركز القضائي بأمزميز",
++          "المركز القضائي بشيشاوة",
++          "المركز القضائي بسيدي رحال"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بكلميم",
++        "tribunaux": [
++          "المحكمة الابتدائية بكلميم",
++          "المحكمة الابتدائية بآسا الزاك",
++          "المحكمة الابتدائية بطان طان",
++          "المحكمةالابتدائية بسيدي افني"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالحسيمة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالحسيمة",
++          "المحكمة الإبتدائية بتارجيست"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتازة",
++        "tribunaux": [
++          "المحكمة الابتدائية بتازة",
++          "المحكمة الابتدائية بجرسيف",
++          "المركز القضائي بواد امليل",
++          "المركز القضائي بتاهلة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بمكناس",
++        "tribunaux": [
++          "المحكمة الابتدائية بمكناس",
++          "المحكمة الابتدائية بالحاجب",
++          "المحكمة الابتدائية بآزرو"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالرشيدية",
++        "tribunaux": [
++          "المحكمة الابتدائية بميدلت",
++          "المحكمة الابتدائية بالرشيدية",
++          "المركز القضائي بارفود",
++          "المركز القضائي بالريصاني",
++          "المركز القضائي بكلميمة",
++          "المركز القضائي بالريش"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالناضور",
++        "tribunaux": [
++          "المحكمة الابتدائية بالناضور",
++          "المحكمة الإبتدائية بالدريوش"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بآسفي",
++        "tribunaux": [
++          "المحكمة الابتدائية بآسفي",
++          "المحكمة الابتدائية باليوسفية",
++          "المحكمة الابتدائية بالصويرة",
++          "المركز القضائي بجمعة اسحيم",
++          "المركز القضائي بسبت كزولة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بخريبكة",
++        "tribunaux": [
++          "المحكمة الابتدائية بخريبكة",
++          "المحكمة الابتدائية بواد زم",
++          "المحكمة الابتدائية بأبي الجعد"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بتطوان",
++        "tribunaux": [
++          "المحكمة الابتدائية بتطوان",
++          "المحكمة الابتدائية بشفشاون",
++          "المحكمة الابتدائية بوزان"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بفاس",
++        "tribunaux": [
++          "المحكمة الابتدائية بفاس",
++          "المحكمة الابتدائية بصفرو",
++          "المحكمة الإبتدائية لبولمان بميسور",
++          "المحكمة الابتدائية بتاونات",
++          "المركز القضائي ببولمان",
++          "المركز القضائي بأوطاط الحاج",
++          "المركز القضائي بقرية با محمد",
++          "المركز القضائي بغفساي",
++          "المركز القضائي بتيسة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بطنجة",
++        "tribunaux": [
++          "المحكمة الابتدائية بطنجة",
++          "المحكمة الابتدائية بأصيلة",
++          "المحكمة الابتدائية بالعرائش",
++          "المحكمة الابتدائية بالقصر الكبير"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالقنيطرة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالقنيطرة",
++          "المحكمة الابتدائية بسيدي سليمان",
++          "المحكمة الابتدائي بسوق الأريعاء",
++          "المحكمة الابتدائية بسيدي قاسم",
++          "المحكمة الإبتدائية بمشرع بلقصيري"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالعيون",
++        "tribunaux": [
++          "المحكمة الابتدائية بالعيون",
++          "المحكمة الابتدائية ببوجدور",
++          "المحكمة الابتدائية بالسمارة",
++          "المحكمة الابتدائية بالداخلة",
++          "المركز القضائي بطرفاية",
++          "المركز القضائي ببئر كندوز"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بالجديدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بالجديدة",
++          "المحكمة الابتدائية بسيدي بنور",
++          "المركز القضائي بأزمور",
++          "المركز القضائي بأولاد فرج"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بسطات",
++        "tribunaux": [
++          "المحكمة الابتدائية بسطات",
++          "المحكمة الابتدائية ببرشيد",
++          "المحكمة الابتدائية ببن أحمد"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف بوجدة",
++        "tribunaux": [
++          "المحكمة الابتدائية بوجدة",
++          "المحكمة الابتدائية بجرادة",
++          "المحكمة الابتدائية ببركان",
++          "المحكمة الإبتدائية لفجيج ببوعرفة",
++          "المحكمة الابتدائية بتاوريرت"
++        ]
++      }
++    ]
++  },
++  "commerce": {
++    "code": "8201",
++    "cours": [
++      {
++        "nom": "محكمة الاستئناف التجارية بالدار البيضاء",
++        "tribunaux": null
++      },
++      {
++        "nom": "محكمة الإستئناف التجارية بفاس",
++        "tribunaux": [
++          "المحكمة التجارية بفاس",
++          "المحكمة التجارية بمكناس",
++          "المحكمة التجارية بوجدة"
++        ]
++      },
++      {
++        "nom": "محكمة الإستئناف التجارية بمراكش",
++        "tribunaux": [
++          "المحكمة التجارية بمراكش",
++          "المحكمة التجارية ببني ملال"
++        ]
++      },
++      {
++        "nom": "محكمة الإستئناف التجارية بطنجة",
++        "tribunaux": [
++          "المحكمة التجارية بطنجة"
++        ]
++      },
++      {
++        "nom": "محكمة الإستئناف التجارية بأكادير",
++        "tribunaux": [
++          "المحكمة التجارية بأكادير"
++        ]
++      }
++    ]
++  },
++  "administratif": {
++    "code": "7101",
++    "cours": [
++      {
++        "nom": "محكمة الاستئناف الإدارية بالرباط",
++        "tribunaux": [
++          "المحكمة الإدارية بالرباط",
++          "المحكمة الإدارية بالدار البيضاء"
++        ]
++      },
++      {
++        "nom": "محكمة الإستئناف الإدارية بمراكش",
++        "tribunaux": [
++          "المحكمة الإدارية بمراكش",
++          "المحكمة الإدارية ببني ملال"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف الإدارية بفاس",
++        "tribunaux": [
++          "المحكمة الإدارية بفاس",
++          "المحكمة الإدارية بمكناس",
++          "المحكمة الإدارية بوجدة"
++        ]
++      },
++      {
++        "nom": "محكمة الاستئناف الإدارية بطنجة",
++        "tribunaux": [
++          "المحكمة الإدارية بطنجة"
++        ]
++      },
++      {
++        "nom": "محكمة الإستئناف الإدارية بأكادير",
++        "tribunaux": [
++          "المحكمة الإدارية بأكادير"
++        ]
++      }
++    ]
++  }
++}
+\ No newline at end of file
+diff --git a/apps/api/src/services/juridictions/referentiel.ts b/apps/api/src/services/juridictions/referentiel.ts
+new file mode 100644
+index 0000000..a58085f
+--- /dev/null
++++ b/apps/api/src/services/juridictions/referentiel.ts
+@@ -0,0 +1,80 @@
++/**
++ * Référentiel UNIQUE des juridictions, tel que mahakim.ma les propose.
++ *
++ * Sur mahakim, le CODE du dossier (2e partie du numéro « année/code/numéro ») décide des listes affichées :
++ * 1xxx civil et famille, 2xxx/3xxx pénal, 7xxx administratif, 8xxx commerce. Les libellés changent aussi
++ * d'une liste à l'autre (« بسوق السبت » au civil, « سوق السبت » au pénal) : il faut donc toujours choisir
++ * dans la liste du type du dossier, avec le libellé exact de mahakim.
++ *
++ * Données : mahakim.json, produit par `npx ts-node scripts/collecter-juridictions.ts --ecrire`
++ * (à relancer si mahakim ajoute ou renomme une juridiction : l'erreur JuridictionIntrouvable le signale).
++ */
++import donnees from './mahakim.json'
++
++export type TypeJuridiction = 'ordinaire' | 'famille' | 'penal' | 'commerce' | 'administratif'
++export interface CourAppel { nom: string; tribunaux: string[] | null }
++
++const REFERENTIEL = donnees as Record<TypeJuridiction, { code: string; cours: CourAppel[] }>
++
++export const LIBELLE_TYPE: Record<TypeJuridiction, string> = {
++  ordinaire: 'مدني', famille: 'أسرة', penal: 'زجري', commerce: 'تجاري', administratif: 'إداري',
++}
++
++/** Type de juridiction déduit du code du dossier (comme le fait mahakim). */
++export function typeDuCode(code: string): TypeJuridiction {
++  const c = (code || '').trim()
++  if (c.startsWith('8')) return 'commerce'
++  if (c.startsWith('7')) return 'administratif'
++  if (c.startsWith('2') || c.startsWith('3')) return 'penal'
++  if (c.startsWith('16') && REFERENTIEL.famille) return 'famille'
++  return 'ordinaire'
++}
++
++export function juridictionsPour(code: string): { type: TypeJuridiction; cours: CourAppel[] } {
++  const type = typeDuCode(code)
++  return { type, cours: (REFERENTIEL[type] ?? REFERENTIEL.ordinaire).cours }
++}
++
++/** Clé de comparaison tolérante : hamza, ta marbouta, alif maqsoura, tatweel, espaces et tirets ignorés. */
++export function cleArabe(s: string): string {
++  return (s || '')
++    .replace(/[ً-ْـ]/g, '') // voyelles, tatweel
++    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
++    .replace(/[\s ​-‏\-–—]+/g, '')
++}
++/** Variante sans les prépositions collées « ب » / « ل » en début de mot (« بسوق » ↔ « سوق », « ببني » ↔ « بني »). */
++const sansPreposition = (s: string) => cleArabe((s || '').replace(/(^|\s)[بل](?=\S{2,})/g, '$1'))
++
++function trouver(liste: string[], nom: string): string | undefined {
++  const k = cleArabe(nom), kSans = sansPreposition(nom)
++  // Égalité d'abord ; sinon la préposition manque d'UN seul côté (comparer les deux côtés dépouillés
++  // abîmerait les mots qui commencent vraiment par ب : « بني » → « ني »)
++  return liste.find((x) => cleArabe(x) === k)
++    ?? liste.find((x) => sansPreposition(x) === k || cleArabe(x) === kSans)
++}
++
++/**
++ * Libellés EXACTS mahakim pour un dossier : la cour d'appel est toujours redéduite du tribunal
++ * (corrige les anciens rattachements : Taroudant était classée sous Agadir).
++ * `null` si la juridiction n'existe pas dans la liste du type du code.
++ */
++export function libellesMahakim(code: string, courAppel: string, tribunalPrimaire?: string): { courAppel: string; tribunalPrimaire?: string } | null {
++  const { cours } = juridictionsPour(code)
++  if (tribunalPrimaire) {
++    for (const ca of cours) {
++      const tp = ca.tribunaux && trouver(ca.tribunaux, tribunalPrimaire)
++      if (tp) return { courAppel: ca.nom, tribunalPrimaire: tp }
++    }
++    // Liste des tribunaux inconnue pour cette cour (pas encore collectée) : on garde le libellé saisi
++    const ca = trouver(cours.map((c) => c.nom), courAppel)
++    const cour = ca ? cours.find((c) => c.nom === ca) : undefined
++    return cour && cour.tribunaux === null ? { courAppel: cour.nom, tribunalPrimaire } : null
++  }
++  const ca = trouver(cours.map((c) => c.nom), courAppel)
++  return ca ? { courAppel: ca } : null
++}
++
++/** Juridiction absente du menu de mahakim (référentiel à rafraîchir, ou mauvais choix) : pas une panne. */
++export class JuridictionIntrouvable extends Error {
++  constructor(public libelle: string) { super(`Juridiction introuvable sur mahakim : ${libelle}`) }
++}
+diff --git a/apps/api/src/services/scraper/mahakimScraper.ts b/apps/api/src/services/scraper/mahakimScraper.ts
+index bbee847..0593cb4 100644
+--- a/apps/api/src/services/scraper/mahakimScraper.ts
++++ b/apps/api/src/services/scraper/mahakimScraper.ts
+@@ -6,6 +6,7 @@ import { instantMaroc } from '../../utils/dateMaroc'
+ import { avecVerrou } from '../../utils/verrou'
+ import { createHash } from 'crypto'
+ import { cleSync, noterEchecDossier, effacerEchecDossier, mahakimRepond, mahakimEchec } from './santeMahakim'
++import { libellesMahakim, JuridictionIntrouvable } from '../juridictions/referentiel'
+ 
+ /** Le portail n'a pas répondu correctement après plusieurs essais (≠ dossier introuvable, qui renvoie null). */
+ export class EchecTechniqueMahakim extends Error {}
+@@ -182,6 +183,7 @@ export class MahakimScraper {
+         if (tentative >= 2) return data
+         logger.warn(`Scrape ${refDossier(numeroDossier)} incomplet (tentative ${tentative}/${CONFIG.MAX_TENTATIVES})`)
+       } catch (err) {
++        if (err instanceof JuridictionIntrouvable) throw err // erreur de référentiel, pas une panne : inutile de réessayer
+         derniereErreur = err
+         logger.warn(`Scrape ${refDossier(numeroDossier)} échoué (tentative ${tentative}/${CONFIG.MAX_TENTATIVES}):`, err)
+         await this.ensureBrowser() // le browser a peut-être crashé
+@@ -247,7 +249,8 @@ export class MahakimScraper {
+       await this.takeDebugScreenshot(page, numeroDossier, '03-after-fill')
+ 
+       // Sélection de la cour d'appel
+-      await selectPrimeDropdown(page, courAppel)
++      // Juridiction absente du menu = référentiel périmé ou mauvais choix : erreur distincte (pas « introuvable »)
++      if (!(await selectPrimeDropdown(page, courAppel, 'ca'))) throw new JuridictionIntrouvable(courAppel)
+       await this.takeDebugScreenshot(page, numeroDossier, '04-after-ca-select')
+ 
+       if (tribunalPrimaire) {
+@@ -263,7 +266,7 @@ export class MahakimScraper {
+         await dd2.first().waitFor({ state: 'visible', timeout: 6000 }).catch(() => {
+           logger.warn(`2e dropdown (tribunaux primaires) non apparu pour ${refDossier(numeroDossier)}`)
+         })
+-        await selectPrimeDropdown(page, tribunalPrimaire)
++        if (!(await selectPrimeDropdown(page, tribunalPrimaire, 'tp'))) throw new JuridictionIntrouvable(tribunalPrimaire)
+         await this.takeDebugScreenshot(page, numeroDossier, '05-after-tp-select')
+       }
+ 
+@@ -552,7 +555,7 @@ export class MahakimScraper {
+   }
+ 
+   private async synchroniserSansVerrou(dossier: { id: string; numeroDossier: string; tribunal: string }): Promise<number> {
+-    const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal)
++    const { courAppel, tribunalPrimaire } = resolveTribunalNames(dossier.tribunal, dossier.numeroDossier.split('/')[1])
+     const cle = cleSync(dossier.numeroDossier, dossier.tribunal)
+     let data: DossierData | null
+     try {
+@@ -561,6 +564,7 @@ export class MahakimScraper {
+       // Panne : ce dossier attend avant de repasser, et le coupe-circuit compte l'échec
+       await noterEchecDossier(cle)
+       if (e instanceof EchecTechniqueMahakim) await mahakimEchec()
++      if (e instanceof JuridictionIntrouvable) logger.warn(`${e.message} — relancer scripts/collecter-juridictions.ts si mahakim a changé ses listes`)
+       throw e
+     }
+     await mahakimRepond()
+@@ -696,11 +700,12 @@ async function cocherCaseTribunauxPrimaires(page: Page): Promise<boolean> {
+ /**
+  * Ouvre un p-dropdown PrimeNG et sélectionne l'option par texte.
+  */
+-async function selectPrimeDropdown(page: Page, optionText: string): Promise<boolean> {
+-  const isCA = optionText.includes('محكمة الاستئناف')
+-  const isTP = optionText.includes('المحكمة الابتدائية')
+-  const formcontrol = isTP ? 'tribunaux_primaires' : isCA ? 'tribunal' : null
+-  const placeholderFragment = isCA ? 'محكمة الاستئناف' : isTP ? 'المحكمة الابتدائية' : null
++async function selectPrimeDropdown(page: Page, optionText: string, role: 'ca' | 'tp'): Promise<boolean> {
++  // Rôle explicite : deviner d'après le texte ratait « محكمة الإستئناف التجارية », « المحكمة التجارية », « المركز القضائي »
++  const isCA = role === 'ca'
++  const isTP = role === 'tp'
++  const formcontrol = isTP ? 'tribunaux_primaires' : 'tribunal'
++  const placeholderFragment = isCA ? 'محكمة الاستئناف' : 'المحكمة الابتدائية'
+ 
+   let pDropdown: Locator
+   if (formcontrol) {
+@@ -744,6 +749,7 @@ async function selectPrimeDropdown(page: Page, optionText: string): Promise<bool
+       var norm = function(s) {
+         return (s || '')
+           .replace(/[\\u00A0\\u200B-\\u200F\\u202A-\\u202E]/g, ' ') // espaces invisibles
++          .replace(/[\\u0623\\u0625\\u0622]/g, '\\u0627') // أ إ آ → ا (« الإستئناف » / « الاستئناف »)
+           .replace(/\\s+/g, ' ')
+           .trim();
+       };
+@@ -1143,8 +1149,17 @@ for (const ca of TRIBUNAUX_COMPLETS) {
+   }
+ }
+ 
+-export function resolveTribunalNames(tribunal: string): { courAppel: string; tribunalPrimaire?: string } {
+-  return TRIBUNAUX_AR[tribunal] ?? { courAppel: tribunal }
++/**
++ * Libellés mahakim d'un dossier enregistré. `tribunal` est un ancien code (TPI_RABAT…) ou, depuis le
++ * référentiel mahakim, le libellé exact du tribunal (ou de la cour d'appel).
++ * Avec le code du dossier, les libellés sont recalés sur la liste du bon type (commerce, pénal…).
++ */
++export function resolveTribunalNames(tribunal: string, codeDossier?: string): { courAppel: string; tribunalPrimaire?: string } {
++  const ancien = TRIBUNAUX_AR[tribunal]
++  const estCour = /^محكمة ال[اإ]ستئناف/.test(tribunal)
++  const brut = ancien ?? (estCour ? { courAppel: tribunal } : { courAppel: '', tribunalPrimaire: tribunal })
++  if (!codeDossier) return ancien ?? { courAppel: tribunal }
++  return libellesMahakim(codeDossier, brut.courAppel, brut.tribunalPrimaire) ?? (ancien ?? { courAppel: tribunal })
+ }
+ 
+ export function findTribunalCode(courAppel: string, tribunalPrimaire?: string): string | null {
+diff --git a/apps/web/components/legal/AjoutDossier.tsx b/apps/web/components/legal/AjoutDossier.tsx
+index f888a3e..98b6ec0 100644
+--- a/apps/web/components/legal/AjoutDossier.tsx
++++ b/apps/web/components/legal/AjoutDossier.tsx
+@@ -4,7 +4,7 @@ import { heure } from '@/components/legal/DeadlineCard'
+ import { useEffect, useMemo, useRef, useState } from 'react'
+ import { Check } from 'lucide-react'
+ import { apiFetch, rechercherDossier, SearchResultPayload } from '@/lib/api'
+-import { COURS_APPEL } from '@/lib/coursAppel'
++import { useApi } from '@/hooks/useApi'
+ import { erreurAr } from '@/lib/erreurs'
+ import { InfoGrid } from '@/components/legal/InfoGrid'
+ import { EventsTimeline } from '@/components/legal/EventsTimeline'
+@@ -19,6 +19,8 @@ const CSS = `
+ .mp-add input:focus-visible,.mp-add select:focus-visible{border-color:#0E5A4E;box-shadow:0 0 0 4px #CDE5DD}
+ .mp-add label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
+ `
++type Juridictions = { type: string; libelle: string; cours: { nom: string; tribunaux: string[] | null }[] }
++
+ const BTN_P: React.CSSProperties = { fontFamily: 'inherit', fontSize: 16, fontWeight: 600, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, borderRadius: 999, padding: '0 26px', minHeight: 50, cursor: 'pointer' }  // + className="mp-action" (survol, appui)
+ const BTN_S: React.CSSProperties = { fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: '#FFFFFF', color: '#15201E', border: '1px solid #CFCAC0', borderRadius: 999, padding: '0 20px', minHeight: 48, cursor: 'pointer' }
+ 
+@@ -43,7 +45,15 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '
+   const abort = useRef<AbortController | null>(null)
+ 
+   useEffect(() => () => abort.current?.abort(), [])
+-  const ca = useMemo(() => COURS_APPEL.find((c) => c.nomAr === courAppel), [courAppel])
++  // Juridictions proposées par mahakim POUR CE CODE (8xxx → commerce, 7xxx → administratif, 2xxx → pénal…)
++  const codeComplet = /^\d{4}$/.test(codeRole)
++  const { data: jur, loading: chargeJur } = useApi<Juridictions>(codeComplet ? `/tribunaux/juridictions?code=${codeRole}` : null, [codeRole])
++  const ca = useMemo(() => jur?.cours.find((c) => c.nom === courAppel), [jur, courAppel])
++  // Nouveau type de code (ex. 1201 → 8210) : l'ancien choix n'existe plus dans la liste
++  useEffect(() => {
++    if (jur && courAppel && !jur.cours.some((c) => c.nom === courAppel)) { setCourAppel(''); setTribunalPrimaire('') }
++  }, [jur, courAppel])
++  const nomTribunaux = jur?.type === 'commerce' ? 'المحكمة التجارية' : jur?.type === 'administratif' ? 'المحكمة الإدارية' : 'المحكمة الابتدائية'
+   const peutChercher = /^\d{4}$/.test(annee) && !!codeRole && !!numero && !!courAppel
+ 
+   const chercher = async (e: React.FormEvent) => {
+@@ -154,7 +164,9 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '
+           {resultat && !resultat.trouve && (
+             <div role="alert" style={{ background: '#FBF1EF', border: '1px solid #F0C9C2', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: '#6E1D14', lineHeight: 1.6 }}>
+               {/* Panne du portail ≠ dossier introuvable : ne pas faire douter l'avocat de son numéro */}
+-              {resultat.erreur
++              {resultat.cause === 'juridiction'
++                ? 'هذه المحكمة غير متوفرة حالياً على بوابة محاكم. تحققوا من الرمز والمحكمة، ثم أعيدوا المحاولة.'
++                : resultat.erreur
+                 ? 'بوابة محاكم لا تستجيب حالياً. أعيدوا المحاولة بعد دقائق، رقم الملف ليس هو المشكل.'
+                 : 'لم نجد هذا الملف على محاكم. تحققوا من السنة والرمز والرقم والمحكمة، ثم أعيدوا المحاولة.'}
+             </div>
+@@ -166,20 +178,22 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '
+               <label>الرمز<input inputMode="numeric" className="num" value={codeRole} placeholder="1201" onChange={(e) => setCodeRole(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
+               <label>الرقم<input inputMode="numeric" className="num" value={numero} placeholder="845" onChange={(e) => setNumero(chiffres(e.target.value, 8))} style={{ textAlign: 'center' }} /></label>
+             </div>
+-            <span style={{ fontSize: 13, color: '#5E6B67' }}>مثال: <span className="num">2026/1201/845</span></span>
++            <span style={{ fontSize: 13, color: '#5E6B67' }}>
++              {jur ? <>نوع الملف حسب الرمز: <strong style={{ color: '#15201E' }}>{jur.libelle}</strong></> : <>مثال: <span className="num">2026/1201/845</span></>}
++            </span>
+           </fieldset>
+ 
+           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+             <label>محكمة الاستئناف
+-              <select value={courAppel} onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire('') }} required>
+-                <option value="">اختاروا المحكمة</option>
+-                {COURS_APPEL.map((c) => <option key={c.nomAr} value={c.nomAr}>{c.nomAr.replace('محكمة الاستئناف ب', '').replace('محكمة الاستئناف ', '')}</option>)}
++              <select value={courAppel} onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire('') }} required disabled={!jur}>
++                <option value="">{!codeComplet ? 'اكتبوا الرمز أولاً' : chargeJur ? 'جارٍ التحميل…' : 'اختاروا المحكمة'}</option>
++                {jur?.cours.map((c) => <option key={c.nom} value={c.nom}>{c.nom.replace(/^محكمة ال[اإ]ستئناف\s*(ب(?=\S))?/, '')}</option>)}
+               </select>
+             </label>
+-            <label><span>المحكمة الابتدائية <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
+-              <select value={tribunalPrimaire} onChange={(e) => setTribunalPrimaire(e.target.value)} disabled={!ca}>
++            <label><span>{nomTribunaux} <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
++              <select value={tribunalPrimaire} onChange={(e) => setTribunalPrimaire(e.target.value)} disabled={!ca?.tribunaux?.length}>
+                 <option value="">الملف بمحكمة الاستئناف</option>
+-                {ca?.tribunauxPrimaires.map((t) => <option key={t} value={t}>{t}</option>)}
++                {ca?.tribunaux?.map((t) => <option key={t} value={t}>{t}</option>)}
+               </select>
+             </label>
+           </div>
+diff --git a/apps/web/lib/api.ts b/apps/web/lib/api.ts
+index a93fe3b..165d2c4 100644
+--- a/apps/web/lib/api.ts
++++ b/apps/web/lib/api.ts
+@@ -169,6 +169,8 @@ export interface SearchResultPayload {
+   recours: any[]
+   dossiersLies: any[]
+   erreur?: boolean
++  /** 'juridiction' : la juridiction n'existe pas dans le menu de mahakim (≠ panne) */
++  cause?: string
+ }
+ 
+ interface PollOptions {
+diff --git a/apps/web/lib/coursAppel.ts b/apps/web/lib/coursAppel.ts
+deleted file mode 100644
+index 7ee7d09..0000000
+--- a/apps/web/lib/coursAppel.ts
++++ /dev/null
+@@ -1,173 +0,0 @@
+-// Cours d'appel et tribunaux de première instance proposés à l'ajout d'un dossier (libellés mahakim.ma).
+-export const COURS_APPEL = [
+-  {
+-    nomAr: 'محكمة الاستئناف بالرباط',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالرباط', 'المحكمة الابتدائية بسلا', 'المحكمة الابتدائية بتمارة',
+-      'المحكمة الابتدائية بالخميسات', 'المحكمة الإبتدائية بتيفلت', 'المحكمة الابتدائية بالرماني',
+-      'المحكمة الابتدائية بالرباط - قسم قضاء الأسرة', 'المحكمة الابتدائية بسلا - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بالخميسات - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالدار البيضاء',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية المدنية بالدار البيضاء', 'المحكمة الابتدائية الاجتماعية بالدار البيضاء',
+-      'المحكمة الابتدائية الزجرية بالدار البيضاء', 'المحكمة الابتدائية بالمحمدية',
+-      'المحكمة الابتدائية ببنسليمان', 'المحكمة الابتدائية ببنسليمان - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بأكادير',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بأكادير', 'المحكمة الابتدائية بانزكان', 'المحكمة الابتدائية بأولاد تايمة',
+-      'المحكمة الابتدائية بتيزنيت', 'المحكمة الابتدائية بطاطا', 'المحكمة الابتدائية بتارودانت',
+-      'المحكمة الابتدائية ببيوكرى', 'المحكمة الابتدائية بتارودانت - قسم قضاء الأسرة',
+-      'المحكمة الإبتدائية بتزنيت - قسم قضاء الأسرة', 'المحكمة الابتدائية بانزكان - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية ببيوكرى - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بورزازات',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بورزازات', 'المحكمة الإبتدائية بتنغير', 'المحكمة الابتدائية بزاكورة',
+-      'المحكمة الابتدائية بورزازات - قسم قضاء الأسرة', 'المحكمة الابتدائية بزاكورة - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف ببني ملال',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية ببني ملال', 'المحكمة الابتدائية بقصبة تادلة', 'المحكمة الابتدائية بالفقيه بن صالح',
+-      'المحكمة الإبتدائية بسوق السبت أولاد النمة', 'المحكمة الابتدائية بخنيفرة', 'المحكمة الابتدائية بأزيلال',
+-      'المحكمة الابتدائية ببني ملال - قسم قضاء الأسرة', 'المحكمة الابتدائية بالفقيه بن صالح - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بخنيفرة - قسم قضاء الأسرة', 'المحكمة الابتدائية بقصبة تادلة - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بمراكش',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بمراكش', 'المحكمة الابتدائية بامنتانوت', 'المحكمة الابتدائية بقلعة السراغنة',
+-      'المحكمة الابتدائية بابن جرير', 'المحكمة الابتدائية بمراكش - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بقلعة السراغنة - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بكلميم',
+-    tribunauxPrimaires: [
+-      'المحكمةالابتدائية بسيدي افني', 'المحكمة الابتدائية بكلميم', 'المحكمة الابتدائية بآسا الزاك',
+-      'المحكمة الابتدائية بطانطان', 'المحكمة الابتدائية بكلميم - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بطانطان - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالحسيمة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالحسيمة', 'المحكمة الإبتدائية بتارجيست',
+-      'المحكمة الابتدائية بتارجيست - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بتازة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بتازة', 'المحكمة الابتدائية بجرسيف', 'المحكمة الابتدائية بتازة - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بجرسيف - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بمكناس',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بمكناس', 'المحكمة الابتدائية بالحاجب', 'المحكمة الابتدائية بآزرو',
+-      'المحكمة الابتدائية بمكناس - قسم قضاء الأسرة', 'المحكمة الابتدائية بآزرو - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالرشيدية',
+-    tribunauxPrimaires: ['المحكمة الابتدائية بالرشيدية', 'المحكمة الابتدائية بميدلت'],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالناضور',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالناضور', 'المحكمة الإبتدائية بالدريوش',
+-      'المحكمة الابتدائية بالناضور - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بآسفي',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بآسفي', 'المحكمة الابتدائية باليوسفية', 'المحكمة الابتدائية بالصويرة',
+-      'المحكمة الابتدائية بآسفي - قسم قضاء الأسرة', 'المحكمة الابتدائية باليوسفية - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بخريبكة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بخريبكة', 'المحكمة الابتدائية بواد زم', 'المحكمة الابتدائية بأبي الجعد',
+-      'المحكمة الابتدائية بخريبكة - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بتطوان',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بتطوان', 'المحكمة الابتدائية بشفشاون', 'المحكمة الابتدائية بوزان',
+-      'المحكمة الابتدائية بوزان - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بفاس',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بفاس', 'المحكمة الابتدائية بصفرو', 'المحكمة الإبتدائية لبولمان بميسور',
+-      'المحكمة الابتدائية بتاونات', 'المحكمة الابتدائية بفاس - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية لبولمان بميسور - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بتاونات - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بطنجة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بطنجة', 'المحكمة الابتدائية بأصيلة', 'المحكمة الابتدائية بالعرائش',
+-      'المحكمة الابتدائية بالقصر الكبير', 'المحكمة الابتدائية بطنجة - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بالعرائش - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بالقصر الكبير - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالقنيطرة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالقنيطرة', 'المحكمة الابتدائية بسيدي سليمان',
+-      'المحكمة الابتدائي بسوق الأريعاء', 'المحكمة الابتدائية بسيدي قاسم',
+-      'المحكمة الإبتدائية بمشرع بلقصيري', 'المحكمة الابتدائية بالقنيطرة - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بسيدي قاسم - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالعيون',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالعيون', 'المحكمة الابتدائية ببوجدور', 'المحكمة الابتدائية بالسمارة',
+-      'المحكمة الابتدائية بالداخلة', 'المحكمة الابتدائية بالسمارة - قسم قضاء الأسرة',
+-      'المحكمة الابتدائية بالعيون - قسم قضاء الأسرة', 'المحكمة الابتدائية بالداخلة - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بالجديدة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بالجديدة', 'المحكمة الابتدائية بسيدي بنور',
+-      'المحكمة الابتدائية بالجديدة - قسم قضاء الأسرة', 'المحكمة الابتدائية بسيدي بنور - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بسطات',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بسطات', 'المحكمة الابتدائية ببرشيد', 'المحكمة الابتدائية ببن أحمد',
+-      'المحكمة الابتدائية ببرشيد - قسم قضاء الأسرة', 'المحكمة الإبتدائية ببن أحمد - قسم قضاء الأسرة',
+-    ],
+-  },
+-  {
+-    nomAr: 'محكمة الاستئناف بوجدة',
+-    tribunauxPrimaires: [
+-      'المحكمة الابتدائية بوجدة', 'المحكمة الابتدائية بجرادة', 'المحكمة الابتدائية ببركان',
+-      'المحكمة الإبتدائية لفجيج ببوعرفة', 'المحكمة الابتدائية بتاوريرت',
+-      'المحكمة الإبتدائية بوجدة - قسم قضاء الأسرة', 'المحكمة الإبتدائية بتاوريرت - قسم قضاء الأسرة',
+-      'المحكمة الإبتدائية ببركان - قسم قضاء الأسرة', 'المحكمة الإبتدائية بجرادة - قسم قضاء الأسرة',
+-    ],
+-  },
+-]
+diff --git a/apps/web/lib/erreurs.ts b/apps/web/lib/erreurs.ts
+index 5da8dae..0b2a968 100644
+--- a/apps/web/lib/erreurs.ts
++++ b/apps/web/lib/erreurs.ts
+@@ -23,6 +23,7 @@ const AR: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
+   [/Contenu trop volumineux/i, 'المحتوى كبير جداً.'],
+   [/Erreur interne du serveur/i, 'حدث خطأ في الخادم. أعيدوا المحاولة بعد لحظات.'],
+   [/Abonnement expiré/i, 'انتهى اشتراككم. تواصلوا معنا للتجديد، والملفات الحالية ما زالت تحت المتابعة.'],
++  [/Juridiction incompatible avec le code/i, 'المحكمة المختارة لا تطابق رمز الملف. اختاروا المحكمة من القائمة المقترحة.'],
+   [/Limite de dossiers atteinte/i, 'بلغتم الحد الأقصى لعدد الملفات في عرضكم. تواصلوا معنا لتوسيعه.'],
+   [/Lien expiré/i, 'انتهت صلاحية الرابط. اطلبوا رابطاً جديداً من مستشارنا.'],
+   [/Email déjà utilisé/i, 'هذا البريد مستعمل في حساب آخر.'],
+-- 
+2.43.0
+

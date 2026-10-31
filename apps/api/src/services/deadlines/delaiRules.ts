@@ -1,4 +1,5 @@
 import { TypeEvenement, TypeProcedure, TypeDelai } from '@prisma/client'
+import { finDeDelai, joursCalendaires } from '../../utils/dateMaroc'
 
 export interface RegleDelai {
   typeDelai: TypeDelai
@@ -98,30 +99,57 @@ const REGLES_REFERE: Partial<Record<TypeEvenement, RegleDelai[]>> = {
   ],
 }
 
+/**
+ * @param dateAction  date de l'acte au greffe (jugement, notification…) : point de départ des recours.
+ * @param dateAudience date de la prochaine audience, utilisée seulement par les règles « DATE_AUDIENCE ».
+ *
+ * Prudence : les recours partent de la date de l'acte (jamais d'une audience future, qui
+ * repousserait la limite au-delà du délai légal). La limite = 23:59:59 heure du Maroc du dernier jour.
+ * Le délai n'est PAS calculé « franc » ni prorogé après un jour férié : on retient la date la plus
+ * tôt possible. ⚠️ À valider par un avocat.
+ */
+/** Types d'événements qui créent au moins un délai (évite de relire tous les renvois chaque heure). */
+export const TYPES_AVEC_DELAIS = Array.from(new Set([...Object.keys(REGLES), ...Object.keys(REGLES_REFERE)])) as TypeEvenement[]
+
 export function calculerDelais(
   typeEvenement: TypeEvenement,
   typeProcedure: TypeProcedure,
-  dateReference: Date
-): DelaiCalcule[] {
+  dateAction: Date,
+  dateAudience?: Date | null,
+): (DelaiCalcule & { dateDepart: Date })[] {
   const regles =
     typeProcedure === TypeProcedure.REFERE && REGLES_REFERE[typeEvenement]
       ? REGLES_REFERE[typeEvenement]!
       : (REGLES[typeEvenement] ?? [])
 
-  const now = Date.now()
-
   return regles.map((r) => {
-    const dateLimite = new Date(dateReference)
-    dateLimite.setDate(dateLimite.getDate() + r.dureeJours)
-
-    const joursRestants = Math.ceil((dateLimite.getTime() - now) / 86_400_000)
-
+    const dateDepart = r.pointDeDepart === 'DATE_AUDIENCE' ? (dateAudience ?? dateAction) : dateAction
+    const dateLimite = finDeDelai(dateDepart, r.dureeJours)
     return {
       typeDelai: r.typeDelai,
       description: r.description,
       descriptionAr: r.descriptionAr,
+      dateDepart,
       dateLimite,
-      estCritique: joursRestants <= r.critiqueSousJours,
+      estCritique: joursCalendaires(dateLimite) <= r.critiqueSousJours,
     }
   })
+}
+
+/**
+ * Design V2 « Agir ou surveiller » : à qui appartient le délai ?
+ * - Opposition : ouverte contre la partie défaillante, en pratique le défendeur.
+ *   Client demandeur → délai de l'adversaire (SURVEILLER) ; défendeur ou inconnu → AGIR.
+ * - Autres délais : la partie qui perd peut agir ; on ne le sait pas → AGIR par défaut,
+ *   l'avocat peut basculer le délai à la main (PATCH /echeances/:id/camp).
+ * ⚠️ Règle à faire valider par un avocat, comme le reste de ce fichier.
+ */
+export function campPour(typeDelai: TypeDelai, roleClient: 'DEMANDEUR' | 'DEFENDEUR' | 'INCONNU'): 'AGIR' | 'SURVEILLER' {
+  if (typeDelai === TypeDelai.OPPOSITION && roleClient === 'DEMANDEUR') return 'SURVEILLER'
+  return 'AGIR'
+}
+
+/** L'opposition n'existe que contre un jugement par défaut (غيابي). */
+export function delaiApplicable(typeDelai: TypeDelai, nature: 'CONTRADICTOIRE' | 'DEFAUT' | null | undefined): boolean {
+  return !(typeDelai === TypeDelai.OPPOSITION && nature === 'CONTRADICTOIRE')
 }

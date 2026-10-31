@@ -1,0 +1,18 @@
+MalafiPro — Espace admin séparé, landing, SEO
+==============================================
+
+1) COPIER le contenu de ce dossier à la racine du projet (remplacer les fichiers).
+   (Si vous n'avez pas encore copié MalafiPro-admin.zip, copiez-le AVANT celui-ci.)
+
+2) VARIABLES (facultatives, au build du web) :
+   - NEXT_PUBLIC_SITE_URL=https://malafipro.ma   (adresse du site dans le sitemap, Open Graph, canonical)
+   - NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=...    (code de validation Google Search Console)
+
+3) APRÈS LA MISE EN LIGNE (SEO) :
+   - Google Search Console : ajouter malafipro.ma, valider, puis soumettre https://malafipro.ma/sitemap.xml
+   - Tester l'aperçu de partage : https://www.opengraph.xyz (image og-malafipro.jpg)
+   - Tester les données structurées : https://search.google.com/test/rich-results
+   - Créer une fiche Google Business Profile (recherche locale « logiciel avocat Maroc »).
+
+4) COMPTE ADMIN : il n'a plus accès aux dossiers, délais, agenda ni assistant.
+   Menu : طلبات التسجيل · الحسابات والاشتراكات · المحاسبة · سلامة النظام · التنبيهات · الإعدادات.

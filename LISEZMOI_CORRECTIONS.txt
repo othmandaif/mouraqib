@@ -1,0 +1,45 @@
+MalafiPro — Corrections des bugs (octobre 2026)
+================================================
+
+1) COPIER : le contenu du dossier MalafiPro/ à la racine du projet (remplacer les fichiers).
+   Le zip contient TOUS les fichiers modifiés depuis la refonte (il remplace aussi la livraison précédente).
+
+2) SUPPRIMER ces fichiers (devenus inutiles) :
+   - apps/api/src/services/ai/dashboardInsights.ts
+   - apps/api/src/services/payment/cmiPayment.ts
+   - apps/api/src/services/scraper/mahakimAuth.ts
+   - apps/api/src/test-scraper.ts
+   - apps/web/components/layout/PageHeader.tsx
+   - apps/web/components/layout/Sidebar.tsx
+   - apps/web/components/legal/CaseCard.tsx
+   - apps/web/components/legal/DeadlineTimeline.tsx
+   - apps/web/components/ui/Button.tsx
+   - apps/web/components/ui/Separator.tsx
+   - apps/web/public/logo.png
+
+   Sous Windows (PowerShell, à la racine du projet) :
+   Remove-Item -ErrorAction SilentlyContinue "apps/api/src/services/ai/dashboardInsights.ts"
+   Remove-Item -ErrorAction SilentlyContinue "apps/api/src/services/payment/cmiPayment.ts"
+   Remove-Item -ErrorAction SilentlyContinue "apps/api/src/services/scraper/mahakimAuth.ts"
+   Remove-Item -ErrorAction SilentlyContinue "apps/api/src/test-scraper.ts"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/layout/PageHeader.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/layout/Sidebar.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/legal/CaseCard.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/legal/DeadlineTimeline.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/ui/Button.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/components/ui/Separator.tsx"
+   Remove-Item -ErrorAction SilentlyContinue "apps/web/public/logo.png"
+
+3) BASE DE DONNÉES : nouvelle migration 20261025000000_corrections (e-mails en minuscules + index).
+   Appliquée automatiquement au démarrage (prisma migrate deploy). En local : cd apps/api && npx prisma migrate deploy
+
+4) VARIABLES À AJOUTER (Railway) :
+   - TRUST_PROXY=2          (Railway + Next.js devant l'API)
+   - WA_TPL_LANGUE=ar et WA_TPL_DELAI, WA_TPL_NOUVEAU_DELAI, WA_TPL_JUGEMENT, WA_TPL_AUDIENCE,
+     WA_TPL_EVENEMENT, WA_TPL_DIGEST, WA_TPL_CODE = noms des modèles approuvés dans Meta.
+     Textes des modèles à créer : docs/MODELES_WHATSAPP.md
+     IMPORTANT : sans ces modèles, Meta refuse les messages WhatsApp envoyés hors conversation.
+
+5) AU PREMIER DÉMARRAGE (automatique, une seule fois) :
+   - les heures d'audience déjà enregistrées sont corrigées (décalage d'1 h) ;
+   - les anciens actes (> 3 jours) sont marqués « vus » pour ne pas envoyer une avalanche d'alertes.

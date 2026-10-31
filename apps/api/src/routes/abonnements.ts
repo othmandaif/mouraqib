@@ -1,128 +1,42 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../utils/prisma'
 import { requireAuth, AuthRequest } from '../middleware/auth'
-import { generateCMIPaymentForm, verifyCMICallback, PLAN_TARIFS } from '../services/payment/cmiPayment'
-import { logger } from '../utils/logger'
+import { OFFRES, etatAbonnement } from '../services/abonnements/offres'
+import { abonnementDe } from '../services/abonnements/rappelsAbonnement'
 
+// Vente directe : les comptes et les paiements sont gérés par le commercial (routes /admin).
+// Plus de paiement en ligne CMI.
 const router = Router()
-const prisma = new PrismaClient()
-
-const PLAN_CONFIG: Record<string, { maxDossiers: number }> = {
-  SOLO: { maxDossiers: 100 },
-  PRO: { maxDossiers: -1 },
-  CABINET: { maxDossiers: 500 },
-}
 
 router.get('/current', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const abonnement = await prisma.abonnement.findFirst({
-    where: { userId: req.userId!, statut: 'ACTIF' },
-    orderBy: { dateDebut: 'desc' },
+  // Membre d'un cabinet : l'abonnement est celui du cabinet (porté par le responsable)
+  const abonnement = await abonnementDe(req.userId!)
+  const dossierCount = await prisma.dossier.count({ where: { userId: { in: req.equipe! }, estActif: true } })
+  res.json({
+    abonnement: abonnement && {
+      plan: abonnement.plan,
+      // Limite réelle du compte (fixée par l'administrateur), pas celle de l'offre
+      offre: { ...OFFRES[abonnement.plan], maxDossiers: abonnement.maxDossiers },
+      estFondateur: abonnement.estFondateur,
+      prixMensuel: abonnement.prixMensuel ?? (abonnement.estFondateur ? OFFRES[abonnement.plan].prixFondateur : OFFRES[abonnement.plan].prix),
+      ...etatAbonnement(abonnement),
+    },
+    dossierCount,
+    // Contact du commercial (variables d'environnement, facultatives)
+    contact: { telephone: process.env.CONTACT_COMMERCIAL_TEL || '+212607167594', email: process.env.CONTACT_COMMERCIAL_EMAIL ?? 'contact@malafipro.ma' },
   })
+})
 
-  const dossierCount = await prisma.dossier.count({
-    where: { userId: req.userId!, estActif: true },
-  })
-
-  res.json({ abonnement, dossierCount })
+// Public (landing) : places restantes du programme « 50 membres fondateurs »
+export const PLACES_FONDATEURS = 50
+router.get('/fondateurs', async (_req: Request, res: Response): Promise<void> => {
+  const pris = await prisma.abonnement.count({ where: { estFondateur: true, statut: 'ACTIF' } })
+  res.setHeader('Cache-Control', 'public, max-age=600')
+  res.json({ total: PLACES_FONDATEURS, restants: Math.max(0, PLACES_FONDATEURS - pris) })
 })
 
 router.get('/plans', (_req: Request, res: Response): void => {
-  res.json([
-    { plan: 'GRATUIT', prix: 0, maxDossiers: 3, features: ['3 dossiers', 'Alertes WhatsApp'] },
-    { plan: 'SOLO', prix: 190, maxDossiers: 100, features: ['100 dossiers', 'Alertes WhatsApp', 'Digest quotidien'] },
-    { plan: 'PRO', prix: 390, maxDossiers: -1, features: ['Illimité', 'Alertes WhatsApp', 'Digest quotidien', 'API accès'] },
-    { plan: 'CABINET', prix: 790, maxDossiers: 500, features: ['500 dossiers', 'Multi-avocats', 'API accès', 'Support prioritaire'] },
-  ])
-})
-
-router.post('/checkout', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const { plan } = req.body
-  const montant = PLAN_TARIFS[plan]
-
-  if (!montant) {
-    res.status(400).json({ error: 'Plan invalide' })
-    return
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: req.userId! } })
-  if (!user) { res.status(404).json({ error: 'Utilisateur non trouvé' }); return }
-
-  const orderId = `MOURAQIB-${req.userId!}-${plan}-${Date.now()}`
-
-  const formHtml = generateCMIPaymentForm({
-    amount: montant,
-    orderId,
-    description: `Mouraqib ${plan} — 1 mois`,
-    email: user.email,
-    callbackUrl: `${process.env.API_URL}/api/v1/abonnements/callback/cmi`,
-    okUrl: `${process.env.WEB_URL}/abonnement?success=1`,
-    failUrl: `${process.env.WEB_URL}/abonnement?echec=1`,
-  })
-
-  await prisma.paiement.create({
-    data: {
-      abonnementId: (await prisma.abonnement.findFirst({ where: { userId: req.userId! } }))?.id ?? '',
-      montant,
-      devise: 'MAD',
-      methode: 'CMI',
-      referenceExterne: orderId,
-      statut: 'EN_ATTENTE',
-    },
-  }).catch(() => {})
-
-  res.json({ formHtml, orderId })
-})
-
-router.post('/callback/cmi', async (req: Request, res: Response): Promise<void> => {
-  const body = req.body as Record<string, string>
-
-  if (!verifyCMICallback(body)) {
-    logger.warn('CMI callback signature invalide', body)
-    res.status(400).send('INVALID_SIGNATURE')
-    return
-  }
-
-  const { oid, Response: cmiResponse } = body
-
-  if (cmiResponse === '00') {
-    const parts = oid.split('-')
-    const userId = parts[1]
-    const plan = parts[2]
-    const config = PLAN_CONFIG[plan]
-
-    if (userId && config) {
-      await prisma.abonnement.updateMany({
-        where: { userId, statut: 'ACTIF' },
-        data: { statut: 'ANNULE' },
-      })
-
-      await prisma.abonnement.create({
-        data: {
-          userId,
-          plan: plan as any,
-          statut: 'ACTIF',
-          maxDossiers: config.maxDossiers,
-          dateDebut: new Date(),
-          dateFin: new Date(Date.now() + 31 * 86_400_000),
-        },
-      })
-
-      await prisma.paiement.updateMany({
-        where: { referenceExterne: oid },
-        data: { statut: 'REUSSI' },
-      })
-
-      logger.info(`Paiement CMI OK: ${oid} — user ${userId} → ${plan}`)
-    }
-  } else {
-    await prisma.paiement.updateMany({
-      where: { referenceExterne: oid },
-      data: { statut: 'ECHEC' },
-    })
-    logger.warn(`Paiement CMI échoué: ${oid} — code ${cmiResponse}`)
-  }
-
-  res.send('ACTION=POSTAUTH')
+  res.json(Object.entries(OFFRES).filter(([k]) => ['SOLO', 'CABINET', 'SUR_MESURE'].includes(k)).map(([plan, o]) => ({ plan, ...o })))
 })
 
 export default router
