@@ -26,19 +26,25 @@ export const pagesConfiancePubliees = () => PAGES_CONFIANCE.filter((p) => p.publ
 
 /**
  * Pages « fonction » : une page par besoin réel du cabinet, en arabe (racine) et en français (/fr/…).
- * Contenu : components/pages/contenu.ts. Chemins arabes en lettres latines (stables, faciles à partager).
+ * Contenu : components/pages/contenu.ts.
+ * `ar` = adresse PUBLIQUE en écriture arabe ; `arRoute` = dossier interne en lettres latines dans app/(site)/ (Next.js ne sait pas
+ * pré-générer un dossier au nom arabe : erreur « Invalid character »). next.config.ts réécrit `ar` vers `arRoute` et redirige
+ * `arRoute` vers `ar`, pour qu'une seule adresse existe. Dans le HTML, les liens, le sitemap et le JSON-LD, `ar` est encodé en
+ * UTF-8 (%D9%85…) comme l'attendent les moteurs : voir cheminPage.
  * `maj` = date réelle de dernière modification du contenu (alimente le lastmod du sitemap).
  */
 export type PageId = 'suivi' | 'alertes' | 'clients' | 'facturation' | 'assistant' | 'actes'
-export const PAGES_FONCTIONS: { id: PageId; ar: string; fr: string; maj: string }[] = [
-  { id: 'suivi', ar: '/mutabaat-mahakim', fr: '/fr/suivi-mahakim', maj: '2026-10-31' },
-  { id: 'alertes', ar: '/tanbihat-whatsapp', fr: '/fr/alertes-whatsapp-avocat', maj: '2026-10-31' },
-  { id: 'clients', ar: '/idarat-almuwakkilin', fr: '/fr/gestion-clients-avocat', maj: '2026-10-31' },
-  { id: 'facturation', ar: '/fawatir-wa-atab', fr: '/fr/facturation-honoraires-avocat', maj: '2026-10-31' },
-  { id: 'assistant', ar: '/musaid-qanuni', fr: '/fr/assistant-juridique-ia', maj: '2026-10-31' },
-  { id: 'actes', ar: '/tahrir-almaqalat', fr: '/fr/redaction-actes-avocat', maj: '2026-10-31' },
+export const PAGES_FONCTIONS: { id: PageId; ar: string; arRoute: string; fr: string; maj: string }[] = [
+  { id: 'suivi', ar: '/متابعة-ملفات-محاكم', arRoute: '/mutabaat-mahakim', fr: '/fr/suivi-mahakim', maj: '2026-10-31' },
+  { id: 'alertes', ar: '/تنبيهات-واتساب-للمحامي', arRoute: '/tanbihat-whatsapp', fr: '/fr/alertes-whatsapp-avocat', maj: '2026-10-31' },
+  { id: 'clients', ar: '/إدارة-الموكلين', arRoute: '/idarat-almuwakkilin', fr: '/fr/gestion-clients-avocat', maj: '2026-10-31' },
+  { id: 'facturation', ar: '/فواتير-المحامي-والأتعاب', arRoute: '/fawatir-wa-atab', fr: '/fr/facturation-honoraires-avocat', maj: '2026-10-31' },
+  { id: 'assistant', ar: '/مساعد-قانوني-بالذكاء-الاصطناعي', arRoute: '/musaid-qanuni', fr: '/fr/assistant-juridique-ia', maj: '2026-10-31' },
+  { id: 'actes', ar: '/تحرير-المقالات-القانونية', arRoute: '/tahrir-almaqalat', fr: '/fr/redaction-actes-avocat', maj: '2026-10-31' },
 ]
-export const cheminPage = (id: PageId, lang: 'ar' | 'fr') => PAGES_FONCTIONS.find((p) => p.id === id)![lang]
+/** Chemin d'une page, encodé en UTF-8 : à utiliser pour tout lien, canonical, hreflang, sitemap et JSON-LD. */
+export const encoder = (chemin: string) => encodeURI(chemin)
+export const cheminPage = (id: PageId, lang: 'ar' | 'fr') => encoder(PAGES_FONCTIONS.find((p) => p.id === id)![lang])
 
 /** Métadonnées d'une page publique bilingue : canonical + hreflang ar-MA / fr-MA / x-default (version arabe). */
 export function metaPagePublique(lang: 'ar' | 'fr', chemins: { ar: string; fr: string }, titre: string, description: string) {

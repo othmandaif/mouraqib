@@ -1,7 +1,7 @@
 // SEO des pages « fonction » : métadonnées (canonical, hreflang ar-MA / fr-MA / x-default) et données structurées.
 import type { Metadata } from 'next'
 import type { Langue } from '@/components/landing/contenu'
-import { PAGES_FONCTIONS, SITE, cheminPage, type PageId } from '@/lib/pagesPubliques'
+import { PAGES_FONCTIONS, SITE, cheminPage, encoder, type PageId } from '@/lib/pagesPubliques'
 import { PAGES, UI } from './contenu'
 
 const LOCALE = { ar: { loc: 'ar_MA', autre: 'fr_MA' }, fr: { loc: 'fr_MA', autre: 'ar_MA' } } as const
@@ -50,6 +50,6 @@ export function jsonLdPage(id: PageId, lang: Langue) {
 
 /** Entrées du sitemap : une URL par langue, avec les alternates réciproques. */
 export const entreesSitemap = () => PAGES_FONCTIONS.flatMap((p) => {
-  const languages = { 'ar-MA': `${SITE}${p.ar}`, 'fr-MA': `${SITE}${p.fr}`, 'x-default': `${SITE}${p.ar}` }
-  return [p.ar, p.fr].map((chemin) => ({ url: `${SITE}${chemin}`, lastModified: p.maj, changeFrequency: 'monthly' as const, priority: 0.7, alternates: { languages } }))
+  const languages = { 'ar-MA': `${SITE}${encoder(p.ar)}`, 'fr-MA': `${SITE}${encoder(p.fr)}`, 'x-default': `${SITE}${encoder(p.ar)}` }
+  return [p.ar, p.fr].map((chemin) => ({ url: `${SITE}${encoder(chemin)}`, lastModified: p.maj, changeFrequency: 'monthly' as const, priority: 0.7, alternates: { languages } }))
 })
