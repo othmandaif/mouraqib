@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { Card } from '@/components/ui/Card'
 import { Activity } from 'lucide-react'
+import { t as tr } from '@/lib/langue'
 
 interface Event {
   date: string
@@ -17,12 +18,12 @@ interface EventsTimelineProps {
   title?: string
 }
 
-export function EventsTimeline({ events, title = 'لائحة الإجراءات' }: EventsTimelineProps) {
+export function EventsTimeline({ events, title = tr('لائحة الإجراءات') }: EventsTimelineProps) {
   if (!events || events.length === 0) return null
 
   return (
     <Card padding="md">
-      <div dir="rtl">
+      <div>
         <div className="flex items-center gap-2 mb-5">
           <Activity className="h-5 w-5 text-accent" />
           <h3 className="font-display text-xl font-semibold text-primary">{title}</h3>
@@ -57,7 +58,7 @@ export function EventsTimeline({ events, title = 'لائحة الإجراءات'
                   </span>
                   {event.isNew && (
                     <span className="text-[10px] font-medium font-sans tracking-wider text-accent">
-                      جديد
+                      {tr('جديد')}
                     </span>
                   )}
                 </div>

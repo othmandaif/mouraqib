@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/Card'
 import { Users } from 'lucide-react'
+import { t as tr } from '@/lib/langue'
 
 interface Partie {
   nom: string
@@ -20,12 +21,12 @@ interface PartiesTableProps {
 
 const val = (s?: string) => (s && s.trim() ? s.trim() : '—')
 
-export function PartiesTable({ parties, title = 'لائحة الأطراف' }: PartiesTableProps) {
+export function PartiesTable({ parties, title = tr('لائحة الأطراف') }: PartiesTableProps) {
   if (!parties || parties.length === 0) return null
 
   return (
     <Card padding="md">
-      <div dir="rtl">
+      <div>
         <div className="flex items-center gap-2 mb-5">
           <Users className="h-5 w-5 text-accent" />
           <h3 className="font-display text-xl font-semibold text-primary">{title}</h3>
@@ -35,12 +36,12 @@ export function PartiesTable({ parties, title = 'لائحة الأطراف' }: P
           <table className="w-full text-right border-collapse font-arabic">
             <thead>
               <tr className="border-b border-border">
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">الصفة</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">اسم الطرف</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">المحامون</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">المفوضون القضائيون</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">الوكلاء</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">الممثلون القانونيون</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('الصفة')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('اسم الطرف')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('المحامون')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('المفوضون القضائيون')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('الوكلاء')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('الممثلون القانونيون')}</th>
               </tr>
             </thead>
             <tbody>

@@ -207,8 +207,9 @@ export function formaterArticles(articles: ArticleJuridique[]): string {
   if (!articles.length) return ''
   const blocs = articles.map((a, i) => {
     const ref = a.article ? `المادة ${a.article}` : 'مقتطف'
-    const lien = a.pdfUrl ? `\n(الرابط: ${a.pdfUrl})` : ''
-    return `[مصدر ${i + 1}] ${a.titreLoi ?? '—'} — ${ref}${lien}\n${a.text}`
+    // Pas de lien dans le prompt : le modèle les recopiait (ou en inventait) dans sa réponse ;
+    // les liens sont donnés par les cartes « المصادر » sous la réponse.
+    return `[مصدر ${i + 1}] ${a.titreLoi ?? '—'} — ${ref}\n${a.text}`
   })
   return blocs.join('\n\n')
 }
@@ -235,7 +236,9 @@ export async function besoinDeDroit(question: string, dernierEchange = ''): Prom
 
   // Signaux FORTS d'une question juridique → CHERCHER direct (sans appel).
   const juridique = /(الفصل|المادة|القانون|مدونة|عقوبة|أجل|مسطرة|دعوى|محكمة|استئناف|نقض|تعرض|كراء|عقد|طلاق|نفقة|إرث|جريمة|جنحة|تعويض|فسخ|بطلان|حبس|غرامة|طعن|تقادم)/
-  if (juridique.test(q)) return true
+  // Mêmes signaux en français (compte réglé en français) : sans eux, chaque question partait dans l'appel lent ci-dessous
+  const juridiqueFr = /\b(article|loi|code|dahir|délai|delai|procédure|procedure|tribunal|cour|appel|cassation|opposition|bail|contrat|divorce|pension|succession|héritage|infraction|délit|delit|crime|peine|amende|indemni|résiliation|resiliation|nullité|nullite|recours|prescription|jugement|arrêt|arret|notification|exécution|execution|licenciement|préavis|preavis|caution|créance|creance|saisie)/i
+  if (juridique.test(q) || juridiqueFr.test(q)) return true
 
   // ── Cas ambigu seulement → un appel DeepSeek (rare, donc peu coûteux) ──
   const SYSTEME =
@@ -247,7 +250,8 @@ export async function besoinDeDroit(question: string, dernierEchange = ''): Prom
     const d = await askDeepseek<string>(
       SYSTEME,
       `Dernier échange:\n${dernierEchange.slice(0, 300)}\n\nQ: ${question} →`,
-      { json: false, temperature: 0, maxTokens: 5 },
+      // Simple aiguillage : 8 s max et une seule tentative, sinon on cherche (l'écran restait sur « Je réfléchis… » jusqu'à 2 min)
+      { json: false, temperature: 0, maxTokens: 5, timeoutMs: 8_000, tentatives: 1 },
     )
     return (d || '').toUpperCase().includes('CHERCHER')
   } catch {

@@ -1,5 +1,6 @@
 'use client'
 
+import { t as tr } from '@/lib/langue'
 import { useState, createContext, useContext, useCallback } from 'react'
 import { Check, AlertCircle, Info, X } from 'lucide-react'
 
@@ -46,15 +47,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => {
           const { Icon, color } = ICON[t.type]
           return (
-            <div key={t.id} dir="rtl" style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#15201E', color: '#FFFFFF', borderRadius: 14, padding: '6px 6px 6px 16px', boxShadow: '0 20px 40px -20px rgba(0,0,0,.6)', fontSize: 14 }}>
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#15201E', color: '#FFFFFF', borderRadius: 14, paddingBlock: 6, paddingInlineStart: 6, paddingInlineEnd: 16, boxShadow: '0 20px 40px -20px rgba(0,0,0,.6)', fontSize: 14 }}>
               <Icon size={18} color={color} aria-hidden style={{ marginRight: 10, flex: 'none' }} />
-              <span style={{ flex: 1 }}>{t.message}</span>
+              <span style={{ flex: 1 }}>{tr(t.message)}</span>
               {t.action && (
                 <button onClick={() => { t.action!.onClick(); remove(t.id) }} style={{ fontFamily: 'inherit', fontSize: 14, fontWeight: 700, background: 'transparent', color: '#F2A93B', border: 0, padding: '0 12px', minHeight: 44, cursor: 'pointer' }}>
-                  {t.action.label}
+                  {tr(t.action.label)}
                 </button>
               )}
-              <button onClick={() => remove(t.id)} aria-label="إغلاق" style={{ width: 44, height: 44, background: 'transparent', border: 0, color: '#9FC9BE', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={() => remove(t.id)} aria-label={tr('إغلاق')} style={{ width: 44, height: 44, background: 'transparent', border: 0, color: '#9FC9BE', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <X size={16} aria-hidden />
               </button>
             </div>

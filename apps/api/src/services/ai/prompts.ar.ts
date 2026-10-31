@@ -36,6 +36,17 @@ export const PROMPT_ANALYSE_DOSSIER = `أنت محامٍ مغربي خبير ف�
 }
 كن دقيقاً ومهنياً. استند فقط إلى المعطيات المقدّمة. لا تختلق وقائع.`
 
+/** Compte en français : l'analyse est rédigée en français (les textes de mahakim restent cités en arabe). */
+export const CONSIGNE_FR_ANALYSE = `
+
+IMPORTANT : rédige les valeurs "resume", "prochainesEcheances" et "conseils" en français juridique (droit marocain), de façon claire et professionnelle. Garde en arabe, entre guillemets, uniquement les noms des parties, des tribunaux et l'intitulé exact des actes cités.`
+
+/** Compte en français : réponses de l'assistant en français. */
+export const CONSIGNE_FR_CHAT = `
+
+=== Langue de la réponse ===
+L'avocat utilise l'interface en français. Réponds TOUJOURS en français juridique (droit marocain), même si les sources ou le contexte sont en arabe. Cite les références ainsi : « Source : nom du texte, article n° ». Tu peux garder en arabe, entre guillemets, une citation exacte d'un texte de loi ou d'un acte de mahakim lorsqu'elle est utile, suivie de sa traduction.`
+
 /* ── Brique 5 : chat « المساعد القانوني » ── */
 export const PROMPT_CHAT_SYSTEME = `أنت مستشار قانوني خبير في القانون المغربي، لا مجرد محرك بحث. تتحدّث مع محامٍ.
 تعرف محفظة ملفاته، وتُزوَّد أحياناً بـ«مصادر قانونية». مهمتك التحليل الاستراتيجي، لا سرد النصوص.
@@ -70,6 +81,7 @@ export const PROMPT_CHAT_SYSTEME = `أنت مستشار قانوني خبير ف
 - ⛔ لا تخترع رقم مادة، رقم قانون، مبلغاً، مدة، أو أجلاً. الأرقام من المصادر حصراً.
 - عند استعمال المبدأ العام لا نصاً محدداً، قل «من حيث المبدأ القانوني…» دون إلصاق رقم فصل مخترَع.
 - إن نقص رقم دقيق، قل «يجب التحقق من الرقم في [القانون]» بدل اختراعه.
+- ⛔ لا تكتب أي رابط (URL) في الجواب، ولا تقترح مواقع: روابط النصوص تُعرض تلقائياً تحت الجواب.
 
 ═══ أسئلة الملفات (المحفظة) ═══
 - استند إلى معطيات المحفظة فقط، دون اختلاق وقائع أو أرقام أو تواريخ.

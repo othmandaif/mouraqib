@@ -1,9 +1,12 @@
 import { EtatConnexion } from '@/components/layout/EtatConnexion'
+import { TitreTraduit } from '@/components/layout/TitreTraduit'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
-// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français
-const SCRIPT_LANGUE = `try{if(localStorage.getItem('malafipro_langue')==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
+// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français.
+// La landing a sa langue dans l'adresse (/ = arabe, /fr = français) : elle fixe aussi celle des pages
+// de connexion qui suivent (visiteur non connecté) ; une fois connecté, la langue du compte (Paramètres) l'emporte.
+const SCRIPT_LANGUE = `try{var p=location.pathname,l=p==='/fr'||p.indexOf('/fr/')===0?'fr':p==='/'?'ar':null;if(l){if(!localStorage.getItem('malafipro_token'))localStorage.setItem('malafipro_langue',l)}else l=localStorage.getItem('malafipro_langue');if(l==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
 
@@ -43,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
       </head>
-      <body>{children}<EtatConnexion /></body>
+      <body>{children}<EtatConnexion /><TitreTraduit /></body>
     </html>
   )
 }

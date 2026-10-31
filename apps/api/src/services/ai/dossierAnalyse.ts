@@ -1,7 +1,7 @@
 import { StatutDossier } from '@prisma/client'
 import { prisma } from '../../utils/prisma'
 import { askDeepseek, limiterTexte } from './deepseek'
-import { PROMPT_ANALYSE_DOSSIER } from './prompts.ar'
+import { PROMPT_ANALYSE_DOSSIER, CONSIGNE_FR_ANALYSE } from './prompts.ar'
 import { logger } from '../../utils/logger'
 
 
@@ -21,6 +21,7 @@ export async function analyserDossierComplet(
   dossierId: string,
   userId: string | { in: string[] },
   force = false,
+  langue: 'ar' | 'fr' = 'ar', // langue du compte (Paramètres)
 ): Promise<AnalyseDossier | null> {
   const dossier = await prisma.dossier.findFirst({
     where: { id: dossierId, userId },
@@ -34,7 +35,9 @@ export async function analyserDossierComplet(
   if (!force && dossier.analyseIA && dossier.analyseAt) {
     const dernierEvt = dossier.evenements[0]?.datePublicationGreffe
     if (!dernierEvt || new Date(dernierEvt).getTime() <= new Date(dossier.analyseAt).getTime()) {
-      return dossier.analyseIA as unknown as AnalyseDossier
+      const cache = dossier.analyseIA as unknown as AnalyseDossier
+      // Analyse en cache rédigée dans l'autre langue : on la refait
+      if (/[\u0600-\u06FF]/.test(cache.resume ?? '') === (langue === 'ar')) return cache
     }
   }
 
@@ -65,7 +68,7 @@ export async function analyserDossierComplet(
 ${historique}`
 
   try {
-    const res = await askDeepseek<AnalyseDossier>(PROMPT_ANALYSE_DOSSIER, userPrompt, {
+    const res = await askDeepseek<AnalyseDossier>(PROMPT_ANALYSE_DOSSIER + (langue === 'fr' ? CONSIGNE_FR_ANALYSE : ''), userPrompt, {
       json: true,
       temperature: 0.3,
       maxTokens: 1500,

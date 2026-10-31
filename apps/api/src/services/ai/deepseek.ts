@@ -13,6 +13,8 @@ interface AskOptions {
   json?: boolean        // force une réponse JSON parsable
   temperature?: number  // défaut 0.3 (analyse) ; chat → 0.6
   maxTokens?: number
+  timeoutMs?: number    // défaut 60 s ; court pour les petites décisions (routage du chat)
+  tentatives?: number   // défaut 2
 }
 
 function ensureKey() {
@@ -31,7 +33,7 @@ export async function askDeepseek<T = string>(
   options: AskOptions = {},
 ): Promise<T> {
   ensureKey()
-  const { json = false, temperature = 0.3, maxTokens = 1500 } = options
+  const { json = false, temperature = 0.3, maxTokens = 1500, timeoutMs = 60_000, tentatives = 2 } = options
 
   const body: Record<string, unknown> = {
     model: MODEL,
@@ -45,10 +47,10 @@ export async function askDeepseek<T = string>(
   if (json) body.response_format = { type: 'json_object' }
 
   let lastErr: unknown
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= tentatives; attempt++) {
     try {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 60_000)
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       const res = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -83,7 +85,7 @@ export async function askDeepseek<T = string>(
     } catch (err) {
       lastErr = err
       logger.warn(`DeepSeek tentative ${attempt} échouée:`, err)
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1200))
+      if (attempt < tentatives) await new Promise((r) => setTimeout(r, 1200))
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Échec DeepSeek')

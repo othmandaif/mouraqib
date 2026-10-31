@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   // Le proxy /api coupait à 30 s : génération d'actes et synchronisation peuvent durer plus longtemps
-  experimental: { proxyTimeout: 120_000 },
+  experimental: { proxyTimeout: 300_000 }, // 5 min : réponses longues de l'assistant (relecture juridique comprise) en local
   async headers() {
     return [{ source: '/:path*', headers: SECURITE }]
   },

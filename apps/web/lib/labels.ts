@@ -1,4 +1,7 @@
-// Traduction d'affichage : codes/enums → arabe.
+import { t } from '@/lib/langue'
+
+// Traduction d'affichage : codes/enums → arabe (puis français via t() si la langue du compte est « fr »).
+// Les noms de tribunaux restent en arabe (texte de mahakim).
 // Centralisé pour que cartes, détail, dashboard et filtres montrent tous le même libellé.
 
 /* Types de procédure (enum Prisma) → arabe */
@@ -191,11 +194,11 @@ export function labelTribunal(v?: string | null): string {
 /** Type de procédure : enum → arabe, sinon tel quel. */
 export function labelProcedure(v?: string | null): string {
   if (!v) return '—'
-  return PROCEDURE_AR[v] ?? v
+  return t(PROCEDURE_AR[v] ?? v)
 }
 
 /** Statut IA : enum → arabe, sinon tel quel. */
 export function labelStatut(v?: string | null): string {
   if (!v) return '—'
-  return STATUT_AR[v] ?? v
+  return t(STATUT_AR[v] ?? v)
 }

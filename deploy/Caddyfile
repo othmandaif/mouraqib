@@ -1,11 +1,32 @@
 # HTTPS automatique (Let's Encrypt) dès que le DNS du domaine pointe vers le VPS.
 {$DOMAINE} {
-	encode zstd gzip
+	# Compression, sauf le flux du chat (text/event-stream) : compressé, il arrivait d'un bloc au lieu de mot par mot
+	encode zstd gzip {
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type text/javascript*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type application/manifest+json*
+			header Content-Type image/svg+xml*
+		}
+	}
 
 	# Webhooks Meta (WhatsApp) : directement vers l'API, corps intact pour la vérification de signature
 	@webhooks path /api/v1/webhooks/*
 	handle @webhooks {
 		reverse_proxy api:3001
+	}
+
+	# Chat de l'assistant : directement vers l'API, flux envoyé au fil de l'eau (le relais Next le retenait)
+	@chat path /api/assistant/chat
+	handle @chat {
+		rewrite * /api/v1/assistant/chat
+		reverse_proxy api:3001 {
+			flush_interval -1
+		}
 	}
 
 	# Tout le reste : application Next.js (qui relaie /api vers l'API)

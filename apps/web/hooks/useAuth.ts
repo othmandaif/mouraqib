@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch, apiGet, lireCache, setToken, clearToken, getToken } from '@/lib/api'
+import { changerLangue, langueCourante, type Langue } from '@/lib/langue'
 
 export interface User {
   id: string
@@ -23,6 +24,15 @@ export interface User {
   droits?: string[]
   /** Photo de profil (data URL 192 px) */
   avatar?: string | null
+  /** Langue de l'interface (Paramètres) */
+  langue?: Langue
+}
+
+/** Applique la langue du compte sur cet appareil. recharger : la page déjà affichée est dans l'autre langue. */
+function suivreLangue(u: User | null | undefined, recharger: boolean) {
+  if (!u?.langue || u.langue === langueCourante()) return
+  changerLangue(u.langue)
+  if (recharger) window.location.reload()
 }
 
 /** Le compte a-t-il ce droit ? (absent = ancienne réponse de l'API : tout est permis, l'API contrôle de toute façon) */
@@ -35,7 +45,7 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(() => lireCache<User>('/auth/me') ?? null)
   const [loading, setLoading] = useState(() => lireCache('/auth/me') === undefined)
 
-  const refresh = useCallback(() => apiGet<User>('/auth/me').then(setUser), [])
+  const refresh = useCallback(() => apiGet<User>('/auth/me').then((u) => { suivreLangue(u, true); setUser(u) }), [])
 
   useEffect(() => {
     const token = getToken()
@@ -65,6 +75,7 @@ export function useAuth() {
     })
     if ('deuxFacteurs' in data) return data
     setToken(data.token)
+    suivreLangue(data.user, false) // la page suivante s'affiche déjà dans la langue du compte
     setUser(data.user)
     return data.user
   }
@@ -75,6 +86,7 @@ export function useAuth() {
       body: JSON.stringify({ ticket, code }),
     })
     setToken(data.token)
+    suivreLangue(data.user, false)
     setUser(data.user)
     return data.user
   }

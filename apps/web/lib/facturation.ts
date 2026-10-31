@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { t as tr } from '@/lib/langue'
 // Types et libellés partagés par les pages Clients, Facturation et le pack du dossier.
 // Montants reçus de l'API en centimes (entiers).
 
@@ -32,14 +33,14 @@ export interface Solde { factureCentimes: number; regleCentimes: number; resteCe
 
 export const TAUX_TVA = [0, 7, 10, 14, 20]
 
-export const TYPE_FACTURE: Record<TypeFacture, string> = { FACTURE: 'فاتورة', NOTE_HONORAIRES: 'مذكرة أتعاب', AVOIR: 'فاتورة مضادة' }
-export const MODE: Record<ModeReglement, string> = { ESPECES: 'نقداً', CHEQUE: 'شيك', VIREMENT: 'تحويل بنكي', EFFET: 'كمبيالة', AUTRE: 'أخرى' }
+export const TYPE_FACTURE: Record<TypeFacture, string> = { FACTURE: tr('فاتورة'), NOTE_HONORAIRES: tr('مذكرة أتعاب'), AVOIR: tr('فاتورة مضادة') }
+export const MODE: Record<ModeReglement, string> = { ESPECES: tr('نقداً'), CHEQUE: tr('شيك'), VIREMENT: tr('تحويل بنكي'), EFFET: tr('كمبيالة'), AUTRE: tr('أخرى') }
 export const ETAT: Record<EtatPaiement | 'BROUILLON' | 'ANNULEE', { label: string; bg: string; fg: string }> = {
-  BROUILLON: { label: 'مسودة', bg: '#F1EFEA', fg: '#3B4A47' },
-  NON_PAYEE: { label: 'غير مؤداة', bg: '#FDF1DC', fg: '#7A4E06' },
-  PARTIELLE: { label: 'مؤداة جزئياً', bg: '#EAF0F5', fg: '#22476A' },
-  PAYEE: { label: 'مؤداة', bg: '#E3F0EC', fg: '#0B4A40' },
-  ANNULEE: { label: 'ملغاة', bg: '#F1EFEA', fg: '#5E6B67' },
+  BROUILLON: { label: tr('مسودة'), bg: '#F1EFEA', fg: '#3B4A47' },
+  NON_PAYEE: { label: tr('غير مؤداة'), bg: '#FDF1DC', fg: '#7A4E06' },
+  PARTIELLE: { label: tr('مؤداة جزئياً'), bg: '#EAF0F5', fg: '#22476A' },
+  PAYEE: { label: tr('مؤداة'), bg: '#E3F0EC', fg: '#0B4A40' },
+  ANNULEE: { label: tr('ملغاة'), bg: '#F1EFEA', fg: '#5E6B67' },
 }
 export const etatFacture = (f: Pick<Facture, 'statut' | 'etatPaiement'>) => ETAT[f.statut === 'EMISE' ? (f.etatPaiement ?? 'NON_PAYEE') : f.statut]
 
@@ -47,7 +48,7 @@ export const etatFacture = (f: Pick<Facture, 'statut' | 'etatPaiement'>) => ETAT
 export function dh(centimes: number | null | undefined, avecDevise = true): string {
   if (centimes == null) return '—'
   const s = (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')
-  return avecDevise ? `${s} درهم` : s
+  return avecDevise ? tr('{s} درهم', { s }) : s
 }
 
 /** Saisie « 1 500,50 » → 150050 ; null si illisible. */

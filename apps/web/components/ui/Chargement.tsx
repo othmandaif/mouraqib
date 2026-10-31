@@ -5,6 +5,7 @@
 // de mise en page), aria-busy / role="status" pour les lecteurs d'écran, animations coupées si l'utilisateur
 // a demandé « moins de mouvement ».
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { t, tx as _tx, useLangue } from '@/lib/langue'
 
 // Styles (animations, reflet) : app/globals.css, section « Chargement »
 
@@ -40,8 +41,9 @@ export function Indicateur({ taille = 20, clair, courant, label }: { taille?: nu
 export function Splash() {
   const lent = useApresDelai(true, 8000)
   const visible = useApresDelai(true, 150) // rien pendant 150 ms : pas de flash quand la session est déjà en cache
+  const { t: tr } = useLangue() // rendu aussi côté serveur : hook (pas de décalage à l'hydratation)
   return (
-    <div role="status" aria-busy="true" aria-label="جارٍ تحميل ملفاتي" dir="rtl"
+    <div role="status" aria-busy="true" aria-label={tr('جارٍ تحميل ملفاتي')}
       style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 22, background: 'radial-gradient(900px 500px at 50% 0%, #0E5A4E 0%, #083B34 70%)', color: '#E3F0EC', padding: 24 }}>
       {visible && (
         <div className="mp-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
@@ -52,7 +54,7 @@ export function Splash() {
             <i style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', borderRadius: 4, background: '#9FE0C6' }} />
           </span>
           <span style={{ fontSize: 15, color: '#9FC9BE', minHeight: 24, textAlign: 'center' }}>
-            {lent ? 'الاتصال بطيء… ما زلنا نحمّل ملفاتكم.' : 'نحضّر ملفاتكم…'}
+            {lent ? tr('الاتصال بطيء… ما زلنا نحمّل ملفاتكم.') : tr('نحضّر ملفاتكم…')}
           </span>
         </div>
       )}
@@ -73,7 +75,7 @@ const Conteneur = ({ label, children, style }: { label: string; children: React.
 )
 
 /** Liste (dossiers, alertes, documents) : rond + 2 lignes + pastille. */
-export function SqueletteListe({ n = 5, label = 'جارٍ التحميل' }: { n?: number; label?: string }) {
+export function SqueletteListe({ n = 5, label = t('جارٍ التحميل') }: { n?: number; label?: string }) {
   return (
     <Conteneur label={label} style={{ gap: 0, background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: '4px 18px' }}>
       {Array.from({ length: n }, (_, i) => (
@@ -91,7 +93,7 @@ export function SqueletteListe({ n = 5, label = 'جارٍ التحميل' }: { n
 }
 
 /** Cartes de délai : compte à rebours carré + titre + barre + 2 boutons. */
-export function SqueletteCartes({ n = 2, label = 'جارٍ تحميل الآجال' }: { n?: number; label?: string }) {
+export function SqueletteCartes({ n = 2, label = t('جارٍ تحميل الآجال') }: { n?: number; label?: string }) {
   return (
     <Conteneur label={label}>
       {Array.from({ length: n }, (_, i) => (
@@ -126,7 +128,7 @@ export function SqueletteKpis({ n = 4 }: { n?: number }) {
 /** Fiche dossier : en-tête + chronologie. */
 export function SqueletteFiche() {
   return (
-    <Conteneur label="جارٍ تحميل الملف" style={{ gap: 18 }}>
+    <Conteneur label={t('جارٍ تحميل الملف')} style={{ gap: 18 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><Sq l="45%" h={26} /><Sq l="30%" h={14} /></div>
       <div className="mp-sq-carte" style={{ background: '#083B34', borderColor: '#083B34', flexDirection: 'row', alignItems: 'center', gap: 16 }}>
         <span className="mp-sq" style={{ width: 80, height: 80, borderRadius: 16, opacity: .25, flex: 'none' }} />
@@ -149,7 +151,7 @@ export function SqueletteFiche() {
 /** Page générique (changement de page) : titre, indicateurs, liste. */
 export function SquelettePage() {
   return (
-    <Conteneur label="جارٍ تحميل الصفحة" style={{ gap: 22 }}>
+    <Conteneur label={t('جارٍ تحميل الصفحة')} style={{ gap: 22 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><Sq l={220} h={30} /><Sq l={320} h={14} style={{ maxWidth: '80%' }} /></div>
       <SqueletteKpis />
       <SqueletteListe n={4} />
@@ -159,7 +161,7 @@ export function SquelettePage() {
 
 /** Nombre pas encore chargé : petit squelette au lieu d'un « 0 » trompeur (0 délai ≠ pas encore chargé). */
 export function Nombre({ v, l = 18 }: { v: number | null | undefined; l?: number }) {
-  if (v === null || v === undefined) return <span className="mp-sq" aria-label="جارٍ التحميل" style={{ display: 'inline-block', width: l, height: '0.9em', verticalAlign: 'middle', borderRadius: 4 }} />
+  if (v === null || v === undefined) return <span className="mp-sq" aria-label={t('جارٍ التحميل')} style={{ display: 'inline-block', width: l, height: '0.9em', verticalAlign: 'middle', borderRadius: 4 }} />
   return <span className="num">{v}</span>
 }
 
@@ -173,19 +175,20 @@ export function ErreurChargement({ quoi, onReessayer }: { quoi: string; onReessa
       <span aria-hidden style={{ width: 52, height: 52, borderRadius: '50%', background: '#FBEAE7', color: '#9B2C20', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 8v5M12 16.5v.5" /><circle cx="12" cy="12" r="9.5" /></svg>
       </span>
-      <strong style={{ fontSize: 17, fontWeight: 600 }}>تعذّر تحميل {quoi}</strong>
-      <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>تحققوا من الاتصال بالإنترنت ثم أعيدوا المحاولة. لا تعني هذه الرسالة أنه لا توجد معطيات.</span>
-      <button type="button" onClick={onReessayer} style={{ fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: '#15201E', color: '#FFFFFF', border: 0, borderRadius: 999, padding: '0 20px', minHeight: 44, cursor: 'pointer', marginTop: 4 }}>إعادة المحاولة</button>
+      <strong style={{ fontSize: 17, fontWeight: 600 }}>{t('تعذّر تحميل {quoi}', { quoi })}</strong>
+      <span style={{ fontSize: 14, color: '#3B4A47', lineHeight: 1.7 }}>{t('تحققوا من الاتصال بالإنترنت ثم أعيدوا المحاولة. لا تعني هذه الرسالة أنه لا توجد معطيات.')}</span>
+      <button type="button" onClick={onReessayer} style={{ fontFamily: 'inherit', fontSize: 15, fontWeight: 600, background: '#15201E', color: '#FFFFFF', border: 0, borderRadius: 999, padding: '0 20px', minHeight: 44, cursor: 'pointer', marginTop: 4 }}>{t('إعادة المحاولة')}</button>
     </div>
   )
 }
 
 /** « Synchronisé avec محاكم il y a X » : l'avocat sait que l'information est fraîche. */
-export function DepuisSynchro({ date, prefixe = 'آخر مزامنة مع محاكم' }: { date: string | null | undefined; prefixe?: string }) {
-  if (!date) return <span style={{ fontSize: 13, color: '#5E6B67' }}>{prefixe}: لم تتم بعد</span>
+export function DepuisSynchro({ date, prefixe = t('آخر مزامنة مع محاكم') }: { date: string | null | undefined; prefixe?: string }) {
+  if (!date) return <span style={{ fontSize: 13, color: '#5E6B67' }}>{prefixe}: {t('لم تتم بعد')}</span>
   const min = Math.max(0, Math.round((Date.now() - new Date(date).getTime()) / 60_000))
   const vieux = min > 26 * 60 // au-delà d'un jour sans synchronisation : à signaler
-  const texte = min < 1 ? 'الآن' : min < 60 ? <>قبل <span className="num">{min}</span> دقيقة</> : min < 48 * 60 ? <>قبل <span className="num">{Math.round(min / 60)}</span> ساعة</> : <>قبل <span className="num">{Math.round(min / 1440)}</span> أيام</>
+  const nb = (v: number) => <span className="num">{v}</span>
+  const texte = min < 1 ? t('الآن') : min < 60 ? _tx('قبل {n} دقيقة', { n: nb(min) }) : min < 48 * 60 ? _tx('قبل {n} ساعة', { n: nb(Math.round(min / 60)) }) : _tx('قبل {n} أيام', { n: nb(Math.round(min / 1440)) })
   return (
     <span title={new Date(date).toLocaleString('fr-MA')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: vieux ? '#7A4E06' : '#5E6B67' }}>
       <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: vieux ? '#F2A93B' : '#2E8B6E' }} />
@@ -199,7 +202,7 @@ export function DepuisSynchro({ date, prefixe = 'آخر مزامنة مع محا
  * L'indicateur prend la couleur du texte du bouton (`sombre` n'est plus nécessaire, gardé pour compatibilité).
  */
 export function EnCours({ texte }: { texte: string; sombre?: boolean }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Indicateur taille={18} courant />{texte}</span>
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Indicateur taille={18} courant />{t(texte)}</span>
 }
 
 /**
@@ -229,7 +232,7 @@ export function useEnvoi() {
 export function Attente({ actif, texte, children }: { actif: boolean; texte?: string; sombre?: boolean; children: React.ReactNode }) {
   const visible = useApresDelai(actif, 200)
   if (!visible) return <>{children}</>
-  return texte ? <EnCours texte={texte} /> : <Indicateur taille={18} courant label="جارٍ التنفيذ" />
+  return texte ? <EnCours texte={texte} /> : <Indicateur taille={18} courant label={t('جارٍ التنفيذ')} />
 }
 
 /**
@@ -258,13 +261,13 @@ export function EtapesAttente({ etapes, lent }: { etapes: { texte: string; des: 
                   </span>
                 ) : active ? <Indicateur taille={20} /> : <span style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid #CFCAC0' }} />}
               </span>
-              {e.texte}
+              {t(e.texte)}
             </li>
           )
         })}
       </ol>
       <span style={{ fontSize: 13, color: lent && s >= lent.des ? '#7A4E06' : '#5E6B67' }}>
-        <span className="num">{s}</span> ثانية{lent && s >= lent.des ? ` · ${lent.texte}` : ''}
+        {_tx('{n} ثانية', { n: <span className="num">{s}</span> })}{lent && s >= lent.des ? ` · ${t(lent.texte)}` : ''}
       </span>
     </div>
   )

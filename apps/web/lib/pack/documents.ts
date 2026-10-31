@@ -2,6 +2,13 @@
 // Même méthode que lib/exportDocument.ts (HTML → Word) : c'est la seule qui garde l'arabe de droite à gauche.
 // Aucune donnée inventée : un champ inconnu devient « ………… » à compléter à la main.
 import { dh, MODE, TYPE_FACTURE, totalLigne, type Client, type Facture, type Ligne, type ModeReglement, type Profil } from '../facturation'
+import { langueCourante } from '../langue'
+import * as FR from './documentsFr'
+
+// Compte en français (Paramètres) : les documents sont rédigés en français (documentsFr.ts)
+const fr = () => langueCourante() === 'fr'
+// Sens du document d'après son texte : plus de lettres latines qu'arabes → gauche à droite
+const estLatin = (html: string) => { const t = html.replace(/<[^>]*>/g, ''); return (t.match(/[A-Za-zÀ-ÿ]/g)?.length ?? 0) > (t.match(/[\u0600-\u06FF]/g)?.length ?? 0) }
 
 export interface PackData {
   dossier: {
@@ -49,8 +56,8 @@ th { background: #EDEDED; font-weight: bold; }
 .cadre { border: 1px solid #555; padding: 8pt; }
 `
 
-/** Fichier .doc (HTML lu par Word). `ltr` pour un document en français. */
-export function documentWord(titre: string, corps: string, ltr = false): string {
+/** Fichier .doc (HTML lu par Word). `ltr` pour un document en français (par défaut : d'après la langue du texte). */
+export function documentWord(titre: string, corps: string, ltr = estLatin(corps)): string {
   const css = ltr ? CSS.replace('direction: rtl; text-align: right;', 'direction: ltr; text-align: left;').replace(/text-align: right;/g, 'text-align: left;') : CSS
   // Direction et bordures répétées sur chaque bloc : Word et LibreOffice n'héritent pas toujours celles du <body> / du CSS
   const dir = ltr ? 'ltr' : 'rtl'
@@ -80,6 +87,7 @@ const signatures = (gauche: string, droite: string) => `<table class="signature"
 
 // ─── Page de garde ───────────────────────────────────────────────────────────
 export function pageDeGarde(p: PackData): string {
+  if (fr()) return FR.pageDeGarde(p)
   const d = p.dossier
   const audiences = p.evenements.filter((e) => e.dateAudience).map((e) => e.dateAudience!).sort().slice(-8)
   const lignesAud = [...audiences.map((a) => `<tr><td>${date(a)}</td><td></td><td></td></tr>`), ...Array.from({ length: Math.max(6, 12 - audiences.length) }, () => '<tr><td>&nbsp;</td><td></td><td></td></tr>')].join('')
@@ -104,6 +112,7 @@ ${p.echeances.length ? `<table><tr><th>الأجل</th><th style="width:22%">آخ
 
 // ─── Convention d'honoraires ─────────────────────────────────────────────────
 export function conventionHonoraires(p: PackData): string {
+  if (fr()) return FR.conventionHonoraires(p)
   const d = p.dossier
   const montant = d.honorairesConvenusCentimes != null ? dh(d.honorairesConvenusCentimes) : '………………… درهم'
   const etape = d.estCourAppel ? 'المرحلة الاستئنافية' : 'المرحلة الابتدائية'
@@ -135,6 +144,7 @@ ${signatures('توقيع المحامي', 'توقيع الموكل<br><span clas
 
 // ─── Procuration ─────────────────────────────────────────────────────────────
 export function procuration(p: PackData): string {
+  if (fr()) return FR.procuration(p)
   const d = p.dossier
   return `<h1>وكالة خاصة</h1>
 <p>أنا الموقع(ة) أسفله: ${identite(p.client, p.nomClient)}،</p>
@@ -151,6 +161,7 @@ ${signatures('', 'توقيع الموكل(ة)<br><span class="petit">(مصادق
 
 // ─── Reçu de provision ───────────────────────────────────────────────────────
 export function recuProvision(p: PackData, r?: PackData['reglements'][number]): string {
+  if (fr()) return FR.recuProvision(p, r)
   return `${entete(p.profil)}
 <h1>وصل تسلّم تسبيق على الأتعاب</h1>
 ${r ? `<p class="petit" style="text-align:left">المرجع: <span dir="ltr">R-${esc(r.id.slice(-8).toUpperCase())}</span></p>` : ''}
@@ -169,6 +180,7 @@ ${signatures('توقيع المحامي وطابعه', '')}`
 
 // ─── Bordereau de pièces ─────────────────────────────────────────────────────
 export function bordereauPieces(p: PackData): string {
+  if (fr()) return FR.bordereauPieces(p)
   const connus: string[] = []
   if (p.jugement) connus.push(`نسخة من الحكم الصادر بتاريخ ${date(p.jugement.date)}`)
   if (p.evenements.some((e) => /تبليغ/.test(e.texteArabe))) connus.push('شهادة التسليم (طي التبليغ)')
@@ -189,6 +201,7 @@ ${signatures('الإمضاء', '')}`
 
 // ─── Lettre d'information au client ──────────────────────────────────────────
 export function lettreClient(p: PackData): string {
+  if (fr()) return FR.lettreClient(p)
   const derniers = p.evenements.slice(0, 4)
   const agir = p.echeances.filter((e) => e.camp === 'AGIR')
   return `${entete(p.profil)}
@@ -208,6 +221,7 @@ ${signatures(`${ou(p.profil.nom)}`, '')}
 
 // ─── Facture / note d'honoraires ─────────────────────────────────────────────
 export function factureHtml(f: Pick<Facture, 'type' | 'numero' | 'statut' | 'dateEmission' | 'dateEcheance' | 'lignes' | 'tauxTva' | 'totalHtCentimes' | 'tvaCentimes' | 'totalTtcCentimes' | 'modePaiement' | 'notes'> & { factureOrigine?: { numero: string | null } | null; dossier?: { numeroDossier: string } | null }, emetteur: Partial<Profil>, client: Partial<Client>): string {
+  if (fr()) return FR.factureHtml(f, emetteur, client)
   const brouillon = f.statut === 'BROUILLON' || !f.numero
   const lignes = (f.lignes as Ligne[]).map((l) => `<tr><td>${esc(l.designation)}</td><td style="text-align:center"><span dir="ltr">${esc(l.quantite)}</span></td><td><span dir="ltr">${dh(l.prixUnitaireCentimes, false)}</span></td><td><span dir="ltr">${dh(totalLigne(l), false)}</span></td></tr>`).join('')
   return `${entete(emetteur as Profil, true)}
@@ -232,6 +246,7 @@ ${emetteur.piedPage ? `<p class="petit" style="text-align:center">${esc(emetteur
 
 /** Note d'honoraires du dossier : la dernière émise, sinon un projet non numéroté (convenu − déjà réglé). */
 export function noteHonorairesProjet(p: PackData): string {
+  if (fr()) return FR.noteHonorairesProjet(p)
   const regle = p.reglements.reduce((s, r) => s + r.montantCentimes, 0)
   const convenu = p.dossier.honorairesConvenusCentimes ?? 0
   const lignes: Ligne[] = [{ designation: `أتعاب النيابة والدفاع في الملف رقم ${p.dossier.numeroDossier} — ${p.dossier.tribunalAr}`, quantite: 1, prixUnitaireCentimes: convenu }]
@@ -248,7 +263,7 @@ export interface DocAdministratif { cle: string; titre: string; description: str
 /** Liste des documents administratifs du pack, dans l'ordre d'usage. */
 export function documentsAdministratifs(p: PackData): DocAdministratif[] {
   const provisions = p.reglements.filter((r) => !r.factureId)
-  return [
+  const docs: DocAdministratif[] = [
     { cle: 'garde', titre: 'ورقة غلاف الملف', description: 'الأطراف، المحكمة، سجل الجلسات والآجال', html: () => pageDeGarde(p) },
     { cle: 'convention', titre: 'اتفاقية تحديد الأتعاب', description: p.dossier.honorairesConvenusCentimes != null ? `المبلغ المتفق عليه: ${dh(p.dossier.honorairesConvenusCentimes)}` : 'أدخلوا الأتعاب في الملف لملء المبلغ', html: () => conventionHonoraires(p) },
     { cle: 'procuration', titre: 'وكالة خاصة', description: 'من الموكل إلى المحامي، للمصادقة على التوقيع', html: () => procuration(p) },
@@ -257,6 +272,9 @@ export function documentsAdministratifs(p: PackData): DocAdministratif[] {
     { cle: 'lettre', titre: 'رسالة إخبار الموكل', description: 'آخر الإجراءات، الجلسة المقبلة والآجال', html: () => lettreClient(p) },
     { cle: 'honoraires', titre: 'مذكرة الأتعاب', description: 'مشروع غير مرقّم من الأتعاب المتفق عليها', html: () => noteHonorairesProjet(p) },
   ]
+  if (!fr()) return docs
+  const l = FR.libellesFr(p, provisions)
+  return docs.map((d) => ({ ...d, titre: l[d.cle][0], description: l[d.cle][1] }))
 }
 
 /** Nom de fichier sûr : « ورقة غلاف الملف - 2026-1201-55.doc ». */

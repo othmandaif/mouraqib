@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
+import { useLangue } from '@/lib/langue'
 
 const CSS = `
 .mp-auth{min-height:100vh;display:flex;flex-wrap:wrap;background:#F5F3EE;color:#15201E}
@@ -16,13 +17,14 @@ const CSS = `
 
 /** Mise en page connexion / inscription : panneau de marque (masqué sur mobile) + formulaire. */
 export function AuthSplit({ aside, children, pied = 'اتصال مشفّر · سرّ المهنة أولاً' }: { aside: React.ReactNode; children: React.ReactNode; pied?: string }) {
+  const { t } = useLangue()
   return (
-    <div dir="rtl" className="mp-auth">
+    <div className="mp-auth">
       <style>{CSS}</style>
       <section className="mp-auth-brand">
         <Logo dark />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 460 }}>{aside}</div>
-        <span style={{ fontSize: 13, color: '#9FC9BE' }}>{pied}</span>
+        <span style={{ fontSize: 13, color: '#9FC9BE' }}>{t(pied)}</span>
       </section>
       <main className="mp-auth-main">
         <div style={{ width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -48,11 +50,13 @@ export function Logo({ dark }: { dark?: boolean }) {
 
 export function PasswordInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const [show, setShow] = useState(false)
+  const { t, langue } = useLangue()
+  const rtl = langue === 'ar' // champ en dir="ltr" : le bouton œil suit le sens de la page
   return (
     <span style={{ position: 'relative', display: 'block' }}>
-      <input {...props} type={show ? 'text' : 'password'} dir="ltr" className="mp-input" style={{ paddingLeft: 52, textAlign: 'right' }} />
-      <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-        style={{ position: 'absolute', left: 3, top: 3, width: 44, height: 44, border: 0, background: 'transparent', color: '#3B4A47', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+      <input {...props} type={show ? 'text' : 'password'} dir="ltr" className="mp-input" style={rtl ? { paddingLeft: 52, textAlign: 'right' } : { paddingRight: 52 }} />
+      <button type="button" onClick={() => setShow((s) => !s)} aria-label={t(show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور')}
+        style={{ position: 'absolute', [rtl ? 'left' : 'right']: 3, top: 3, width: 44, height: 44, border: 0, background: 'transparent', color: '#3B4A47', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
         {show ? <EyeOff size={20} aria-hidden /> : <Eye size={20} aria-hidden />}
       </button>
     </span>

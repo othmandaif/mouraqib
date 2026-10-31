@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/Card'
 import { FileText } from 'lucide-react'
+import { t as tr } from '@/lib/langue'
 
 interface Recours {
   type: string
@@ -23,12 +24,12 @@ interface AppealsTableProps {
 
 const val = (s?: string) => (s && s.trim() ? s.trim() : '—')
 
-export function AppealsTable({ recours, title = 'عرائض الطعن' }: AppealsTableProps) {
+export function AppealsTable({ recours, title = tr('عرائض الطعن') }: AppealsTableProps) {
   if (!recours || recours.length === 0) return null
 
   return (
     <Card padding="md">
-      <div dir="rtl">
+      <div>
         <div className="flex items-center gap-2 mb-5">
           <FileText className="h-5 w-5 text-accent" />
           <h3 className="font-display text-xl font-semibold text-primary">{title}</h3>
@@ -38,13 +39,13 @@ export function AppealsTable({ recours, title = 'عرائض الطعن' }: Appea
           <table className="w-full text-right border-collapse font-arabic">
             <thead>
               <tr className="border-b border-border">
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">تعرض/إستئناف/عريضة نقض</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">من طرف</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">تاريخ وضعه</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">رقمها</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">رقم الإرسال</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">تاريخ الإرسال</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">المحكمة</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('تعرض/إستئناف/عريضة نقض')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('من طرف')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('تاريخ وضعه')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('رقمها')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('رقم الإرسال')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('تاريخ الإرسال')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('المحكمة')}</th>
               </tr>
             </thead>
             <tbody>

@@ -13,6 +13,7 @@ import { AppealsTable } from '@/components/legal/AppealsTable'
 import { RelatedFilesTable } from '@/components/legal/RelatedFilesTable'
 import type { RoleClient } from '@/components/legal/DeadlineCard'
 import { Attente, EtapesAttente } from '@/components/ui/Chargement'
+import { t as tr } from '@/lib/langue'
 
 const CSS = `
 .mp-add input,.mp-add select{font-family:inherit;font-size:16px;color:#15201E;background:#FFFFFF;border:1px solid #CFCAC0;border-radius:10px;min-height:48px;padding:0 14px;box-sizing:border-box;width:100%;outline:none}
@@ -28,7 +29,7 @@ const BTN_S: React.CSSProperties = { fontFamily: 'inherit', fontSize: 15, fontWe
  * Ajout d'un dossier (maquette « أضيفوا أول ملف ») : numéro en 3 champs, cour d'appel,
  * tribunal de première instance facultatif, rôle du client, puis recherche live sur mahakim.
  */
-export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = 'اكتبوا الرقم كما يظهر على بوابة محاكم. سنجلب مسار الملف ونحسب آجاله خلال دقائق.', onAjoute, onAnnuler }: {
+export function AjoutDossier({ titre = tr('أضيفوا ملفاً'), sousTitre = tr('اكتبوا الرقم كما يظهر على بوابة محاكم. سنجلب مسار الملف ونحسب آجاله خلال دقائق.'), onAjoute, onAnnuler }: {
   titre?: string; sousTitre?: string; onAjoute: (id: string) => void; onAnnuler?: () => void
 }) {
   const [annee, setAnnee] = useState(String(new Date().getFullYear()))
@@ -53,12 +54,12 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
   useEffect(() => {
     if (jur && courAppel && !jur.cours.some((c) => c.nom === courAppel)) { setCourAppel(''); setTribunalPrimaire('') }
   }, [jur, courAppel])
-  const nomTribunaux = jur?.type === 'commerce' ? 'المحكمة التجارية' : jur?.type === 'administratif' ? 'المحكمة الإدارية' : 'المحكمة الابتدائية'
+  const nomTribunaux = jur?.type === 'commerce' ? tr('المحكمة التجارية') : jur?.type === 'administratif' ? tr('المحكمة الإدارية') : tr('المحكمة الابتدائية')
   const peutChercher = /^\d{4}$/.test(annee) && !!codeRole && !!numero && !!courAppel
 
   const chercher = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!peutChercher) { setErreur('أكملوا رقم الملف واختاروا محكمة الاستئناف.'); return }
+    if (!peutChercher) { setErreur(tr('أكملوا رقم الملف واختاروا محكمة الاستئناف.')); return }
     setErreur('')
     setSearching(true)
     setResultat(null)
@@ -75,7 +76,7 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
       if (r.trouve && r.titreAffaire && !titreAffaire) setTitreAffaire(r.titreAffaire)
     } catch (err: any) {
       if (c.signal.aborted || err?.message === 'Recherche annulée') return
-      setErreur(erreurAr(err?.message) || 'حدث خطأ أثناء البحث في محاكم.')
+      setErreur(erreurAr(err?.message) || tr('حدث خطأ أثناء البحث في محاكم.'))
     } finally {
       if (abort.current === c) abort.current = null
       setSearching(false)
@@ -111,7 +112,7 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
   const num = `${annee}/${codeRole}/${numero}`
 
   return (
-    <div className="mp-add" dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+    <div className="mp-add" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       <style>{CSS}</style>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600, lineHeight: 1.3 }}>{titre}</h1>
@@ -131,32 +132,32 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
             </div>
           </div>
           <EtapesAttente
-            etapes={[{ texte: 'الاتصال ببوابة محاكم', des: 0 }, { texte: 'البحث عن الملف في سجلات المحكمة', des: 4 }, { texte: 'قراءة مسار الملف والأطراف', des: 15 }]}
-            lent={{ des: 45, texte: 'بوابة محاكم بطيئة الآن، ما زلنا ننتظر ردّها (حتى دقيقتين).' }} />
-          <button type="button" onClick={recommencer} style={BTN_S}>إلغاء البحث</button>
+            etapes={[{ texte: tr('الاتصال ببوابة محاكم'), des: 0 }, { texte: tr('البحث عن الملف في سجلات المحكمة'), des: 4 }, { texte: tr('قراءة مسار الملف والأطراف'), des: 15 }]}
+            lent={{ des: 45, texte: tr('بوابة محاكم بطيئة الآن، ما زلنا ننتظر ردّها (حتى دقيقتين).') }} />
+          <button type="button" onClick={recommencer} style={BTN_S}>{tr('إلغاء البحث')}</button>
         </div>
       ) : resultat?.trouve ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#E3F0EC', borderRadius: 14, padding: '14px 16px' }}>
             <span style={{ width: 32, height: 32, borderRadius: '50%', background: '#0E5A4E', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Check size={16} aria-hidden /></span>
-            <span style={{ fontSize: 16, fontWeight: 600, color: '#0B4A40' }}>تم العثور على الملف <span className="num">{num}</span></span>
+            <span style={{ fontSize: 16, fontWeight: 600, color: '#0B4A40' }}>{tr('تم العثور على الملف')}{' '}<span className="num">{num}</span></span>
           </div>
-          <label>موضوع القضية<input value={titreAffaire} onChange={(e) => setTitreAffaire(e.target.value)} placeholder="مثال: شركة س ضد شركة ص — أداء" /></label>
+          <label>{tr('موضوع القضية')}<input value={titreAffaire} onChange={(e) => setTitreAffaire(e.target.value)} placeholder={tr('مثال: شركة س ضد شركة ص — أداء')} /></label>
           {resultat.infosCarte && Object.keys(resultat.infosCarte).length > 0 && (
-            <InfoGrid title="بطاقة الملف" columns={3} items={Object.entries(resultat.infosCarte).map(([label, value]) => ({ label, value: value || '—', arabic: true }))} />
+            <InfoGrid title={tr('بطاقة الملف')} columns={3} items={Object.entries(resultat.infosCarte).map(([label, value]) => ({ label, value: value || '—', arabic: true }))} />
           )}
           <EventsTimeline events={(resultat.evenements ?? []).map((ev: any) => ({
             date: new Date(ev.datePublication).toLocaleDateString('fr-MA'),
             time: ev.dateAudience ? heure(ev.dateAudience) || undefined : undefined,
             titreAr: ev.texteArabe,
-            titreFr: ev.dateAudience ? `الجلسة: ${new Date(ev.dateAudience).toLocaleDateString('fr-MA')}` : undefined,
+            titreFr: ev.dateAudience ? tr('الجلسة: {v0}', { v0: new Date(ev.dateAudience).toLocaleDateString('fr-MA') }) : undefined,
           }))} />
           <PartiesTable parties={(resultat.parties ?? []) as any} />
           <AppealsTable recours={(resultat.recours ?? []) as any} />
           <RelatedFilesTable dossiers={(resultat.dossiersLies ?? []).map((d: any) => ({ numero: d.numeroDossier, tribunal: d.tribunal, type: d.type, dateInscription: d.dateInscription }))} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, borderTop: '1px solid #EEEAE1', paddingTop: 18 }}>
-            <button className="mp-action" type="button" onClick={ajouter} disabled={submitting} aria-busy={submitting} style={BTN_P}><Attente actif={submitting} texte="جارٍ الإضافة وحساب الآجال…">إضافة ومتابعة</Attente></button>
-            <button type="button" onClick={recommencer} disabled={submitting} style={BTN_S}>بحث جديد</button>
+            <button className="mp-action" type="button" onClick={ajouter} disabled={submitting} aria-busy={submitting} style={BTN_P}><Attente actif={submitting} texte={tr('جارٍ الإضافة وحساب الآجال…')}>{tr('إضافة ومتابعة')}</Attente></button>
+            <button type="button" onClick={recommencer} disabled={submitting} style={BTN_S}>{tr('بحث جديد')}</button>
           </div>
         </div>
       ) : (
@@ -165,57 +166,57 @@ export function AjoutDossier({ titre = 'أضيفوا ملفاً', sousTitre = '�
             <div role="alert" style={{ background: '#FBF1EF', border: '1px solid #F0C9C2', borderRadius: 12, padding: '12px 14px', fontSize: 14, color: '#6E1D14', lineHeight: 1.6 }}>
               {/* Panne du portail ≠ dossier introuvable : ne pas faire douter l'avocat de son numéro */}
               {resultat.cause === 'juridiction'
-                ? 'هذه المحكمة غير متوفرة حالياً على بوابة محاكم. تحققوا من الرمز والمحكمة، ثم أعيدوا المحاولة.'
+                ? tr('هذه المحكمة غير متوفرة حالياً على بوابة محاكم. تحققوا من الرمز والمحكمة، ثم أعيدوا المحاولة.')
                 : resultat.erreur
-                ? 'بوابة محاكم لا تستجيب حالياً. أعيدوا المحاولة بعد دقائق، رقم الملف ليس هو المشكل.'
-                : 'لم نجد هذا الملف على محاكم. تحققوا من السنة والرمز والرقم والمحكمة، ثم أعيدوا المحاولة.'}
+                ? tr('بوابة محاكم لا تستجيب حالياً. أعيدوا المحاولة بعد دقائق، رقم الملف ليس هو المشكل.')
+                : tr('لم نجد هذا الملف على محاكم. تحققوا من السنة والرمز والرقم والمحكمة، ثم أعيدوا المحاولة.')}
             </div>
           )}
           <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>رقم الملف</legend>
+            <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{tr('رقم الملف')}</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
-              <label>السنة<input inputMode="numeric" className="num" value={annee} onChange={(e) => setAnnee(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
-              <label>الرمز<input inputMode="numeric" className="num" value={codeRole} placeholder="1201" onChange={(e) => setCodeRole(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
-              <label>الرقم<input inputMode="numeric" className="num" value={numero} placeholder="845" onChange={(e) => setNumero(chiffres(e.target.value, 8))} style={{ textAlign: 'center' }} /></label>
+              <label>{tr('السنة')}<input inputMode="numeric" className="num" value={annee} onChange={(e) => setAnnee(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
+              <label>{tr('الرمز')}<input inputMode="numeric" className="num" value={codeRole} placeholder="1201" onChange={(e) => setCodeRole(chiffres(e.target.value, 4))} style={{ textAlign: 'center' }} /></label>
+              <label>{tr('الرقم')}<input inputMode="numeric" className="num" value={numero} placeholder="845" onChange={(e) => setNumero(chiffres(e.target.value, 8))} style={{ textAlign: 'center' }} /></label>
             </div>
             <span style={{ fontSize: 13, color: '#5E6B67' }}>
-              {jur ? <>نوع الملف حسب الرمز: <strong style={{ color: '#15201E' }}>{jur.libelle}</strong></> : <>مثال: <span className="num">2026/1201/845</span></>}
+              {jur ? <>{tr('نوع الملف حسب الرمز:')}{' '}<strong style={{ color: '#15201E' }}>{jur.libelle}</strong></> : <>{tr('مثال:')}{' '}<span className="num">2026/1201/845</span></>}
             </span>
           </fieldset>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-            <label>محكمة الاستئناف
+            <label>{tr('محكمة الاستئناف')}
               <select value={courAppel} onChange={(e) => { setCourAppel(e.target.value); setTribunalPrimaire('') }} required disabled={!jur}>
-                <option value="">{!codeComplet ? 'اكتبوا الرمز أولاً' : chargeJur ? 'جارٍ التحميل…' : 'اختاروا المحكمة'}</option>
+                <option value="">{!codeComplet ? tr('اكتبوا الرمز أولاً') : chargeJur ? tr('جارٍ التحميل…') : tr('اختاروا المحكمة')}</option>
                 {jur?.cours.map((c) => <option key={c.nom} value={c.nom}>{c.nom.replace(/^محكمة ال[اإ]ستئناف\s*(ب(?=\S))?/, '')}</option>)}
               </select>
             </label>
-            <label><span>{nomTribunaux} <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span></span>
+            <label><span>{nomTribunaux} <span style={{ fontWeight: 400, color: '#5E6B67' }}>{tr('(اختياري)')}</span></span>
               <select value={tribunalPrimaire} onChange={(e) => setTribunalPrimaire(e.target.value)} disabled={!ca?.tribunaux?.length}>
-                <option value="">الملف بمحكمة الاستئناف</option>
+                <option value="">{tr('الملف بمحكمة الاستئناف')}</option>
                 {ca?.tribunaux?.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
           </div>
 
           <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>موكلكم في هذا الملف</legend>
-            <div role="radiogroup" aria-label="موكلكم في هذا الملف" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{tr('موكلكم في هذا الملف')}</legend>
+            <div role="radiogroup" aria-label={tr('موكلكم في هذا الملف')} style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {(['DEMANDEUR', 'DEFENDEUR'] as const).map((r) => (
                 <button key={r} type="button" role="radio" className="mp-choix" aria-checked={role === r} onClick={() => setRole(r)}
                   style={{ fontFamily: 'inherit', fontSize: 15, fontWeight: 600, borderRadius: 12, padding: '0 18px', minHeight: 48, cursor: 'pointer', ...(role === r ? { background: '#E3F0EC', color: '#0B4A40', border: '1.5px solid #0E5A4E' } : { background: '#FFFFFF', color: '#15201E', border: '1px solid #CFCAC0' }) }}>
-                  {r === 'DEMANDEUR' ? 'مدعٍ' : 'مدعى عليه'}
+                  {r === 'DEMANDEUR' ? tr('مدعٍ') : tr('مدعى عليه')}
                 </button>
               ))}
             </div>
-            <span style={{ fontSize: 13, color: '#5E6B67', lineHeight: 1.6 }}>بفضل هذا نفرّق بين الآجال التي عليكم والآجال التي نراقبها على الخصم.</span>
+            <span style={{ fontSize: 13, color: '#5E6B67', lineHeight: 1.6 }}>{tr('بفضل هذا نفرّق بين الآجال التي عليكم والآجال التي نراقبها على الخصم.')}</span>
           </fieldset>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', borderTop: '1px solid #EEEAE1', paddingTop: 22 }}>
             {/* Toujours cliquable : un champ manquant est expliqué au clic (un bouton grisé ne dit pas pourquoi) */}
-            <button className="mp-action" type="submit" disabled={searching} style={BTN_P}>البحث في محاكم</button>
-            {onAnnuler && <button type="button" onClick={onAnnuler} style={BTN_S}>إلغاء</button>}
-            <span style={{ fontSize: 13, color: '#5E6B67' }}>نقرأ المعطيات العمومية للملف فقط، دون حسابكم على البوابة.</span>
+            <button className="mp-action" type="submit" disabled={searching} style={BTN_P}>{tr('البحث في محاكم')}</button>
+            {onAnnuler && <button type="button" onClick={onAnnuler} style={BTN_S}>{tr('إلغاء')}</button>}
+            <span style={{ fontSize: 13, color: '#5E6B67' }}>{tr('نقرأ المعطيات العمومية للملف فقط، دون حسابكم على البوابة.')}</span>
           </div>
         </form>
       )}

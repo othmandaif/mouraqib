@@ -23,6 +23,10 @@ model User {
   droitsRetires   String[] @default([])
   /// Photo de profil : petite image (192 px) en data URL, redimensionnée par le navigateur
   avatar          String?
+  /// Langue de l'interface choisie dans Paramètres : "ar" (défaut) ou "fr". Sert aussi aux réponses de l'assistant.
+  langue          String   @default("ar")
+  /// Mémoire de l'assistant activée (Paramètres › ذاكرة المساعد)
+  memoireActive   Boolean  @default(true)
 
   // ─── Vente directe : l'inscription sur le site crée une DEMANDE, activée par le commercial ───
   statut              StatutCompte @default(ACTIF) // ACTIF par défaut : les comptes existants restent ouverts
@@ -54,6 +58,7 @@ model User {
   updatedAt DateTime @updatedAt
   messagesChat MessageChat[]  
   conversations Conversation[]
+  memoires     MemoireAvocat[]
   modelesDocument ModeleDocument[]
   documents       Document[]
 
@@ -825,4 +830,27 @@ model Depense {
   createdAt  DateTime @default(now())
 
   @@index([date])
+}
+
+/// Mémoire de l'assistant pour un avocat : règles courtes apprises de ses corrections et préférences.
+/// Injectée dans le prompt du chat. Jamais de noms de parties, numéros de dossier ni montants.
+model MemoireAvocat {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         TypeMemoire
+  texte        String
+  source       String?      // "chat" (appris d'un message) ou "manuel" (ajouté par l'avocat)
+  actif        Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId, actif])
+}
+
+enum TypeMemoire {
+  PREFERENCE // façon de répondre (longueur, ton, structure)
+  PRATIQUE   // domaine, juridictions, type de clientèle
+  CORRECTION // erreur de l'assistant rectifiée par l'avocat
+  FORMULE    // formules et tournures de rédaction
 }

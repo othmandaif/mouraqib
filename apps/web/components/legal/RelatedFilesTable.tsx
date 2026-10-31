@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/Card'
 import { Link2 } from 'lucide-react'
+import { t as tr } from '@/lib/langue'
 
 interface DossierLie {
   numero: string
@@ -15,12 +16,12 @@ interface RelatedFilesTableProps {
 
 const val = (s?: string) => (s && s.trim() ? s.trim() : '—')
 
-export function RelatedFilesTable({ dossiers, title = 'الملفات المرتبطة (ابتدائي/استئنافي-تبليغ/تنفيذ)' }: RelatedFilesTableProps) {
+export function RelatedFilesTable({ dossiers, title = tr('الملفات المرتبطة (ابتدائي/استئنافي-تبليغ/تنفيذ)') }: RelatedFilesTableProps) {
   if (!dossiers || dossiers.length === 0) return null
 
   return (
     <Card padding="md">
-      <div dir="rtl">
+      <div>
         <div className="flex items-center gap-2 mb-5">
           <Link2 className="h-5 w-5 text-accent" />
           <h3 className="font-display text-xl font-semibold text-primary">{title}</h3>
@@ -30,10 +31,10 @@ export function RelatedFilesTable({ dossiers, title = 'الملفات المرت
           <table className="w-full text-right border-collapse font-arabic">
             <thead>
               <tr className="border-b border-border">
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">نوع الملف</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">رقم الملف</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">تاريخ تسجيل الملف</th>
-                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">المحكمة</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('نوع الملف')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('رقم الملف')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('تاريخ تسجيل الملف')}</th>
+                <th className="py-2 px-3 text-[11px] font-medium font-sans text-text-muted whitespace-nowrap">{tr('المحكمة')}</th>
               </tr>
             </thead>
             <tbody>

@@ -1,3 +1,4 @@
+import { langueCourante } from '@/lib/langue'
 // Messages d'erreur de l'API (en français) → texte arabe affiché dans l'interface.
 const AR: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/Identifiants incorrects \((\d+) essais restants\)/i, (m) => m[1] === '0'
@@ -54,6 +55,8 @@ const AR: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
 ]
 
 export function erreurAr(message: string | null | undefined): string {
+  // Interface en français : l'API répond déjà en français, on affiche son message tel quel
+  if (langueCourante() === 'fr') return message || 'Une erreur est survenue. Réessayez.'
   if (!message) return 'حدث خطأ. أعيدوا المحاولة.'
   for (const [re, ar] of AR) {
     const m = message.match(re)

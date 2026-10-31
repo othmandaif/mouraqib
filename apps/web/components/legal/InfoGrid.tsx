@@ -15,7 +15,7 @@ interface InfoGridProps {
 export function InfoGrid({ title, items, columns = 2 }: InfoGridProps) {
   return (
     <Card padding="md">
-      <div dir="rtl">
+      <div>
         {title && (
           <h3 className="font-display text-xl font-semibold text-primary mb-5 text-right">
             {title}

@@ -1,5 +1,6 @@
 'use client'
 
+import { t } from '@/lib/langue'
 import { useEffect, useRef, useState } from 'react'
 import { WifiOff, ServerCrash, Wifi } from 'lucide-react'
 
@@ -74,14 +75,14 @@ export function EtatConnexion() {
   const ok = etat === 'retour'
   const Icon = ok ? Wifi : etat === 'hors-ligne' ? WifiOff : ServerCrash
   return (
-    <div role={ok ? 'status' : 'alert'} dir="rtl" className="mp-fade" key={bloque ? 'b' : 'n'}
+    <div role={ok ? 'status' : 'alert'} className="mp-fade" key={bloque ? 'b' : 'n'}
       style={{ position: 'fixed', zIndex: 90, top: 'calc(10px + env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', width: 'max-content', maxWidth: 'calc(100% - 32px)', display: 'flex', alignItems: 'center', gap: 10, padding: etat === 'serveur' ? '6px 14px 6px 6px' : '8px 16px', borderRadius: 999, fontSize: 14, fontWeight: 500, boxShadow: '0 12px 28px -12px rgba(8,59,52,.55)', background: ok ? '#0E5A4E' : '#15201E', color: '#FFFFFF' }}>
       <Icon size={18} aria-hidden style={{ flex: 'none', color: ok ? '#CDE5DD' : '#F2A93B' }} />
-      <span>{ok ? 'عاد الاتصال' : etat === 'hors-ligne' ? (bloque ? 'تُفتح هذه الصفحة عند عودة الاتصال' : 'لا اتصال بالإنترنت · تُعرض آخر بيانات محمّلة') : 'الخادم لا يستجيب'}</span>
+      <span>{t(ok ? 'عاد الاتصال' : etat === 'hors-ligne' ? (bloque ? 'تُفتح هذه الصفحة عند عودة الاتصال' : 'لا اتصال بالإنترنت · تُعرض آخر بيانات محمّلة') : 'الخادم لا يستجيب')}</span>
       {etat === 'serveur' && (
         <button type="button" onClick={() => window.dispatchEvent(new Event('mp:reessayer'))}
           style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 600, background: '#FFFFFF', color: '#15201E', border: 0, borderRadius: 999, padding: '0 14px', minHeight: 32, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-          إعادة المحاولة
+          {t('إعادة المحاولة')}
         </button>
       )}
     </div>

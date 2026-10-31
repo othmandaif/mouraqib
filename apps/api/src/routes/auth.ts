@@ -158,14 +158,14 @@ router.post('/mot-de-passe/oublie', limiter('oubli-ip', 60, 900), limiter('oubli
   if (enCours) { res.json({ ticket: enCours }); return }
   const ticket = randomBytes(24).toString('hex')
   await redisConnection.set(cleAttente, ticket, 'EX', 60)
-  const user = await prisma.user.findUnique({ where: { email: parse.data.email }, select: { id: true, email: true, prenom: true, statut: true, whatsappVerifie: true, whatsappNumero: true } })
+  const user = await prisma.user.findUnique({ where: { email: parse.data.email }, select: { id: true, email: true, prenom: true, statut: true, whatsappVerifie: true, whatsappNumero: true, langue: true } })
   const parWhatsapp = !!(user?.whatsappVerifie && user.whatsappNumero)
   // Demande d'inscription pas encore activée : pas de code (le compte ne peut pas encore se connecter)
   if (user && user.statut !== 'EN_ATTENTE' && (emailConfigure() || parWhatsapp)) {
     const code = randomInt(100000, 1000000).toString()
     await redisConnection.set(`reset:${ticket}`, JSON.stringify({ userId: user.id, code, essais: 0 }), 'EX', 600)
     await Promise.allSettled([
-      emailConfigure() ? envoyerEmail({ to: user.email, ...messageCodeReinitialisation(user.prenom, code) }) : null,
+      emailConfigure() ? envoyerEmail({ to: user.email, ...messageCodeReinitialisation(user.prenom, code, user.langue) }) : null,
       parWhatsapp ? whatsapp.envoyerCodeVerification(user.whatsappNumero!, code) : null,
     ])
   }
@@ -216,7 +216,7 @@ router.post('/activer', limiter('activation', 30, 900, (r) => r.body?.jeton), as
   res.json(await ouvrirSession(user, req, true))
 })
 
-async function ouvrirSession(user: { id: string; email: string; nom: string; prenom: string; role: string; doitChangerMdp?: boolean }, req: Request, seSouvenir?: boolean) {
+async function ouvrirSession(user: { id: string; email: string; nom: string; prenom: string; role: string; doitChangerMdp?: boolean; langue?: string }, req: Request, seSouvenir?: boolean) {
   const jours = seSouvenir === undefined ? 7 : seSouvenir ? 30 : 0.5
   // Se reconnecter pendant les 30 jours annule une demande de suppression
   await prisma.user.updateMany({ where: { id: user.id, suppressionDemandeeAt: { not: null } }, data: { suppressionDemandeeAt: null } })
@@ -238,7 +238,7 @@ async function ouvrirSession(user: { id: string; email: string; nom: string; pre
 
   return {
     token,
-    user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom, role: user.role, doitChangerMdp: !!user.doitChangerMdp },
+    user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom, role: user.role, doitChangerMdp: !!user.doitChangerMdp, langue: user.langue ?? 'ar' },
   }
 }
 
@@ -260,7 +260,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<
     select: {
       id: true, email: true, nom: true, prenom: true, telephone: true,
       whatsappNumero: true, whatsappVerifie: true, role: true,
-      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true, avatar: true,
+      deuxFacteurs: true, motDePasseChangeAt: true, doitChangerMdp: true, suppressionDemandeeAt: true, createdAt: true, barreau: true, avatar: true, langue: true,
       cabinet: { select: { id: true, nom: true } },
       // Champs choisis : la note interne du commercial ne doit pas arriver chez l'avocat
       abonnements: {
@@ -279,12 +279,13 @@ const ProfilSchema = z.object({
   telephone: champTelephone.optional(),
   // Photo déjà réduite par le navigateur (192 px) ; null = retirer
   avatar: z.string().max(300_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).nullable().optional(),
+  langue: z.enum(['ar', 'fr']).optional(),
 })
 
 router.patch('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
   const parse = ProfilSchema.safeParse(req.body)
   if (!parse.success) { res.status(400).json({ error: parse.error.flatten() }); return }
-  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true, avatar: true } })
+  const u = await prisma.user.update({ where: { id: req.userId! }, data: parse.data, select: { id: true, nom: true, prenom: true, telephone: true, barreau: true, avatar: true, langue: true } })
   res.json(u)
 })
 
@@ -326,7 +327,7 @@ router.patch('/deux-facteurs', requireAuth, async (req: AuthRequest, res: Respon
 
 // Paramètres › تصدير بياناتي : tout ce que l'avocat a saisi ou que nous avons calculé
 router.get('/export', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const [user, dossiers, documents, conversations, clients, factures, reglements] = await Promise.all([
+  const [user, dossiers, documents, conversations, clients, factures, reglements, memoire] = await Promise.all([
     prisma.user.findUnique({ where: { id: req.userId! }, select: { email: true, nom: true, prenom: true, telephone: true, whatsappNumero: true, createdAt: true, preferences: true } }),
     prisma.dossier.findMany({ where: { userId: req.userId! }, include: { evenements: true, echeances: true } }),
     prisma.document.findMany({ where: { userId: req.userId! } }),
@@ -334,9 +335,10 @@ router.get('/export', requireAuth, async (req: AuthRequest, res: Response): Prom
     prisma.client.findMany({ where: { userId: req.userId! }, include: { interactions: true } }),
     prisma.facture.findMany({ where: { userId: req.userId! } }),
     prisma.reglement.findMany({ where: { userId: req.userId! } }),
+    prisma.memoireAvocat.findMany({ where: { userId: req.userId! }, select: { type: true, texte: true, actif: true, createdAt: true } }), // mémoire de l'assistant
   ])
   res.setHeader('Content-Disposition', `attachment; filename="malafipro-export-${new Date().toISOString().slice(0, 10)}.json"`)
-  res.json({ exporteLe: new Date(), compte: user, dossiers, documents, conversations, clients, factures, reglements })
+  res.json({ exporteLe: new Date(), compte: user, dossiers, documents, conversations, clients, factures, reglements, memoire })
 })
 
 // Paramètres › حذف الحساب : suppression définitive 30 jours plus tard (purge dans le job des délais)
@@ -426,7 +428,7 @@ const ModifMembreSchema = z.object({ role: z.enum(['AVOCAT', 'SECRETAIRE']).opti
 
 /** Responsable du cabinet (ou avocat seul avec une offre cabinet, avant la création du cabinet). */
 async function responsable(req: AuthRequest) {
-  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, cabinetId: true, role: true } })
+  const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, nom: true, prenom: true, cabinetId: true, role: true, langue: true } })
   return me && (!me.cabinetId || me.role === 'ASSOCIE_GERANT') ? me : null
 }
 /** Membre du cabinet du responsable (jamais lui-même). */
@@ -460,6 +462,7 @@ router.post('/equipe/membres', requireAuth, async (req: AuthRequest, res: Respon
       data: {
         prenom: d.prenom, nom: d.nom, email: d.email, role: d.role, droitsRetires: d.droitsRetires, cabinetId,
         statut: 'ACTIF', activeAt: new Date(), passwordHash: await bcrypt.hash(provisoire, 12), doitChangerMdp: true,
+        langue: me.langue, // même langue que le responsable (modifiable ensuite dans ses Paramètres)
       },
       select: { id: true },
     })

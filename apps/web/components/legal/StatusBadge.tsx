@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/Badge'
+import { t as tr } from '@/lib/langue'
 
 type Status = 'en_cours' | 'nouveau' | 'audience' | 'critique' | 'clos'
 
@@ -8,11 +9,11 @@ interface StatusBadgeProps {
 }
 
 const STATUS_MAP: Record<Status, { label: string; variant: 'default' | 'accent' | 'success' | 'danger' | 'muted' }> = {
-  en_cours: { label: 'قيد المعالجة', variant: 'default' },
-  nouveau: { label: 'جديد', variant: 'accent' },
-  audience: { label: 'جلسة', variant: 'success' },
-  critique: { label: 'عاجل', variant: 'danger' },
-  clos: { label: 'مغلق', variant: 'muted' },
+  en_cours: { label: tr('قيد المعالجة'), variant: 'default' },
+  nouveau: { label: tr('جديد'), variant: 'accent' },
+  audience: { label: tr('جلسة'), variant: 'success' },
+  critique: { label: tr('عاجل'), variant: 'danger' },
+  clos: { label: tr('مغلق'), variant: 'muted' },
 }
 
 export function StatusBadge({ status, className = '' }: StatusBadgeProps) {

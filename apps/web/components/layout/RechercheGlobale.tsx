@@ -1,5 +1,6 @@
 'use client'
 
+import { t, tx } from '@/lib/langue'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, FolderOpen, Clock, Plus, FileText, Sparkles, CornerDownLeft, History, CalendarDays, AlarmClock } from 'lucide-react'
@@ -75,11 +76,11 @@ export function RechercheGlobale({ ouvert, onFermer }: { ouvert: boolean; onFerm
     const numerique = /^[\d/]+$/.test(q.trim())
     const aujourdhui = echeances.filter((x) => x.camp !== 'SURVEILLER' && joursRestants(x.dateLimite) <= 0).length
     const actions: Resultat[] = [
-      { groupe: 'اختصارات', cle: 'a-jour', Icon: AlarmClock, urgent: aujourdhui > 0, titre: 'آجال عليكم اليوم', sous: aujourdhui ? <><span className="num">{aujourdhui}</span> {aujourdhui === 1 ? 'أجل' : 'آجال'}</> : 'لا أجل ينتهي اليوم', aller: () => aller('/echeances') },
-      { groupe: 'اختصارات', cle: 'a-demain', Icon: CalendarDays, titre: 'جلسات الغد', sous: 'المفكرة', aller: () => aller('/calendrier') },
-      { groupe: 'إجراءات', cle: 'a-ajout', Icon: Plus, titre: 'إضافة ملف', sous: 'برقم الملف على بوابة محاكم', aller: () => aller('/dossiers?ajouter=1') },
-      { groupe: 'إجراءات', cle: 'a-doc', Icon: FileText, titre: 'صياغة وثيقة', sous: 'مقال، مذكرة، إنذار…', aller: () => aller('/documents') },
-      { groupe: 'إجراءات', cle: 'a-ia', Icon: Sparkles, titre: q ? <>اسألوا المساعد: «{q}»</> : 'سؤال للمساعد القانوني', aller: () => aller(q ? `/assistant?q=${encodeURIComponent(q)}` : '/assistant') },
+      { groupe: 'اختصارات', cle: 'a-jour', Icon: AlarmClock, urgent: aujourdhui > 0, titre: t('آجال عليكم اليوم'), sous: aujourdhui ? tx(aujourdhui === 1 ? '{n} أجل' : '{n} آجال', { n: <span className="num">{aujourdhui}</span> }) : t('لا أجل ينتهي اليوم'), aller: () => aller('/echeances') },
+      { groupe: 'اختصارات', cle: 'a-demain', Icon: CalendarDays, titre: t('جلسات الغد'), sous: t('المفكرة'), aller: () => aller('/calendrier') },
+      { groupe: 'إجراءات', cle: 'a-ajout', Icon: Plus, titre: t('إضافة ملف'), sous: t('برقم الملف على بوابة محاكم'), aller: () => aller('/dossiers?ajouter=1') },
+      { groupe: 'إجراءات', cle: 'a-doc', Icon: FileText, titre: t('صياغة وثيقة'), sous: t('مقال، مذكرة، إنذار…'), aller: () => aller('/documents') },
+      { groupe: 'إجراءات', cle: 'a-ia', Icon: Sparkles, titre: q ? tx('اسألوا المساعد: «{q}»', { q }) : t('سؤال للمساعد القانوني'), aller: () => aller(q ? `/assistant?q=${encodeURIComponent(q)}` : '/assistant') },
     ]
     // Sans saisie : les dossiers ouverts récemment d'abord (puis les derniers mouvements pour compléter).
     const estRecent = (x: DossierRech) => !mots.length && recentsD.some((r) => r.id === x.id)
@@ -93,7 +94,7 @@ export function RechercheGlobale({ ouvert, onFermer }: { ouvert: boolean; onFerm
       .slice(0, mots.length ? 5 : 3)
       .map<Resultat>((x) => {
         const j = joursRestants(x.dateLimite)
-        return { groupe: 'آجال عليكم', cle: `e-${x.id}`, Icon: Clock, urgent: j <= 2, titre: titreDelai(x), sous: <>ملف <span className="num">{x.dossier.numeroDossier}</span> · {j <= 0 ? 'اليوم' : <>بعد <span className="num">{j}</span> {unitJours(j)}</>}</>, aller: () => aller('/echeances') }
+        return { groupe: 'آجال عليكم', cle: `e-${x.id}`, Icon: Clock, urgent: j <= 2, titre: titreDelai(x), sous: <>{tx('ملف {n}', { n: <span className="num">{x.dossier.numeroDossier}</span> })} · {j <= 0 ? t('اليوم') : tx('بعد {n} {u}', { n: <span className="num">{j}</span>, u: unitJours(j) })}</>, aller: () => aller('/echeances') }
       })
     const filtreActions = mots.length ? actions.filter((a) => a.cle === 'a-ia' || correspond(String(a.titre), mots)) : actions
     const raccourcis = filtreActions.filter((a) => a.groupe === 'اختصارات')
@@ -115,22 +116,22 @@ export function RechercheGlobale({ ouvert, onFermer }: { ouvert: boolean; onFerm
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="بحث سريع" dir="rtl" onKeyDown={touche}
+    <div role="dialog" aria-modal="true" aria-label={t('بحث سريع')} onKeyDown={touche}
       style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '12vh 16px 16px' }}>
       <div onClick={onFermer} style={{ position: 'absolute', inset: 0, background: 'rgba(21,32,30,.45)' }} />
       <div style={{ position: 'relative', width: 'min(620px, 100%)', background: '#FFFFFF', borderRadius: 16, boxShadow: '0 30px 60px -20px rgba(8,59,52,.45)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '72vh' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', borderBottom: '1px solid #EEEAE1' }}>
           <Search size={20} color="#5E6B67" aria-hidden />
-          <span className="sr-only-ar">ابحثوا عن ملف أو أجل أو إجراء</span>
-          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="رقم ملف، اسم طرف، أجل…" role="combobox" aria-expanded="true" aria-controls="rg-liste" aria-activedescendant={resultats[actif] ? `rg-${resultats[actif].cle}` : undefined}
+          <span className="sr-only-ar">{t('ابحثوا عن ملف أو أجل أو إجراء')}</span>
+          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('رقم ملف، اسم طرف، أجل…')} role="combobox" aria-expanded="true" aria-controls="rg-liste" aria-activedescendant={resultats[actif] ? `rg-${resultats[actif].cle}` : undefined}
             style={{ flex: 1, minWidth: 0, fontFamily: 'inherit', fontSize: 17, border: 0, outline: 'none', boxShadow: 'none', minHeight: 58, background: 'transparent', color: '#15201E' }} />
           <kbd className="num" style={{ fontSize: 12, border: '1px solid #E4E0D6', borderRadius: 6, padding: '2px 6px', color: '#5E6B67' }}>Esc</kbd>
         </label>
         <ul id="rg-liste" role="listbox" style={{ listStyle: 'none', margin: 0, padding: 8, overflowY: 'auto' }}>
-          {resultats.length === 0 && <li style={{ padding: '18px 12px', color: '#5E6B67', fontSize: 15 }}>لا نتيجة. جرّبوا رقم الملف أو جزءاً منه.</li>}
+          {resultats.length === 0 && <li style={{ padding: '18px 12px', color: '#5E6B67', fontSize: 15 }}>{t('لا نتيجة. جرّبوا رقم الملف أو جزءاً منه.')}</li>}
           {resultats.map((r, i) => (<React.Fragment key={r.cle}>
             {r.groupe !== resultats[i - 1]?.groupe && (
-              <li role="presentation" style={{ padding: i ? '12px 12px 4px' : '4px 12px', fontSize: 12, fontWeight: 600, color: '#5E6B67' }}>{r.groupe}</li>
+              <li role="presentation" style={{ padding: i ? '12px 12px 4px' : '4px 12px', fontSize: 12, fontWeight: 600, color: '#5E6B67' }}>{t(r.groupe)}</li>
             )}
             <li id={`rg-${r.cle}`} role="option" aria-selected={i === actif} onMouseEnter={() => setActif(i)} onClick={r.aller}
               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', minHeight: 52, borderRadius: 12, cursor: 'pointer', background: i === actif ? '#E3F0EC' : 'transparent' }}>
@@ -144,7 +145,7 @@ export function RechercheGlobale({ ouvert, onFermer }: { ouvert: boolean; onFerm
           </React.Fragment>))}
         </ul>
         <div style={{ display: 'flex', gap: 16, padding: '8px 16px', borderTop: '1px solid #EEEAE1', fontSize: 12, color: '#5E6B67' }}>
-          <span><span className="num">↑ ↓</span> للتنقل</span><span><span className="num">Enter</span> للفتح</span>
+          <span><span className="num">↑ ↓</span> {t('للتنقل')}</span><span><span className="num">Enter</span> {t('للفتح')}</span>
         </div>
       </div>
     </div>

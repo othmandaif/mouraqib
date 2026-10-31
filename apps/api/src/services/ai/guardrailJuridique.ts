@@ -25,7 +25,7 @@ export async function verifierReponse(question: string, reponse: string, sources
     const v = await askDeepseek<Verdict>(
       SYSTEME,
       `سؤال المحامي:\n${question.slice(0, 2000)}\n\nالمصادر المقدَّمة للمساعد:\n${sources.slice(0, 6000) || '(لا توجد)'}\n\nجواب المساعد:\n${reponse.slice(0, 8000)}`,
-      { json: true, temperature: 0, maxTokens: 250 },
+      { json: true, temperature: 0, maxTokens: 250, timeoutMs: 15_000, tentatives: 1 }, // relecture : jamais plus de 15 s
     )
     return v && typeof v.ok === 'boolean' ? v : { ok: true }
   } catch (e) {
@@ -37,5 +37,5 @@ export async function verifierReponse(question: string, reponse: string, sources
 /** Consigne ajoutée pour réécrire la réponse en corrigeant le problème signalé. */
 export function consigneCorrection(probleme: string): string {
   return `راجع جوابك السابق وصحّحه. المشكلة التي رصدها المراجع: ${probleme}
-أعد كتابة الجواب كاملاً ومصحَّحاً، بنفس البنية والإيجاز، مع التوثيق بالمصادر، ودون الإشارة إلى أنه تصحيح.`
+أعد كتابة الجواب كاملاً ومصحَّحاً، بنفس اللغة والبنية والإيجاز، مع التوثيق بالمصادر، ودون الإشارة إلى أنه تصحيح.`
 }

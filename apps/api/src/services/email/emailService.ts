@@ -32,9 +32,10 @@ export async function envoyerEmail(m: { to: string; subject: string; html: strin
 const echapper = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 /** Code de réinitialisation du mot de passe (6 chiffres, 10 minutes). */
-export function messageCodeReinitialisation(prenom: string, code: string) {
+export function messageCodeReinitialisation(prenom: string, code: string, langue: string = 'ar') {
   const lisible = `${code.slice(0, 3)} ${code.slice(3)}`
   const p = echapper(prenom)
+  if (langue === 'fr') return messageCodeReinitialisationFr(p, prenom, lisible)
   return {
     subject: `رمز إعادة تعيين كلمة المرور: ${lisible} · MalafiPro`,
     text: `مرحباً ${prenom}،\n\nرمز إعادة تعيين كلمة المرور على ملفاتي: ${lisible}\nصالح لمدة 10 دقائق. لا تشاركوه مع أي أحد.\n\nإن لم تطلبوا هذا الرمز، تجاهلوا هذه الرسالة: كلمة مروركم لم تتغير.\n\nMalafiPro — ملفاتي`,
@@ -48,6 +49,25 @@ export function messageCodeReinitialisation(prenom: string, code: string) {
 <p dir="ltr" style="margin:0 0 16px;text-align:center;font-size:32px;font-weight:bold;letter-spacing:6px;color:#0E5A4E;background:#E3F0EC;border-radius:12px;padding:14px 0">${lisible}</p>
 <p style="margin:0 0 8px;color:#3B4A47">صالح لمدة 10 دقائق. لا تشاركوه مع أي أحد، ولن نطلبه منكم أبداً.</p>
 <p style="margin:0;color:#5E6B67;font-size:13px">إن لم تطلبوا هذا الرمز، تجاهلوا هذه الرسالة: كلمة مروركم لم تتغير.</p>
+</td></tr></table></td></tr></table></body></html>`,
+  }
+}
+
+/** Même message pour un compte réglé en français (Paramètres). */
+function messageCodeReinitialisationFr(p: string, prenom: string, lisible: string) {
+  return {
+    subject: `Code de réinitialisation du mot de passe : ${lisible} · MalafiPro`,
+    text: `Bonjour ${prenom},\n\nVotre code de réinitialisation du mot de passe MalafiPro : ${lisible}\nValable 10 minutes. Ne le communiquez à personne.\n\nSi vous n'avez pas demandé ce code, ignorez ce message : votre mot de passe n'a pas changé.\n\nMalafiPro`,
+    html: `<!doctype html><html lang="fr" dir="ltr"><body style="margin:0;background:#F5F3EE;font-family:Arial,sans-serif;color:#15201E">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F3EE;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border:1px solid #E4E0D6;border-radius:16px;overflow:hidden">
+<tr><td style="background:#083B34;padding:18px 24px;color:#FFFFFF;font-size:20px;font-weight:bold" align="left">MalafiPro</td></tr>
+<tr><td style="padding:24px;text-align:left;font-size:15px;line-height:1.7">
+<p style="margin:0 0 12px">Bonjour ${p},</p>
+<p style="margin:0 0 16px">Voici votre code de réinitialisation du mot de passe MalafiPro :</p>
+<p style="margin:0 0 16px;text-align:center;font-size:32px;font-weight:bold;letter-spacing:6px;color:#0E5A4E;background:#E3F0EC;border-radius:12px;padding:14px 0">${lisible}</p>
+<p style="margin:0 0 8px;color:#3B4A47">Valable 10 minutes. Ne le communiquez à personne : nous ne vous le demanderons jamais.</p>
+<p style="margin:0;color:#5E6B67;font-size:13px">Si vous n'avez pas demandé ce code, ignorez ce message : votre mot de passe n'a pas changé.</p>
 </td></tr></table></td></tr></table></body></html>`,
   }
 }

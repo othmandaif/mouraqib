@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api'
 import { useToast, TOAST_MS } from '@/components/Toast'
 import { Attente } from '@/components/ui/Chargement'
 import { useAuth, aDroit } from '@/hooks/useAuth'
+import { t as tr, langueCourante } from '@/lib/langue'
 
 export type Camp = 'AGIR' | 'SURVEILLER'
 export type RoleClient = 'DEMANDEUR' | 'DEFENDEUR' | 'INCONNU'
@@ -31,18 +32,20 @@ const debutJour = (t: Date) => new Date(t.getFullYear(), t.getMonth(), t.getDate
 export const joursRestants = (d: string) => Math.round((debutJour(new Date(d)) - debutJour(new Date())) / JOUR_MS)
 /** Le dernier jour tombe un samedi ou un dimanche : il faut en pratique agir avant. */
 export const finSemaine = (d: string) => { const j = new Date(d).getDay(); return j === 0 || j === 6 }
-export const titreDelai = (e: Pick<EcheanceItem, 'descriptionAr' | 'description' | 'typeDelai'>) => e.descriptionAr || e.description || e.typeDelai
+// description : libellé français calculé par l'API ; descriptionAr : le même en arabe
+export const titreDelai = (e: Pick<EcheanceItem, 'descriptionAr' | 'description' | 'typeDelai'>) =>
+  langueCourante() === 'fr' ? e.description || e.typeDelai : e.descriptionAr || e.description || e.typeDelai
 
 export function unitJours(j: number) {
-  if (j <= 0) return 'اليوم'
-  if (j === 1) return 'يوم'
-  if (j === 2) return 'يومان'
-  if (j <= 10) return 'أيام'
-  return 'يوماً'
+  if (j <= 0) return tr('اليوم')
+  if (j === 1) return tr('يوم')
+  if (j === 2) return tr('يومان')
+  if (j <= 10) return tr('أيام')
+  return tr('يوماً')
 }
 
-export const ROLE_AR: Record<RoleClient, string> = { DEMANDEUR: 'مدعٍ', DEFENDEUR: 'مدعى عليه', INCONNU: 'غير محدد' }
-export const roleTexte = (r?: RoleClient) => (r && r !== 'INCONNU' ? `موكلكم: ${r === 'DEMANDEUR' ? 'المدعي' : 'المدعى عليه'}` : '')
+export const ROLE_AR: Record<RoleClient, string> = { DEMANDEUR: tr('مدعٍ'), DEFENDEUR: tr('مدعى عليه'), INCONNU: tr('غير محدد') }
+export const roleTexte = (r?: RoleClient) => (r && r !== 'INCONNU' ? tr('موكلكم: {v0}', { v0: r === 'DEMANDEUR' ? tr('المدعي') : tr('المدعى عليه') }) : '')
 
 // Discipline du signal : rouge = à agir sous 48 h, ambre = sous 7 jours, sinon neutre.
 export function tone(j: number) {
@@ -55,7 +58,7 @@ export const TONE_WATCH = { bg: '#EEEAE1', fg: '#4D5B57' }
 const p2 = (n: number) => String(n).padStart(2, '0')
 export const fmtDate = (d: string | Date) => { const x = new Date(d); return `${p2(x.getDate())}/${p2(x.getMonth() + 1)}/${x.getFullYear()}` }
 export const fmtJM = (d: string | Date) => { const x = new Date(d); return `${p2(x.getDate())}/${p2(x.getMonth() + 1)}` }
-export const JOURS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+export const JOURS = [tr('الأحد'), tr('الإثنين'), tr('الثلاثاء'), tr('الأربعاء'), tr('الخميس'), tr('الجمعة'), tr('السبت')]
 export const jourSemaine = (d: string | Date) => JOURS[new Date(d).getDay()]
 /** mahakim donne souvent la date d'audience sans heure (00:00) : on n'affiche alors rien. */
 // 00:00 UTC = « date sans heure » (convention de l'API) ; sinon heure locale (Maroc)
@@ -101,11 +104,11 @@ export function useCompleteWithUndo(onDone: () => void) {
         onDone()
       } catch {
         montrer(e.id)
-        toast('تعذّر تسجيل الإنجاز، أعيدوا المحاولة.', 'error')
+        toast(tr('تعذّر تسجيل الإنجاز، أعيدوا المحاولة.'), 'error')
       }
     }, TOAST_MS)
-    toast(`سُجّل الإيداع: ${titreDelai(e)}`, 'success', {
-      label: 'تراجع',
+    toast(tr('سُجّل الإيداع: {v0}', { v0: titreDelai(e) }), 'success', {
+      label: tr('تراجع'),
       onClick: () => { clearTimeout(timers.current[e.id]); delete timers.current[e.id]; montrer(e.id) },
     })
   }
@@ -114,10 +117,10 @@ export function useCompleteWithUndo(onDone: () => void) {
   const rouvrir = async (e: EcheanceItem) => {
     try {
       await apiFetch(`/echeances/${e.id}/rouvrir`, { method: 'PATCH' })
-      toast(`أُعيد فتح الأجل: ${titreDelai(e)}`, 'info')
+      toast(tr('أُعيد فتح الأجل: {v0}', { v0: titreDelai(e) }), 'info')
       onDone()
     } catch {
-      toast('تعذّر إلغاء الإنجاز.', 'error')
+      toast(tr('تعذّر إلغاء الإنجاز.'), 'error')
     }
   }
   return { hidden, complete, rouvrir }
@@ -178,7 +181,7 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
     <div style={{ position: 'relative', borderRadius: 18, overflow: 'hidden' }}>
     {dx < 0 && (
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: dx <= -SEUIL ? '#0E5A4E' : '#E3F0EC', color: dx <= -SEUIL ? '#FFFFFF' : '#0E5A4E', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingInline: 20, gap: 8, fontWeight: 600 }}>
-        <Check size={20} aria-hidden /> تم الإيداع
+        <Check size={20} aria-hidden />{' '}{tr('تم الإيداع')}
       </div>
     )}
     <article {...glisse} style={{ position: 'relative', transform: dx ? `translateX(${dx}px)` : undefined, transition: dx ? 'none' : 'transform .2s ease', touchAction: 'pan-y', background: '#FFFFFF', border: t.border, borderRadius: 18, padding: 20, display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center' }}>
@@ -191,23 +194,23 @@ export function DeadlineCard({ e, tribunalAr, onComplete, onBasculer, attente }:
           {role ? ` · ${role}` : ''}
         </Link>
         {prog && (
-          <div role="img" aria-label={`مضى ${prog.jours} يوماً من ${prog.total}`} style={{ height: 6, borderRadius: 999, background: t.rail }}>
+          <div role="img" aria-label={tr('مضى {jours} يوماً من {total}', { jours: prog.jours, total: prog.total })} style={{ height: 6, borderRadius: 999, background: t.rail }}>
             <div style={{ width: `${prog.pct}%`, height: 6, borderRadius: 999, background: j <= 7 ? t.bg : '#0E5A4E' }} />
           </div>
         )}
         <span style={{ fontSize: 13, color: t.text }}>
-          {e.dateDepart && <>البداية <span className="num">{fmtJM(e.dateDepart)}</span> · </>}
-          آخر أجل {jourSemaine(e.dateLimite)} <span className="num">{fmtDate(e.dateLimite)}</span>
+          {e.dateDepart && <>{tr('البداية')}{' '}<span className="num">{fmtJM(e.dateDepart)}</span> · </>}
+          {tr('آخر أجل')}{' '}{jourSemaine(e.dateLimite)} <span className="num">{fmtDate(e.dateLimite)}</span>
         </span>
         {finSemaine(e.dateLimite) && j >= 0 && (
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#7A4E06' }}>آخر يوم يصادف عطلة نهاية الأسبوع: أودعوا قبل الجمعة.</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#7A4E06' }}>{tr('آخر يوم يصادف عطلة نهاية الأسبوع: أودعوا قبل الجمعة.')}</span>
         )}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {aDroit(user, 'IA') && <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden /> تحرير المقال</Link>}
-        <button type="button" onClick={() => onComplete(e)} style={BTN}><Check size={16} aria-hidden /> تم الإيداع</button>
+        {aDroit(user, 'IA') && <Link href={lienRediger(e)} style={j <= 2 ? BTN_DARK : BTN}><FileText size={16} aria-hidden />{' '}{tr('تحرير المقال')}</Link>}
+        <button type="button" onClick={() => onComplete(e)} style={BTN}><Check size={16} aria-hidden />{' '}{tr('تم الإيداع')}</button>
         {onBasculer && (
-          <button type="button" onClick={() => onBasculer(e)} disabled={attente} aria-busy={attente} title="هذا الأجل على الخصم" aria-label="نقل الأجل إلى «على الخصم»" style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center' }}>
+          <button type="button" onClick={() => onBasculer(e)} disabled={attente} aria-busy={attente} title={tr('هذا الأجل على الخصم')} aria-label={tr('نقل الأجل إلى «على الخصم»')} style={{ ...BTN, padding: 0, width: 44, justifyContent: 'center' }}>
             <Attente actif={!!attente} sombre><ArrowLeftRight size={16} aria-hidden /></Attente>
           </button>
         )}
@@ -227,15 +230,15 @@ export function WatchRow({ e, partie, onBasculer, attente }: { e: EcheanceItem; 
       <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <strong style={{ fontSize: 16, fontWeight: 600 }}>{titreDelai(e)}{partie ? ` · ${partie}` : ''}</strong>
         {prog && (
-          <div role="img" aria-label={`مضى ${prog.jours} يوماً من ${prog.total}`} style={{ height: 6, borderRadius: 999, background: '#EEEAE1' }}>
+          <div role="img" aria-label={tr('مضى {jours} يوماً من {total}', { jours: prog.jours, total: prog.total })} style={{ height: 6, borderRadius: 999, background: '#EEEAE1' }}>
             <div style={{ width: `${prog.pct}%`, height: 6, borderRadius: 999, background: '#4D5B57' }} />
           </div>
         )}
-        <span style={{ fontSize: 13, color: '#3B4A47' }}>ينتهي {jourSemaine(e.dateLimite)} <span className="num">{fmtDate(e.dateLimite)}</span>{e.typeDelai === 'OPPOSITION' ? ' · سننبهكم إن سُجّل تعرّض' : ''}</span>
+        <span style={{ fontSize: 13, color: '#3B4A47' }}>{tr('ينتهي')}{' '}{jourSemaine(e.dateLimite)} <span className="num">{fmtDate(e.dateLimite)}</span>{e.typeDelai === 'OPPOSITION' ? tr(' · سننبهكم إن سُجّل تعرّض') : ''}</span>
       </div>
       {onBasculer && (
         <button type="button" onClick={() => onBasculer(e)} disabled={attente} aria-busy={attente} style={{ ...BTN, fontSize: 13, minHeight: 40 }}>
-          <Attente actif={!!attente} texte="جارٍ النقل…" sombre><Eye size={15} aria-hidden /> هذا الأجل علينا</Attente>
+          <Attente actif={!!attente} texte={tr('جارٍ النقل…')} sombre><Eye size={15} aria-hidden />{' '}{tr('هذا الأجل علينا')}</Attente>
         </button>
       )}
     </div>

@@ -9,7 +9,7 @@ import { etatAbonnement } from './offres'
 export async function alerterFinsAbonnement(): Promise<number> {
   const abonnements = await prisma.abonnement.findMany({
     where: { statut: 'ACTIF', userId: { not: null } },
-    select: { userId: true, essaiJusquAu: true, payeJusquAu: true, dateFin: true, user: { select: { prenom: true, nom: true, telephone: true } } },
+    select: { userId: true, essaiJusquAu: true, payeJusquAu: true, dateFin: true, user: { select: { prenom: true, nom: true, telephone: true, langue: true } } },
   })
   let n = 0
   for (const a of abonnements) {
@@ -17,7 +17,12 @@ export async function alerterFinsAbonnement(): Promise<number> {
     if (!fin || (etat !== 'A_RENOUVELER' && etat !== 'GRACE')) continue
     const cle = `abonnement:fin:${fin.toISOString().slice(0, 10)}`
     if (await prisma.alerte.findFirst({ where: { userId: a.userId!, message: cle } })) continue
-    const texte = joursRestants! >= 0
+    // Texte dans la langue du compte (Paramètres)
+    const texte = a.user?.langue === 'fr'
+      ? joursRestants! >= 0
+        ? `Votre abonnement se termine dans ${joursRestants} jours. Contactez-nous pour le renouveler : les alertes ne s'arrêteront pas.`
+        : 'Votre abonnement est arrivé à échéance. Les alertes continuent temporairement : contactez-nous pour le renouveler.'
+      : joursRestants! >= 0
       ? `تنتهي فترة اشتراككم بعد ${joursRestants} أيام. تواصلوا معنا للتجديد، ولن تتوقف التنبيهات.`
       : 'انتهت فترة اشتراككم. التنبيهات مستمرة مؤقتاً، تواصلوا معنا للتجديد.'
     await prisma.alerte.create({

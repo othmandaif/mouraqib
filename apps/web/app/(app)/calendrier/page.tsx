@@ -13,6 +13,7 @@ import { useToast, useActionAnnulable } from '@/components/Toast'
 import { IconeRonde, EtatVide, IllusCalendrier } from '@/components/ui/Visuels'
 import { ErreurChargement, useEnvoi, Attente } from '@/components/ui/Chargement'
 import { joursRestants, fmtJM, heure, unitJours, JOURS, JOUR_MS } from '@/components/legal/DeadlineCard'
+import { t as tr } from '@/lib/langue'
 
 type Dossier = { id: string; numeroDossier: string; tribunal?: string; titreAffaire: string | null }
 interface Mois {
@@ -30,8 +31,8 @@ type Genre = 'audience' | 'agir' | 'surveiller' | 'rdv' | 'fait'
 type Item = { id: string; date: string; genre: Genre; court: string; texte: string; sous: string; dossierId?: string; rdvId?: string }
 type Vue = 'mois' | 'semaine' | 'liste'
 
-const MOIS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر']
-const ENTETES = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
+const MOIS_AR = [tr('يناير'), tr('فبراير'), tr('مارس'), tr('أبريل'), tr('ماي'), tr('يونيو'), tr('يوليوز'), tr('غشت'), tr('شتنبر'), tr('أكتوبر'), tr('نونبر'), tr('دجنبر')]
+const ENTETES = [tr('الإثنين'), tr('الثلاثاء'), tr('الأربعاء'), tr('الخميس'), tr('الجمعة'), tr('السبت'), tr('الأحد')]
 const cle = (d: Date | string) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}` }
 // Heure affichée seulement pour les jalons horaires : un délai court jusqu'à 23:59, son heure n'apporte rien
 const hItem = (it: Item) => (it.genre === 'audience' || it.genre === 'rdv' ? heure(it.date) : '')
@@ -39,11 +40,11 @@ const dateLongue = (d: string | Date) => { const x = new Date(d); return <><span
 
 // Conseils pratiques (un par jour, toujours le même pour une date donnée)
 const CONSEILS = [
-  'عندما يصادف آخر أجل يوم عطلة، تحققوا من التاريخ الذي يُعتمد في الحساب قبل الإيداع.',
-  'سجّلوا تاريخ التبليغ فور توصلكم به: هو الذي يحدد بداية أجل الطعن في أغلب الحالات.',
-  'أودعوا قبل آخر يوم بيوم على الأقل، تحسباً لأي طارئ في كتابة الضبط.',
-  'أجل الاستئناف في القضايا الاستعجالية أقصر من القضايا العادية: راجعوا نوع المسطرة.',
-  'راجعوا الأجندة كل صباح: الجلسات والآجال تُحدَّث تلقائياً من محاكم.',
+  tr('عندما يصادف آخر أجل يوم عطلة، تحققوا من التاريخ الذي يُعتمد في الحساب قبل الإيداع.'),
+  tr('سجّلوا تاريخ التبليغ فور توصلكم به: هو الذي يحدد بداية أجل الطعن في أغلب الحالات.'),
+  tr('أودعوا قبل آخر يوم بيوم على الأقل، تحسباً لأي طارئ في كتابة الضبط.'),
+  tr('أجل الاستئناف في القضايا الاستعجالية أقصر من القضايا العادية: راجعوا نوع المسطرة.'),
+  tr('راجعوا الأجندة كل صباح: الجلسات والآجال تُحدَّث تلقائياً من محاكم.'),
 ]
 
 // Style de chaque type d'élément (discipline du signal : rouge ≤ 48 h, ambre ≤ 7 j, seulement pour « عليكم »)
@@ -61,8 +62,8 @@ const CSS = `
 .cal-wd span{padding:12px 14px;font-size:14px;font-weight:600;color:#15201E}
 .cal-wk{border-bottom:1px solid #EEEAE1}
 .cal-wk:last-child{border-bottom:0}
-.cal-d{min-height:106px;padding:10px 8px 8px;border-left:1px solid #EEEAE1;display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;box-sizing:border-box;cursor:pointer;position:relative;transition:background .15s}
-.cal-d:last-child{border-left:0}
+.cal-d{min-height:106px;padding:10px 8px 8px;border-inline-end:1px solid #EEEAE1;display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;box-sizing:border-box;cursor:pointer;position:relative;transition:background .15s}
+.cal-d:last-child{border-inline-end:0}
 .cal-d:hover{background:#FAF8F4}
 .cal-d b{align-self:flex-start;font-size:14px;font-weight:600;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#15201E}
 .cal-d.out b{color:#9A958B;font-weight:400}
@@ -116,14 +117,14 @@ export default function CalendrierPage() {
   const items: Item[] = useMemo(() => {
     if (!data) return []
     return [
-      ...data.audiences.map((a) => ({ id: `a${a.id}`, date: a.date, genre: 'audience' as const, court: 'جلسة', texte: `جلسة · ${tribunalAr(a.dossier.tribunal)}`, sous: a.dossier.titreAffaire ?? a.dossier.numeroDossier, dossierId: a.dossier.id })),
+      ...data.audiences.map((a) => ({ id: `a${a.id}`, date: a.date, genre: 'audience' as const, court: tr('جلسة'), texte: tr('جلسة · {v0}', { v0: tribunalAr(a.dossier.tribunal) }), sous: a.dossier.titreAffaire ?? a.dossier.numeroDossier, dossierId: a.dossier.id })),
       ...data.echeances.map((e) => {
         const titre = e.titre.split(' - ')[0]
         const genre: Genre = e.estComplete ? 'fait' : e.camp === 'SURVEILLER' ? 'surveiller' : 'agir'
         return {
           id: `e${e.id}`, date: e.date, genre,
-          court: genre === 'fait' ? 'منجز' : genre === 'surveiller' ? 'أجل الخصم' : 'آخر أجل',
-          texte: genre === 'fait' ? `منجز · ${titre}` : genre === 'surveiller' ? `${titre} (الخصم)` : `آخر أجل · ${titre}`,
+          court: genre === 'fait' ? tr('منجز') : genre === 'surveiller' ? tr('أجل الخصم') : tr('آخر أجل'),
+          texte: genre === 'fait' ? tr('منجز · {titre}', { titre }) : genre === 'surveiller' ? tr('{titre} (الخصم)', { titre }) : tr('آخر أجل · {titre}', { titre }),
           sous: e.dossier.titreAffaire ?? e.dossier.numeroDossier, dossierId: e.dossier.id,
         }
       }),
@@ -186,11 +187,11 @@ export default function CalendrierPage() {
         titre: String(f.get('titre')), lieu: String(f.get('lieu') || '') || undefined,
         debut: new Date(`${date}T${h}:00`).toISOString(), dossierId: String(f.get('dossierId') || '') || undefined,
       }) })
-      toast('أُضيف الموعد إلى الأجندة.', 'success')
+      toast(tr('أُضيف الموعد إلى الأجندة.'), 'success')
       await refetch(); setForm(false)
-    } catch { toast('تعذّر إضافة الموعد. تحققوا من الحقول.', 'error') }
+    } catch { toast(tr('تعذّر إضافة الموعد. تحققوا من الحقول.'), 'error') }
   }
-  const supprimerRdv = (id: string) => differer([`r${id}`], 'حُذف الموعد.', () => apiFetch(`/calendrier/rendez-vous/${id}`, { method: 'DELETE' }), refetch)
+  const supprimerRdv = (id: string) => differer([`r${id}`], tr('حُذف الموعد.'), () => apiFetch(`/calendrier/rendez-vous/${id}`, { method: 'DELETE' }), refetch)
 
   // Pastille d'un élément dans la grille : icône + libellé court, heure dessous
   const Pastille = ({ it }: { it: Item }) => {
@@ -210,39 +211,39 @@ export default function CalendrierPage() {
   const navSuiv = vue === 'semaine' ? () => allerSemaine(1) : () => changerMois(1)
 
   return (
-    <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <style>{CSS}</style>
 
       {/* En-tête : titre + vues + action principale */}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CalendarDays size={28} strokeWidth={1.8} color="#0E5A4E" aria-hidden />الأجندة
+            <CalendarDays size={28} strokeWidth={1.8} color="#0E5A4E" aria-hidden />{tr('الأجندة')}
           </h1>
-          <p style={{ margin: 0, fontSize: 16, color: '#3B4A47' }}>الجلسات والآجال في مكان واحد، تُحدَّث من محاكم تلقائياً.</p>
+          <p style={{ margin: 0, fontSize: 16, color: '#3B4A47' }}>{tr('الجلسات والآجال في مكان واحد، تُحدَّث من محاكم تلقائياً.')}</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-          <div className="cal-seg" role="tablist" aria-label="طريقة العرض">
-            {([['mois', 'شهر', CalendarDays], ['semaine', 'أسبوع', CalendarRange], ['liste', 'قائمة', List]] as const).map(([k, l, Icon]) => (
+          <div className="cal-seg" role="tablist" aria-label={tr('طريقة العرض')}>
+            {([['mois', tr('شهر'), CalendarDays], ['semaine', tr('أسبوع'), CalendarRange], ['liste', tr('قائمة'), List]] as const).map(([k, l, Icon]) => (
               <button key={k} type="button" role="tab" aria-selected={vue === k} onClick={() => setVue(k)}><Icon size={16} strokeWidth={1.8} aria-hidden />{l}</button>
             ))}
           </div>
-          <button className="mp-action" type="button" onClick={() => setForm(true)} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 20px', minHeight: 46 }}><Plus size={18} aria-hidden />إضافة موعد</button>
+          <button className="mp-action" type="button" onClick={() => setForm(true)} style={{ ...BTN, gap: 8, fontSize: 15, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0, padding: '0 20px', minHeight: 46 }}><Plus size={18} aria-hidden />{tr('إضافة موعد')}</button>
         </div>
       </div>
 
       {form && (
         <form onSubmit={ajouterRdv} style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 16, padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, fontWeight: 600, gridColumn: '1 / -1' }}>الموعد<input name="titre" required minLength={2} placeholder="مثال: موعد مع موكل" style={INPUT} /></label>
-          <label style={LBL}>التاريخ<input name="date" type="date" required defaultValue={`${jourSel.getFullYear()}-${String(jourSel.getMonth() + 1).padStart(2, '0')}-${String(jourSel.getDate()).padStart(2, '0')}`} style={INPUT} /></label>
-          <label style={LBL}>الساعة<input name="heure" type="time" defaultValue="09:00" style={INPUT} /></label>
-          <label style={LBL}>المكان <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span><input name="lieu" style={INPUT} /></label>
-          <label style={LBL}>الملف <span style={{ fontWeight: 400, color: '#5E6B67' }}>(اختياري)</span>
-            <select name="dossierId" style={INPUT}><option value="">بدون ملف</option>{(dossiers ?? []).map((d) => <option key={d.id} value={d.id}>{d.titreAffaire ?? d.numeroDossier}</option>)}</select>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, fontWeight: 600, gridColumn: '1 / -1' }}>{tr('الموعد')}<input name="titre" required minLength={2} placeholder={tr('مثال: موعد مع موكل')} style={INPUT} /></label>
+          <label style={LBL}>{tr('التاريخ')}<input name="date" type="date" required defaultValue={`${jourSel.getFullYear()}-${String(jourSel.getMonth() + 1).padStart(2, '0')}-${String(jourSel.getDate()).padStart(2, '0')}`} style={INPUT} /></label>
+          <label style={LBL}>{tr('الساعة')}<input name="heure" type="time" defaultValue="09:00" style={INPUT} /></label>
+          <label style={LBL}>{tr('المكان')}{' '}<span style={{ fontWeight: 400, color: '#5E6B67' }}>{tr('(اختياري)')}</span><input name="lieu" style={INPUT} /></label>
+          <label style={LBL}>{tr('الملف')}{' '}<span style={{ fontWeight: 400, color: '#5E6B67' }}>{tr('(اختياري)')}</span>
+            <select name="dossierId" style={INPUT}><option value="">{tr('بدون ملف')}</option>{(dossiers ?? []).map((d) => <option key={d.id} value={d.id}>{d.titreAffaire ?? d.numeroDossier}</option>)}</select>
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="mp-action" type="submit" disabled={envoi === 'rdv'} aria-busy={envoi === 'rdv'} style={{ ...BTN, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0 }}><Attente actif={envoi === 'rdv'} texte="جارٍ الحفظ…">حفظ</Attente></button>
-            <button type="button" onClick={() => setForm(false)} style={BTN}>إلغاء</button>
+            <button className="mp-action" type="submit" disabled={envoi === 'rdv'} aria-busy={envoi === 'rdv'} style={{ ...BTN, background: 'var(--mp-action)', color: 'var(--mp-action-texte)', border: 0 }}><Attente actif={envoi === 'rdv'} texte={tr('جارٍ الحفظ…')}>{tr('حفظ')}</Attente></button>
+            <button type="button" onClick={() => setForm(false)} style={BTN}>{tr('إلغاء')}</button>
           </div>
         </form>
       )}
@@ -251,26 +252,26 @@ export default function CalendrierPage() {
       <section aria-label={`${MOIS_AR[mois]} ${annee}`} style={{ background: '#FFFFFF', border: '1px solid #E4E0D6', borderRadius: 18, overflow: 'hidden', boxShadow: '0 10px 30px -24px rgba(8,59,52,.35)' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button type="button" aria-label={vue === 'semaine' ? 'الأسبوع السابق' : 'الشهر السابق'} onClick={navPrec} style={ROND}><ChevronRight size={18} aria-hidden /></button>
+            <button type="button" aria-label={vue === 'semaine' ? tr('الأسبوع السابق') : tr('الشهر السابق')} onClick={navPrec} style={ROND}><ChevronRight size={18} aria-hidden /></button>
             <h2 style={{ margin: '0 4px', fontSize: 19, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarDays size={18} strokeWidth={1.8} color="#0E5A4E" aria-hidden />
               {vue === 'semaine' ? <><span className="num">{fmtJM(joursSemaine[0])}</span> — <span className="num">{fmtJM(joursSemaine[6])}</span></> : <>{MOIS_AR[mois]} <span className="num">{annee}</span></>}
             </h2>
-            <button type="button" aria-label={vue === 'semaine' ? 'الأسبوع التالي' : 'الشهر التالي'} onClick={navSuiv} style={ROND}><ChevronLeft size={18} aria-hidden /></button>
-            <button type="button" onClick={allerAujourdhui} style={{ ...BTN, color: '#0E5A4E', minHeight: 40, marginInlineStart: 4 }}>اليوم</button>
+            <button type="button" aria-label={vue === 'semaine' ? tr('الأسبوع التالي') : tr('الشهر التالي')} onClick={navSuiv} style={ROND}><ChevronLeft size={18} aria-hidden /></button>
+            <button type="button" onClick={allerAujourdhui} style={{ ...BTN, color: '#0E5A4E', minHeight: 40, marginInlineStart: 4 }}>{tr('اليوم')}</button>
           </div>
-          <div className="cal-leg" aria-label="دليل الألوان">
-            <span><i style={{ background: '#22476A' }} />جلسة</span>
-            <span><i style={{ background: '#C0392B' }} />أجل عليكم ≤ <span className="num">48</span> س</span>
-            <span><i style={{ background: '#F2A93B' }} />أجل عليكم ≤ <span className="num">7</span> أيام</span>
-            <span><i style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C' }} />أجل الخصم</span>
-            <span><i style={{ background: '#2E8B6E' }} />موعد</span>
+          <div className="cal-leg" aria-label={tr('دليل الألوان')}>
+            <span><i style={{ background: '#22476A' }} />{tr('جلسة')}</span>
+            <span><i style={{ background: '#C0392B' }} />{tr('أجل عليكم ≤')}{' '}<span className="num">48</span>{' '}{tr('س')}</span>
+            <span><i style={{ background: '#F2A93B' }} />{tr('أجل عليكم ≤')}{' '}<span className="num">7</span>{' '}{tr('أيام')}</span>
+            <span><i style={{ background: '#FFFFFF', border: '1.5px dashed #8C877C' }} />{tr('أجل الخصم')}</span>
+            <span><i style={{ background: '#2E8B6E' }} />{tr('موعد')}</span>
           </div>
         </div>
 
-        {!data && error && <div style={{ padding: 16, borderTop: '1px solid #EEEAE1' }}><ErreurChargement quoi="الأجندة" onReessayer={refetch} /></div>}
+        {!data && error && <div style={{ padding: 16, borderTop: '1px solid #EEEAE1' }}><ErreurChargement quoi={tr('الأجندة')} onReessayer={refetch} /></div>}
         {vue === 'mois' && (
-          <div className="cal-grid" role="grid" aria-label="أيام الشهر" style={{ borderTop: '1px solid #EEEAE1' }}>
+          <div className="cal-grid" role="grid" aria-label={tr('أيام الشهر')} style={{ borderTop: '1px solid #EEEAE1' }}>
             <div className="cal-wd" role="row">{ENTETES.map((j) => <span key={j} role="columnheader">{j}</span>)}</div>
             {semaines.map((sem, si) => (
               <div key={si} className="cal-wk" role="row">
@@ -280,7 +281,7 @@ export default function CalendrierPage() {
                   const cls = ['cal-d', !dansMois ? 'out' : '', cle(d) === cle(now) ? 'today' : '', cle(d) === cle(jourSel) ? 'sel' : ''].join(' ')
                   return (
                     <div key={cle(d)} className={cls} role="gridcell" tabIndex={0} aria-selected={cle(d) === cle(jourSel)} aria-current={cle(d) === cle(now) ? 'date' : undefined}
-                      aria-label={`${JOURS[d.getDay()]} ${d.getDate()} ${MOIS_AR[d.getMonth()]}${it.length ? `، ${it.length} عناصر` : ''}`}
+                      aria-label={`${JOURS[d.getDay()]} ${d.getDate()} ${MOIS_AR[d.getMonth()]}${it.length ? tr('، {length} عناصر', { length: it.length }) : ''}`}
                       onClick={() => setJourSel(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setJourSel(d) } }}>
                       <b className="num">{d.getDate()}</b>
                       {it.slice(0, 2).map((x) => <Pastille key={x.id} it={x} />)}
@@ -299,7 +300,7 @@ export default function CalendrierPage() {
               const it = parJour.get(cle(d)) ?? []
               const auj = cle(d) === cle(now)
               return (
-                <div key={i} style={{ borderLeft: i < 6 ? '1px solid #EEEAE1' : 0, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: auj ? '#F1F8F5' : '#FFFFFF' }}>
+                <div key={i} style={{ borderInlineEnd: i < 6 ? '1px solid #EEEAE1' : 0, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: auj ? '#F1F8F5' : '#FFFFFF' }}>
                   <span style={{ textAlign: 'center', fontSize: 12, color: '#3B4A47', padding: '6px 0', borderRadius: 10, background: auj ? '#0E5A4E' : '#F7F5F0', ...(auj ? { color: '#FFFFFF', fontWeight: 600 } : {}) }}>
                     <span className="num" style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{d.getDate()}</span>{ENTETES[(d.getDay() + 6) % 7]}
                   </span>
@@ -324,8 +325,8 @@ export default function CalendrierPage() {
           const debutAuj = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
           const liste = items.filter((x) => new Date(x.date).getMonth() === mois && (vue === 'liste' || new Date(x.date).getTime() >= debutAuj))
           return (
-            <ol className={vue === 'mois' ? 'cal-mob' : ''} aria-label="مواعيد الشهر" style={{ listStyle: 'none', margin: 0, padding: '4px 16px 16px', borderTop: '1px solid #EEEAE1', display: vue === 'liste' ? 'flex' : undefined, flexDirection: 'column', gap: 4 }}>
-              {liste.length === 0 && <li><EtatVide Icon={CalendarDays} texte="لا مواعيد في هذه الفترة." /></li>}
+            <ol className={vue === 'mois' ? 'cal-mob' : ''} aria-label={tr('مواعيد الشهر')} style={{ listStyle: 'none', margin: 0, padding: '4px 16px 16px', borderTop: '1px solid #EEEAE1', display: vue === 'liste' ? 'flex' : undefined, flexDirection: 'column', gap: 4 }}>
+              {liste.length === 0 && <li><EtatVide Icon={CalendarDays} texte={tr('لا مواعيد في هذه الفترة.')} /></li>}
               {liste.map((x, i) => {
                 const { cls, Icon } = styleEv(x)
                 return (
@@ -339,7 +340,7 @@ export default function CalendrierPage() {
                       <span style={{ fontSize: 14, fontWeight: x.genre === 'agir' ? 600 : 400 }}>{x.texte}</span>
                       {x.sous && <span style={{ fontSize: 12, color: '#5E6B67' }}>{x.sous}</span>}
                     </Link>
-                    {x.rdvId && <button type="button" aria-label="حذف الموعد" onClick={() => supprimerRdv(x.rdvId!)} style={{ ...ROND, width: 36, height: 36 }}><X size={14} aria-hidden /></button>}
+                    {x.rdvId && <button type="button" aria-label={tr('حذف الموعد')} onClick={() => supprimerRdv(x.rdvId!)} style={{ ...ROND, width: 36, height: 36 }}><X size={14} aria-hidden /></button>}
                   </li>
                 )
               })}
@@ -352,51 +353,51 @@ export default function CalendrierPage() {
       <div className="cal-cartes">
         <section className="cal-carte" aria-labelledby="c-aud">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 id="c-aud">الجلسة القادمة</h2>
+            <h2 id="c-aud">{tr('الجلسة القادمة')}</h2>
             <IconeRonde Icon={Scale} ton="bleu" taille={40} />
           </div>
           {aud ? (
             <>
               <strong style={{ fontSize: 16, fontWeight: 600 }}>{JOURS[new Date(aud.date).getDay()]} {dateLongue(aud.date)}</strong>
-              <span style={{ fontSize: 15 }}>ملف رقم <span className="num">{aud.dossier.numeroDossier}</span></span>
+              <span style={{ fontSize: 15 }}>{tr('ملف رقم')}{' '}<span className="num">{aud.dossier.numeroDossier}</span></span>
               <span style={{ fontSize: 14, color: '#3B4A47' }}>{aud.dossier.titreAffaire ? `${aud.dossier.titreAffaire} · ` : ''}{tribunalAr(aud.dossier.tribunal)}</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: '#22476A' }}>
-                  <Clock size={15} aria-hidden />{heure(aud.date) ? <span className="num">{heure(aud.date)}</span> : 'الساعة غير محددة'}
+                  <Clock size={15} aria-hidden />{heure(aud.date) ? <span className="num">{heure(aud.date)}</span> : tr('الساعة غير محددة')}
                 </span>
-                <Link href={`/dossiers/${aud.dossier.id}`} className="lien">فتح الملف<ChevronLeft size={16} aria-hidden /></Link>
+                <Link href={`/dossiers/${aud.dossier.id}`} className="lien">{tr('فتح الملف')}<ChevronLeft size={16} aria-hidden /></Link>
               </div>
             </>
-          ) : <EtatVide Icon={Scale} texte="لا جلسة مبرمجة حالياً." />}
+          ) : <EtatVide Icon={Scale} texte={tr('لا جلسة مبرمجة حالياً.')} />}
         </section>
 
         <section className="cal-carte" aria-labelledby="c-delai">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 id="c-delai">أقرب أجل عليكم</h2>
+            <h2 id="c-delai">{tr('أقرب أجل عليكم')}</h2>
             <IconeRonde Icon={Clock} taille={40} />
           </div>
           {delai ? (
             <>
               <strong style={{ fontSize: 16, fontWeight: 600, color: couleurDelai }}>{JOURS[new Date(delai.date).getDay()]} {dateLongue(delai.date)}</strong>
-              <span style={{ fontSize: 15 }}>ملف رقم <span className="num">{delai.dossier.numeroDossier}</span></span>
+              <span style={{ fontSize: 15 }}>{tr('ملف رقم')}{' '}<span className="num">{delai.dossier.numeroDossier}</span></span>
               <span style={{ fontSize: 14, color: '#3B4A47' }}>{delai.titre.split(' - ')[0]}</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto' }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: couleurDelai }}>
-                  {jDelai <= 0 ? 'آخر يوم: اليوم' : <>بعد <span className="num">{jDelai}</span> {unitJours(jDelai)}</>}
+                  {jDelai <= 0 ? tr('آخر يوم: اليوم') : <>{tr('بعد')}{' '}<span className="num">{jDelai}</span> {unitJours(jDelai)}</>}
                 </span>
-                <Link href="/echeances" className="lien">كل الآجال<ChevronLeft size={16} aria-hidden /></Link>
+                <Link href="/echeances" className="lien">{tr('كل الآجال')}<ChevronLeft size={16} aria-hidden /></Link>
               </div>
             </>
-          ) : <EtatVide Icon={CheckCircle2} texte="لا أجل مفتوح عليكم." />}
+          ) : <EtatVide Icon={CheckCircle2} texte={tr('لا أجل مفتوح عليكم.')} />}
         </section>
 
         <section className="cal-carte" aria-labelledby="c-jour">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 id="c-jour">{estAujourdhui ? 'اليوم' : JOURS[jourSel.getDay()]} · <span className="num">{fmtJM(jourSel)}</span></h2>
+            <h2 id="c-jour">{estAujourdhui ? tr('اليوم') : JOURS[jourSel.getDay()]} · <span className="num">{fmtJM(jourSel)}</span></h2>
             <IconeRonde Icon={ListChecks} taille={40} />
           </div>
           {duJour.length === 0 ? (
-            <EtatVide Icon={CalendarDays} texte="لا جلسة ولا أجل في هذا اليوم." action={<button type="button" onClick={() => setForm(true)} style={{ ...BTN, minHeight: 40, color: '#0E5A4E' }}><Plus size={16} aria-hidden />إضافة موعد</button>} />
+            <EtatVide Icon={CalendarDays} texte={tr('لا جلسة ولا أجل في هذا اليوم.')} action={<button type="button" onClick={() => setForm(true)} style={{ ...BTN, minHeight: 40, color: '#0E5A4E' }}><Plus size={16} aria-hidden />{tr('إضافة موعد')}</button>} />
           ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {duJour.map((x) => {
@@ -418,10 +419,10 @@ export default function CalendrierPage() {
       </div>
 
       {/* Conseil du jour */}
-      <section aria-label="معلومة اليوم" style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'linear-gradient(90deg, #E3F0EC, #F1F8F5)', border: '1px solid #CDE5DD', borderRadius: 16, padding: '14px 20px' }}>
+      <section aria-label={tr('معلومة اليوم')} style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'linear-gradient(90deg, #E3F0EC, #F1F8F5)', border: '1px solid #CDE5DD', borderRadius: 16, padding: '14px 20px' }}>
         <IconeRonde Icon={Lightbulb} ton="vert" taille={42} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <strong style={{ fontSize: 16, fontWeight: 600, color: '#0B4A40' }}>معلومة اليوم</strong>
+          <strong style={{ fontSize: 16, fontWeight: 600, color: '#0B4A40' }}>{tr('معلومة اليوم')}</strong>
           <span style={{ fontSize: 14, color: '#23443C', lineHeight: 1.7 }}>{conseil}</span>
         </div>
         <span className="cal-illus" style={{ flex: 'none', display: 'inline-flex' }}><IllusCalendrier taille={84} /></span>

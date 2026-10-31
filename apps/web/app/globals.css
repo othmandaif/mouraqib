@@ -161,3 +161,6 @@ button:disabled:not([aria-busy="true"]) { cursor: not-allowed; opacity: .6; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Français (ltr) : les flèches et chevrons « suivant / retour » pointent dans le sens de lecture */
+html[dir=ltr] .lucide-chevron-left,html[dir=ltr] .lucide-chevron-right,html[dir=ltr] .lucide-arrow-left,html[dir=ltr] .lucide-arrow-right{transform:scaleX(-1)}
