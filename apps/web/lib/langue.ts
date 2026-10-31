@@ -4,7 +4,7 @@
  *
  * - C'est un réglage du COMPTE (User.langue, modifié dans Paramètres). Une copie locale (localStorage) permet
  *   l'affichage immédiat et sert aux pages hors connexion ; useAuth la met à jour depuis le compte.
- * - Le sens de lecture est porté par <html dir> : appliqué avant l'affichage par le script de app/layout.tsx,
+ * - Le sens de lecture est porté par <html dir> : appliqué avant l'affichage par le script de components/layout/Racine.tsx,
  *   puis par changerLangue(). Les écrans n'écrivent plus dir="rtl" en dur.
  * - t('نص عربي', { n: 3 }) → texte français (lib/i18n/fr.ts) si la langue est « fr », sinon l'arabe.
  *   Les variables s'écrivent {n} dans les deux langues. tx() accepte des éléments React comme variables.
@@ -14,7 +14,7 @@ import { Fragment, createElement, useSyncExternalStore, type ReactNode } from 'r
 import { FR } from '@/lib/i18n/fr'
 
 export type Langue = 'ar' | 'fr'
-const CLE = 'malafipro_langue' // même clé que le script de app/layout.tsx
+const CLE = 'malafipro_langue' // même clé que le script de components/layout/Racine.tsx
 
 /** Langue courante hors composant (messages d'erreur, utilitaires). */
 export function langueCourante(): Langue {

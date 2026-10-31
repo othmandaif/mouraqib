@@ -1,16 +1,19 @@
+// Document HTML commun aux deux layouts racines :
+// - app/(site)/layout.tsx → <html lang="ar" dir="rtl"> (landing arabe, connexion, espace connecté) ;
+// - app/fr/layout.tsx     → <html lang="fr" dir="ltr"> (landing française et futures pages /fr/…).
+// lang/dir sont ainsi corrects dans le HTML envoyé par le serveur (SEO), sans attendre le JavaScript.
+// Passer d'une racine à l'autre (/ ↔ /fr) recharge la page entière : normal pour un changement de langue.
 import { EtatConnexion } from '@/components/layout/EtatConnexion'
 import { TitreTraduit } from '@/components/layout/TitreTraduit'
 import type { Metadata, Viewport } from 'next'
-import './globals.css'
+import { SITE } from '@/lib/pagesPubliques'
 
-// Langue choisie (lib/langue.ts, même clé) appliquée AVANT l'affichage : pas de saut arabe → français.
-// La landing a sa langue dans l'adresse (/ = arabe, /fr = français) : elle fixe aussi celle des pages
-// de connexion qui suivent (visiteur non connecté) ; une fois connecté, la langue du compte (Paramètres) l'emporte.
+// Mémorise la langue de la landing (/ = arabe, /fr = français) pour les pages de connexion qui suivent
+// (visiteur non connecté) ; ailleurs, applique la langue choisie (lib/langue.ts, même clé) avant l'affichage.
+// Ce script ne sert plus au SEO : sur / et /fr, lang/dir viennent déjà du serveur.
 const SCRIPT_LANGUE = `try{var p=location.pathname,l=p==='/fr'||p.indexOf('/fr/')===0?'fr':p==='/'?'ar':null;if(l){if(!localStorage.getItem('malafipro_token'))localStorage.setItem('malafipro_langue',l)}else l=localStorage.getItem('malafipro_langue');if(l==='fr'){document.documentElement.lang='fr';document.documentElement.dir='ltr'}}catch(e){}`
 
-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || 'https://malafipro.ma').replace(/\/$/, '')
-
-export const metadata: Metadata = {
+export const metadataRacine: Metadata = {
   metadataBase: new URL(SITE), // URLs absolues pour Open Graph, canonical et sitemap
   title: { default: 'MalafiPro — ملفاتي · متابعة ملفات المحاكم المغربية', template: '%s · MalafiPro — ملفاتي' },
   description: 'ملفاتي يتابع ملفاتكم على محاكم، يحسب آجال الطعن، وينبّهكم على واتساب قبل آخر أجل.',
@@ -33,12 +36,11 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: 'MalafiPro', statusBarStyle: 'default' },
 }
 
-export const viewport: Viewport = { themeColor: '#083B34', width: 'device-width', initialScale: 1, viewportFit: 'cover' }
+export const viewportRacine: Viewport = { themeColor: '#083B34', width: 'device-width', initialScale: 1, viewportFit: 'cover' }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export function Racine({ lang, children }: { lang: 'ar' | 'fr'; children: React.ReactNode }) {
   return (
-    // La langue choisie (français) est appliquée avant l'affichage par le script ci-dessous
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
+    <html lang={lang} dir={lang === 'fr' ? 'ltr' : 'rtl'} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_LANGUE }} />
         {/* Polices : connexion ouverte tôt + feuille chargée en parallèle (au lieu d'un @import bloquant dans le CSS) */}

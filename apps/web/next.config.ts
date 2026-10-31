@@ -15,7 +15,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   // Le proxy /api coupait à 30 s : génération d'actes et synchronisation peuvent durer plus longtemps
-  experimental: { proxyTimeout: 300_000 }, // 5 min : réponses longues de l'assistant (relecture juridique comprise) en local
+  // proxyTimeout 5 min : réponses longues de l'assistant (relecture juridique comprise) en local.
+  // globalNotFound : page 404 complète (app/global-not-found.tsx), nécessaire avec deux layouts racines (ar / fr).
+  experimental: { proxyTimeout: 300_000, globalNotFound: true },
   async headers() {
     return [{ source: '/:path*', headers: SECURITE }]
   },
