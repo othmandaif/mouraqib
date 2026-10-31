@@ -6,7 +6,7 @@ import { scraperQueue, nlpQueue, alertQueue, deadlineQueue, redisConnection } fr
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
-import { ESSAI_FONDATEUR_MOIS, etatAbonnement, prolonger, finCouverture } from '../services/abonnements/offres'
+import { ESSAI_FONDATEUR_JOURS, etatAbonnement, prolonger, finCouverture } from '../services/abonnements/offres'
 import { controleSecurite } from '../services/deadlines/controleSecurite'
 import { motDePasseProvisoire, champNom, champTelephone, emailAutorise } from '../services/auth/comptes'
 
@@ -165,7 +165,8 @@ router.post('/comptes', async (req: AuthRequest, res: Response): Promise<void> =
   if (!emailAutorise(d.email)) { res.status(400).json({ error: 'Adresse e-mail non acceptée' }); return }
   if (await prisma.user.findUnique({ where: { email: d.email } })) { res.status(409).json({ error: 'Email déjà utilisé' }); return }
   // prolonger() s'arrête au dernier jour du mois (31 janvier + 1 mois = 28/29 février, pas le 3 mars)
-  const essai = prolonger(null, d.essaiMois ?? (d.estFondateur ? ESSAI_FONDATEUR_MOIS : 1))
+    // Fondateur sans durée choisie : 20 jours offerts ; sinon le nombre de mois saisi (1 par défaut)
+  const essai = d.essaiMois != null ? prolonger(null, d.essaiMois) : d.estFondateur ? new Date(Date.now() + ESSAI_FONDATEUR_JOURS * 86_400_000) : prolonger(null, 1)
   const provisoire = motDePasseProvisoire()
   const user = await prisma.user.create({
     data: {
