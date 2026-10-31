@@ -4,7 +4,7 @@ import Link from 'next/link'
 import {
   Bell, Plus, Search, Clock, CalendarDays, Phone, Wallet, FolderOpen, WifiOff, PenLine, Users, Sparkles, FileText, Laptop,
   UsersRound, ShieldCheck, Cloud, HardDrive, RefreshCw, Check, X, ArrowLeft, ArrowRight, UserRound, Mail, Globe, Eye,
-  Lock, ScanText, Bot, FileType2, AlertTriangle, ListChecks, Landmark, Smartphone, Monitor, RefreshCcw, FileArchive, type LucideIcon,
+  ScanText, Bot, FileType2, AlertTriangle, ListChecks, Landmark, Smartphone, Monitor, RefreshCcw, FileArchive, type LucideIcon,
 } from 'lucide-react'
 import { ANCRES, BIENTOT, type Contenu } from './contenu'
 import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
@@ -83,7 +83,7 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
                   <div className="lp-mock-acte" dir="rtl" lang="ar">{t.mock.acte}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13 }}>
                     <span className="lp-puce menthe"><Sparkles size={14} />{t.mock.ia}</span>
-                    <span className="lp-puce ambre">{t.mock.delai} · <span className="num">30</span> {ar ? 'يوماً' : 'jours'}</span>
+                    <span className="lp-puce ambre">{t.mock.delai}</span>
                   </div>
                   <div className="lp-mock-delais">
                     <div className="agir"><span className="lp-compte"><b className="num">2</b><small>{ar ? 'يومان' : 'jours'}</small></span><span><strong>{t.mock.agir}</strong><small>{t.mock.delai}</small></span></div>
@@ -434,7 +434,6 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <a href={`mailto:${EMAIL}`}><Mail size={18} aria-hidden /><span dir="ltr">{EMAIL}</span></a>
               <a href={DEMO} target="_blank" rel="noopener noreferrer">{WA}<span className="num">{TEL}</span></a>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#9FC9BE' }}><Lock size={16} aria-hidden />{ar ? <>وفق القانون <span className="num">09.08</span></> : <>Conforme à la loi <span className="num">09-08</span></>}</span>
             </div>
           </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,.12)', paddingTop: 14, color: '#9FC9BE' }}>© <span className="num">{new Date().getFullYear()}</span> MalafiPro · {t.pied.droits}</div>

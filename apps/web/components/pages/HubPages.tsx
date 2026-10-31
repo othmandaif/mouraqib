@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import type { Langue } from '@/components/landing/contenu'
 import { PAGES_FONCTIONS, cheminPage } from '@/lib/pagesPubliques'
+import { cheminHub } from '@/lib/guidesPublics'
+import { UI_GUIDES } from '@/components/guides/contenu'
 import { PAGES, UI } from './contenu'
 import { CSS_PAGE } from './styles'
 
@@ -26,6 +28,9 @@ export function HubPages({ lang }: { lang: Langue }) {
             </Link>
           ))}
         </div>
+        <p className="lp-lead" style={{ margin: 0 }}>
+          <Link href={cheminHub(lang)} className="lp-lien">{UI_GUIDES[lang].guidesLien} — {UI_GUIDES[lang].hubH1}</Link>
+        </p>
       </div>
     </section>
   )

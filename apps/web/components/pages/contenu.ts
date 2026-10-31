@@ -11,6 +11,7 @@ export type Bloc = {
   cartes?: { h3: string; texte: string }[]
   puces?: string[]
   image?: { src: string; alt: string; w: number; h: number; legende: string }
+  lien?: { href: string; texte: string } // lien externe (ex. portail officiel), ouvert dans un nouvel onglet
 }
 export type Page = {
   nav: string // libellé court (liens, fil d'Ariane)
@@ -50,12 +51,17 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
     fr: {
       nav: 'Suivi mahakim',
       resume: 'Vos dossiers relus sur mahakim plusieurs fois par jour, sans ouvrir le portail.',
-      titre: 'Suivi automatique des dossiers mahakim | MalafiPro',
-      description: 'MalafiPro consulte mahakim à votre place : numéro de dossier et tribunal suffisent. Nouvel acte, délai à vérifier, alerte WhatsApp. Essai gratuit 20 jours.',
-      h1: 'Ne consultez plus mahakim dossier par dossier',
+      titre: 'Suivi Mahakim pour avocats : dossiers et alertes | MalafiPro',
+      description: 'Logiciel pour avocats : MalafiPro suit tous vos dossiers sur le portail mahakim, signale chaque nouvel acte et vous alerte sur WhatsApp. Essai gratuit 20 jours.',
+      h1: 'Le suivi Mahakim de tous vos dossiers, dans un seul outil',
       pastille: 'Suivi des dossiers',
       lead: 'MalafiPro lit à votre place les informations publiques de vos dossiers sur le portail mahakim et vous signale chaque nouvel acte. Vous saisissez le numéro du dossier et le tribunal : aucun compte mahakim à confier.',
       blocs: [
+        {
+          h2: 'MalafiPro et le portail officiel mahakim',
+          intro: 'Le portail mahakim est le service public et gratuit du ministère de la Justice pour consulter un dossier. MalafiPro est un logiciel privé et indépendant, conçu pour les avocats : il lit pour vous les informations publiques affichées sur le portail, pour tous vos dossiers à la fois, et les relie à votre agenda, vos clients et vos alertes.',
+          lien: { href: 'https://www.mahakim.ma', texte: 'Accéder au portail officiel mahakim.ma' },
+        },
         {
           h2: 'Pourquoi le suivi manuel coûte du temps',
           intro: 'Quand on plaide devant plusieurs juridictions, vérifier chaque dossier à la main revient à ouvrir le portail des dizaines de fois par semaine. Un renvoi ou une notification publiés en fin de journée peuvent passer inaperçus, alors qu’ils peuvent déplacer une audience ou faire courir un délai.',
@@ -94,12 +100,17 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
     ar: {
       nav: 'متابعة محاكم',
       resume: 'ملفاتكم تُفحص على بوابة محاكم عدة مرات في اليوم، دون أن تفتحوها.',
-      titre: 'متابعة ملفات محاكم تلقائياً للمحامي | ملفاتي',
-      description: 'ملفاتي يتابع ملفاتكم على بوابة محاكم بدل أن تفتحوها واحداً واحداً: يكفي رقم الملف والمحكمة، ويصلكم تنبيه عند أي إجراء جديد. تجربة مجانية 20 يوماً.',
-      h1: 'لا تفتحوا بوابة محاكم ملفاً ملفاً: ملفاتي يتابعها عنكم',
+      titre: 'تتبع ملفات المحاكم للمحامي تلقائياً | ملفاتي',
+      description: 'برنامج للمحامين: ملفاتي يتتبع كل ملفاتكم على بوابة محاكم، ويرصد كل إجراء جديد، وينبّهكم على واتساب. تجربة مجانية 20 يوماً.',
+      h1: 'تتبع ملفات المحاكم للمحامي: كل ملفاتكم في شاشة واحدة',
       pastille: 'متابعة الملفات',
       lead: 'ملفاتي يقرأ عنكم المعطيات العمومية لملفاتكم في بوابة محاكم ويخبركم بكل إجراء جديد. تُدخلون رقم الملف والمحكمة فقط، دون تسليم حسابكم في محاكم لأي جهة.',
       blocs: [
+        {
+          h2: 'ملفاتي وبوابة محاكم الرسمية',
+          intro: 'بوابة محاكم خدمة عمومية مجانية تابعة لوزارة العدل للاطلاع على الملفات. أما ملفاتي فبرنامج خاص ومستقل موجّه للمحامين: يقرأ عنكم المعطيات العمومية التي تعرضها البوابة، لكل ملفاتكم دفعة واحدة، ويربطها بأجندتكم وموكليكم وتنبيهاتكم.',
+          lien: { href: 'https://www.mahakim.ma', texte: 'الدخول إلى بوابة محاكم الرسمية mahakim.ma' },
+        },
         {
           h2: 'لماذا تأخذ المتابعة اليدوية كل هذا الوقت',
           intro: 'من يترافع أمام عدة محاكم يفتح البوابة عشرات المرات في الأسبوع. وقد يُنشر تأجيل أو تبليغ في آخر النهار فيمرّ دون أن يُلاحَظ، مع أنه قد يغيّر موعد الجلسة أو يبدأ معه أجل.',
@@ -310,7 +321,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
         {
           h2: 'بطاقة لكل موكل',
           cartes: [
-            { h3: 'الهوية ومعلومات الاتصال', texte: 'شخص ذاتي أو شركة: الاسم أو التسمية، بطاقة التعريف، رقم التعريف الموحد للمقاولة، السجل التجاري، الممثل، الهاتف، البريد والعنوان.' },
+            { h3: 'الهوية ومعلومات الاتصال', texte: 'شخص ذاتي أو شركة: الاسم أو التسمية، بطاقة التعريف، المعرّف المشترك للمقاولة (ICE)، السجل التجاري، الممثل، الهاتف، البريد والعنوان.' },
             { h3: 'ملفات مرتبطة بالموكل', texte: 'اربطوا الملفات بموكلها، فتجدون في شاشة واحدة كل ما تتولونه من أجله.' },
             { h3: 'سجل التواصل', texte: 'دوّنوا مراسلاتكم مع الموكل لتطّلعوا على تاريخها بنظرة واحدة قبل الاتصال به.' },
             { h3: 'الفواتير والأداءات', texte: 'تُربط فواتير الموكل وأداءاته ببطاقته.' },
@@ -406,7 +417,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
         {
           h2: 'من الفاتورة إلى الأداء',
           cartes: [
-            { h3: 'ترويسة باسمكم', texte: 'تُدخلون هويتكم المهنية مرة واحدة: الهيئة، العنوان، رقم التعريف الموحد للمقاولة، المعرّف الجبائي، الضريبة المهنية، الحساب البنكي وتذييل الصفحة. وتظهر في كل فاتورة.' },
+            { h3: 'ترويسة باسمكم', texte: 'تُدخلون هويتكم المهنية مرة واحدة: الهيئة، العنوان، المعرّف المشترك للمقاولة (ICE)، المعرّف الجبائي، الضريبة المهنية، الحساب البنكي وتذييل الصفحة. وتظهر في كل فاتورة.' },
             { h3: 'مسودة ثم إصدار', texte: 'تُعدّون الفاتورة مسودةً ثم تُصدرونها: يُمنح الرقم عند الإصدار ضمن سلسلة سنوية متصلة.' },
             { h3: 'الفاتورة الصادرة لا تُعدَّل', texte: 'لتصحيحها تُلغونها بفاتورة دائنة، فيبقى الأثر واضحاً.' },
             { h3: 'مجاميع محسوبة', texte: 'تُحسب المبالغ دون احتساب الرسوم، والضريبة على القيمة المضافة، والمبلغ الإجمالي من بنود الفاتورة.' },
@@ -434,7 +445,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
         { q: 'هل أصحّح فاتورة صدرت؟', r: 'لا، الفاتورة الصادرة لا تُعدَّل. تُلغى بفاتورة دائنة، ثم تُصدر فاتورة جديدة عند الحاجة.' },
         { q: 'هل الترقيم تلقائي؟', r: 'نعم، يُمنح الرقم عند الإصدار ضمن سلسلة سنوية متصلة خاصة بمكتبكم.' },
         { q: 'هل تستطيع الكتابة إلغاء فاتورة؟', r: 'إلغاء الفاتورة وحذف أي أداء يتطلبان صلاحية الحذف، وللمسؤول عن المكتب أن يسحبها من أي عضو.' },
-        { q: 'هل أفوتر شركة؟', r: 'نعم، فبطاقة الموكل تتضمن رقم التعريف الموحد للمقاولة والسجل التجاري والمعرّف الجبائي للشركة.' },
+        { q: 'هل أفوتر شركة؟', r: 'نعم، فبطاقة الموكل تتضمن المعرّف المشترك للمقاولة (ICE) والسجل التجاري والمعرّف الجبائي للشركة.' },
         { q: 'كيف أتتبع التسبيقات؟', r: 'الأداء غير المرتبط بفاتورة يُحفظ كتسبيق غير مخصَّص، ويظهر في الخلاصة.' },
       ],
       voir: ['clients', 'actes', 'alertes'],

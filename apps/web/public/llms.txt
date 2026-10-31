@@ -1,0 +1,31 @@
+# MalafiPro (ملفاتي)
+
+> MalafiPro est un logiciel marocain de gestion de cabinet d'avocat (SaaS), en arabe et en français. Il est indépendant du ministère de la Justice et du portail officiel mahakim.ma, qui reste un service public gratuit.
+
+Fichier expérimental destiné aux assistants IA. Il résume les pages publiques ; il ne remplace pas leur contenu.
+
+## Public
+Avocats et cabinets d'avocats au Maroc.
+
+## Fonctions disponibles
+- Suivi des dossiers : lecture des informations publiques affichées sur le portail mahakim, à partir du numéro de dossier et du tribunal, et signalement des nouveaux actes.
+- Délais et agenda : délais « à vous » et « à l'adversaire », agenda des audiences et des rendez-vous. Le délai affiché est une aide ; sa vérification reste celle de l'avocat.
+- Alertes WhatsApp : numéro vérifié, heures calmes, messages sans nom des parties, copie dans l'application.
+- Gestion des clients : fiche client, dossiers liés, historique des échanges, signal en cas de nom proche d'un client ou d'un adversaire.
+- Facturation : factures numérotées, avoirs, règlements, provisions, synthèse des impayés.
+- Assistant juridique IA en arabe : réponses avec les articles cités, résumé de dossier, mémoire contrôlable. Les questions sont traitées par un fournisseur d'IA externe.
+- Rédaction d'actes : 23 types d'actes en arabe préparés depuis le dossier, modification par discussion, export Word.
+
+## Pages principales
+- Accueil (arabe) : https://malafipro.ma/
+- Accueil (français) : https://malafipro.ma/fr
+- Suivi Mahakim pour avocats : https://malafipro.ma/fr/suivi-mahakim
+- Alertes WhatsApp et agenda : https://malafipro.ma/fr/alertes-whatsapp-avocat
+- Gestion des clients : https://malafipro.ma/fr/gestion-clients-avocat
+- Facturation et honoraires : https://malafipro.ma/fr/facturation-honoraires-avocat
+- Assistant juridique IA : https://malafipro.ma/fr/assistant-juridique-ia
+- Rédaction d'actes : https://malafipro.ma/fr/redaction-actes-avocat
+- Guides pratiques : https://malafipro.ma/fr/guides
+
+## Contact
+contact@malafipro.ma

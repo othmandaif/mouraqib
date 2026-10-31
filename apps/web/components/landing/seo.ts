@@ -10,13 +10,13 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 // Pas de mention du hors-ligne (encore « bientôt ») ni du prix fondateur (offre limitée) dans les extraits.
 const META = {
   ar: {
-    titre: 'ملفاتي MalafiPro — برنامج المحامي بالمغرب وآجال الطعن',
-    description: `ملفاتي يتابع ملفاتكم على بوابة محاكم، يحسب آجال الاستئناف والتعرض والنقض، وينبّهكم على واتساب قبل آخر أجل. تجربة مجانية ${PRIX.essaiJours} يوماً.`,
+    titre: 'برنامج تسيير مكتب المحاماة بالمغرب | ملفاتي MalafiPro',
+    description: `برنامج مغربي لتسيير مكتب المحاماة: تتبع ملفاتكم على بوابة محاكم، أجندة الجلسات، تنبيهات واتساب، الموكلون والأتعاب. تجربة مجانية ${PRIX.essaiJours} يوماً.`,
     alt: 'ملفاتي MalafiPro على حاسوب محامٍ في مكتبه', locale: 'ar_MA', autre: 'fr_MA', url: '/',
   },
   fr: {
-    titre: 'MalafiPro — Logiciel avocat au Maroc : mahakim et délais',
-    description: `MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation et vous alerte sur WhatsApp. Essai gratuit ${PRIX.essaiJours} jours.`,
+    titre: 'Logiciel de gestion de cabinet d’avocat au Maroc | MalafiPro',
+    description: `Logiciel marocain pour avocats : suivi des dossiers sur mahakim, agenda des audiences, alertes WhatsApp, clients et honoraires. Essai gratuit ${PRIX.essaiJours} jours.`,
     alt: 'MalafiPro sur l’ordinateur d’un avocat dans son cabinet', locale: 'fr_MA', autre: 'ar_MA', url: '/fr',
   },
 }
@@ -50,6 +50,8 @@ export function jsonLd(t: Contenu) {
     '@graph': [
       {
         '@type': 'Organization', '@id': `${SITE}/#organisation`, name: 'MalafiPro', alternateName: 'ملفاتي', url: SITE, logo: `${SITE}/icon-512.png`, email: EMAIL,
+        description: t.lang === 'ar' ? 'برنامج مغربي لتسيير مكاتب المحاماة، مستقل عن وزارة العدل وعن بوابة محاكم.' : 'Logiciel marocain de gestion de cabinet d’avocat, indépendant du ministère de la Justice et du portail mahakim.',
+        areaServed: { '@type': 'Country', name: 'Maroc' },
         contactPoint: { '@type': 'ContactPoint', telephone: TEL, email: EMAIL, contactType: 'sales', areaServed: 'MA', availableLanguage: ['ar', 'fr'] },
       },
       { '@type': 'WebSite', '@id': `${SITE}/#site`, url: SITE, name: 'MalafiPro — ملفاتي', inLanguage: ['ar', 'fr'], publisher: { '@id': `${SITE}/#organisation` } },

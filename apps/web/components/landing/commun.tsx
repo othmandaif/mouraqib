@@ -17,4 +17,3 @@ export const Logo = ({ sombre }: { sombre?: boolean }) => (
     <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 22, fontWeight: 600, color: sombre ? '#FFFFFF' : '#083B34' }}>Malafi<span style={{ fontWeight: 400 }}>Pro</span></span>
   </span>
 )
-

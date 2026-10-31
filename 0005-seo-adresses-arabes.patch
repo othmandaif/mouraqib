@@ -1,0 +1,115 @@
+From d701e00109b52cb9c12edb7f3f1f33216e191950 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 31 Oct 2026 18:31:46 +0000
+Subject: [PATCH] =?UTF-8?q?seo:=20adresses=20des=20pages=20arabes=20en=20?=
+ =?UTF-8?q?=C3=A9criture=20arabe?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Les six pages « fonction » arabes sont servies à une adresse en arabe (ex. /متابعة-ملفات-محاكم), pour les recherches en arabe.
+
+- lib/pagesPubliques.ts : `ar` = adresse publique arabe, `arRoute` = dossier interne latin, `encoder` / `cheminPage` encodent en UTF-8
+  (%D9%85…) pour les liens, canonical, hreflang, sitemap et JSON-LD
+- next.config.ts : réécriture adresse arabe → dossier latin, redirection 308 adresse latine → adresse arabe (une seule adresse par page)
+- components/pages/seo.ts : sitemap encodé
+- Dossiers internes laissés en lettres latines : Next.js 16 échoue au pré-rendu d'un dossier au nom arabe (« Invalid character »)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016UdfiS24mRYndmD73rypaM
+---
+ apps/web/components/pages/seo.ts |  6 +++---
+ apps/web/lib/pagesPubliques.ts   | 24 +++++++++++++++---------
+ apps/web/next.config.ts          |  8 ++++++++
+ 3 files changed, 26 insertions(+), 12 deletions(-)
+
+diff --git a/apps/web/components/pages/seo.ts b/apps/web/components/pages/seo.ts
+index e7d44aa..f7fcfee 100644
+--- a/apps/web/components/pages/seo.ts
++++ b/apps/web/components/pages/seo.ts
+@@ -1,7 +1,7 @@
+ // SEO des pages « fonction » : métadonnées (canonical, hreflang ar-MA / fr-MA / x-default) et données structurées.
+ import type { Metadata } from 'next'
+ import type { Langue } from '@/components/landing/contenu'
+-import { PAGES_FONCTIONS, SITE, cheminPage, type PageId } from '@/lib/pagesPubliques'
++import { PAGES_FONCTIONS, SITE, cheminPage, encoder, type PageId } from '@/lib/pagesPubliques'
+ import { PAGES, UI } from './contenu'
+ 
+ const LOCALE = { ar: { loc: 'ar_MA', autre: 'fr_MA' }, fr: { loc: 'fr_MA', autre: 'ar_MA' } } as const
+@@ -50,6 +50,6 @@ export function jsonLdPage(id: PageId, lang: Langue) {
+ 
+ /** Entrées du sitemap : une URL par langue, avec les alternates réciproques. */
+ export const entreesSitemap = () => PAGES_FONCTIONS.flatMap((p) => {
+-  const languages = { 'ar-MA': `${SITE}${p.ar}`, 'fr-MA': `${SITE}${p.fr}`, 'x-default': `${SITE}${p.ar}` }
+-  return [p.ar, p.fr].map((chemin) => ({ url: `${SITE}${chemin}`, lastModified: p.maj, changeFrequency: 'monthly' as const, priority: 0.7, alternates: { languages } }))
++  const languages = { 'ar-MA': `${SITE}${encoder(p.ar)}`, 'fr-MA': `${SITE}${encoder(p.fr)}`, 'x-default': `${SITE}${encoder(p.ar)}` }
++  return [p.ar, p.fr].map((chemin) => ({ url: `${SITE}${encoder(chemin)}`, lastModified: p.maj, changeFrequency: 'monthly' as const, priority: 0.7, alternates: { languages } }))
+ })
+diff --git a/apps/web/lib/pagesPubliques.ts b/apps/web/lib/pagesPubliques.ts
+index d82ab7d..84d9fc1 100644
+--- a/apps/web/lib/pagesPubliques.ts
++++ b/apps/web/lib/pagesPubliques.ts
+@@ -26,19 +26,25 @@ export const pagesConfiancePubliees = () => PAGES_CONFIANCE.filter((p) => p.publ
+ 
+ /**
+  * Pages « fonction » : une page par besoin réel du cabinet, en arabe (racine) et en français (/fr/…).
+- * Contenu : components/pages/contenu.ts. Chemins arabes en lettres latines (stables, faciles à partager).
++ * Contenu : components/pages/contenu.ts.
++ * `ar` = adresse PUBLIQUE en écriture arabe ; `arRoute` = dossier interne en lettres latines dans app/(site)/ (Next.js ne sait pas
++ * pré-générer un dossier au nom arabe : erreur « Invalid character »). next.config.ts réécrit `ar` vers `arRoute` et redirige
++ * `arRoute` vers `ar`, pour qu'une seule adresse existe. Dans le HTML, les liens, le sitemap et le JSON-LD, `ar` est encodé en
++ * UTF-8 (%D9%85…) comme l'attendent les moteurs : voir cheminPage.
+  * `maj` = date réelle de dernière modification du contenu (alimente le lastmod du sitemap).
+  */
+ export type PageId = 'suivi' | 'alertes' | 'clients' | 'facturation' | 'assistant' | 'actes'
+-export const PAGES_FONCTIONS: { id: PageId; ar: string; fr: string; maj: string }[] = [
+-  { id: 'suivi', ar: '/mutabaat-mahakim', fr: '/fr/suivi-mahakim', maj: '2026-10-31' },
+-  { id: 'alertes', ar: '/tanbihat-whatsapp', fr: '/fr/alertes-whatsapp-avocat', maj: '2026-10-31' },
+-  { id: 'clients', ar: '/idarat-almuwakkilin', fr: '/fr/gestion-clients-avocat', maj: '2026-10-31' },
+-  { id: 'facturation', ar: '/fawatir-wa-atab', fr: '/fr/facturation-honoraires-avocat', maj: '2026-10-31' },
+-  { id: 'assistant', ar: '/musaid-qanuni', fr: '/fr/assistant-juridique-ia', maj: '2026-10-31' },
+-  { id: 'actes', ar: '/tahrir-almaqalat', fr: '/fr/redaction-actes-avocat', maj: '2026-10-31' },
++export const PAGES_FONCTIONS: { id: PageId; ar: string; arRoute: string; fr: string; maj: string }[] = [
++  { id: 'suivi', ar: '/متابعة-ملفات-محاكم', arRoute: '/mutabaat-mahakim', fr: '/fr/suivi-mahakim', maj: '2026-10-31' },
++  { id: 'alertes', ar: '/تنبيهات-واتساب-للمحامي', arRoute: '/tanbihat-whatsapp', fr: '/fr/alertes-whatsapp-avocat', maj: '2026-10-31' },
++  { id: 'clients', ar: '/إدارة-الموكلين', arRoute: '/idarat-almuwakkilin', fr: '/fr/gestion-clients-avocat', maj: '2026-10-31' },
++  { id: 'facturation', ar: '/فواتير-المحامي-والأتعاب', arRoute: '/fawatir-wa-atab', fr: '/fr/facturation-honoraires-avocat', maj: '2026-10-31' },
++  { id: 'assistant', ar: '/مساعد-قانوني-بالذكاء-الاصطناعي', arRoute: '/musaid-qanuni', fr: '/fr/assistant-juridique-ia', maj: '2026-10-31' },
++  { id: 'actes', ar: '/تحرير-المقالات-القانونية', arRoute: '/tahrir-almaqalat', fr: '/fr/redaction-actes-avocat', maj: '2026-10-31' },
+ ]
+-export const cheminPage = (id: PageId, lang: 'ar' | 'fr') => PAGES_FONCTIONS.find((p) => p.id === id)![lang]
++/** Chemin d'une page, encodé en UTF-8 : à utiliser pour tout lien, canonical, hreflang, sitemap et JSON-LD. */
++export const encoder = (chemin: string) => encodeURI(chemin)
++export const cheminPage = (id: PageId, lang: 'ar' | 'fr') => encoder(PAGES_FONCTIONS.find((p) => p.id === id)![lang])
+ 
+ /** Métadonnées d'une page publique bilingue : canonical + hreflang ar-MA / fr-MA / x-default (version arabe). */
+ export function metaPagePublique(lang: 'ar' | 'fr', chemins: { ar: string; fr: string }, titre: string, description: string) {
+diff --git a/apps/web/next.config.ts b/apps/web/next.config.ts
+index e3458d2..728b025 100644
+--- a/apps/web/next.config.ts
++++ b/apps/web/next.config.ts
+@@ -1,4 +1,5 @@
+ import type { NextConfig } from 'next'
++import { PAGES_FONCTIONS } from './lib/pagesPubliques'
+ 
+ // En-têtes de sécurité pour toutes les pages (pas de CSP stricte : les styles en ligne de l'UI l'interdiraient)
+ const SECURITE = [
+@@ -21,8 +22,15 @@ const nextConfig: NextConfig = {
+   async headers() {
+     return [{ source: '/:path*', headers: SECURITE }]
+   },
++  // Pages « fonction » : l'adresse publique arabe (ex. /متابعة-ملفات-محاكم) est servie par le dossier interne latin (arRoute) ;
++  // l'adresse latine redirige vers l'arabe (une seule adresse par page : pas de contenu en double). Source : lib/pagesPubliques.ts
++  async redirects() {
++    return PAGES_FONCTIONS.map((p) => ({ source: p.arRoute, destination: encodeURI(p.ar), permanent: true }))
++  },
+   async rewrites() { 
+     return [
++      // source encodée (%D9%85…) : c'est la forme que Next compare au chemin demandé
++      ...PAGES_FONCTIONS.map((p) => ({ source: encodeURI(p.ar), destination: p.arRoute })),
+       {
+         source: '/api/:path*',
+         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/:path*`,
+-- 
+2.43.0
+

@@ -1,5 +1,9 @@
 import type { NextConfig } from 'next'
 import { PAGES_FONCTIONS } from './lib/pagesPubliques'
+import { GUIDES, HUB_GUIDES } from './lib/guidesPublics'
+
+// Pages publiques à adresse arabe servies par un dossier interne latin (pages « fonction », index et guides).
+const ROUTES_AR = [...PAGES_FONCTIONS, HUB_GUIDES, ...GUIDES]
 
 // En-têtes de sécurité pour toutes les pages (pas de CSP stricte : les styles en ligne de l'UI l'interdiraient)
 const SECURITE = [
@@ -25,12 +29,12 @@ const nextConfig: NextConfig = {
   // Pages « fonction » : l'adresse publique arabe (ex. /متابعة-ملفات-محاكم) est servie par le dossier interne latin (arRoute) ;
   // l'adresse latine redirige vers l'arabe (une seule adresse par page : pas de contenu en double). Source : lib/pagesPubliques.ts
   async redirects() {
-    return PAGES_FONCTIONS.map((p) => ({ source: p.arRoute, destination: encodeURI(p.ar), permanent: true }))
+    return ROUTES_AR.map((p) => ({ source: p.arRoute, destination: encodeURI(p.ar), permanent: true }))
   },
   async rewrites() { 
     return [
       // source encodée (%D9%85…) : c'est la forme que Next compare au chemin demandé
-      ...PAGES_FONCTIONS.map((p) => ({ source: encodeURI(p.ar), destination: p.arRoute })),
+      ...ROUTES_AR.map((p) => ({ source: encodeURI(p.ar), destination: p.arRoute })),
       {
         source: '/api/:path*',
         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/:path*`,

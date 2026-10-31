@@ -4,7 +4,7 @@
 // - CarteLumiere : bordure lumineuse qui suit la souris (style Animaster « hover border ») ;
 // - Tarifs : bascule mensuel/annuel avec pastille glissante et prix animé (style Vengeance UI pricing).
 // Tout respecte prefers-reduced-motion (MotionConfig reducedMotion="user").
-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import { useRef, useState, type ReactNode, type PointerEvent } from 'react'
 import { Check, MessageCircle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
 import { AR, FR, PRIX, type Langue } from './contenu'
@@ -25,9 +25,10 @@ export function Apparition({ children, delai = 0, className, style, as = 'div' }
 
 /** Titre dont les mots apparaissent un par un (pas de découpage en lettres : l'arabe est cursif). */
 export function MotsReveles({ texte, delai = 0, style }: { texte: string; delai?: number; style?: React.CSSProperties }) {
-  const reduit = useReducedMotion()
-  if (reduit) return <span style={style}>{texte}</span>
+  // Pas de rendu différent selon « réduire les animations » (le serveur ne connaît pas ce réglage : erreur d'hydratation #418).
+  // MotionConfig reducedMotion="user" supprime alors le déplacement, seule l'apparition en fondu reste.
   return (
+    <MotionConfig reducedMotion="user">
     <span style={style} aria-label={texte}>
       {texte.split(' ').map((mot, i) => (
         <motion.span key={i} aria-hidden style={{ display: 'inline-block', whiteSpace: 'pre' }}
@@ -37,6 +38,7 @@ export function MotsReveles({ texte, delai = 0, style }: { texte: string; delai?
         </motion.span>
       ))}
     </span>
+    </MotionConfig>
   )
 }
 

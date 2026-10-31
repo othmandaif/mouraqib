@@ -6,6 +6,8 @@ import { AR, FR, type Langue } from '@/components/landing/contenu'
 import { Logo, WA, EMAIL, TEL, lienWa } from '@/components/landing/commun'
 import { CSS } from '@/components/landing/styles'
 import { PAGES_FONCTIONS, cheminPage, pagesConfiancePubliees, type PageId } from '@/lib/pagesPubliques'
+import { GUIDES, cheminGuide, cheminHub } from '@/lib/guidesPublics'
+import { GUIDES_TEXTES, UI_GUIDES } from '@/components/guides/contenu'
 import { PAGES, UI } from './contenu'
 import { CSS_PAGE } from './styles'
 import { jsonLdPage } from './seo'
@@ -27,6 +29,8 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
   const DEMO = lienWa(t.wa.demo)
   // JSON-LD : « < » échappé pour qu'aucun texte ne puisse fermer la balise <script>
   const json = JSON.stringify(jsonLdPage(id, lang)).replace(/</g, '\\u003c')
+  // Guides qui renvoient vers cette page (maillage interne fonction ↔ guide)
+  const guides = GUIDES.filter((g) => GUIDES_TEXTES[lang][g.id].fonctions.some((f) => f.id === id))
 
   return (
     <div className="lp" lang={lang} dir={dir} style={{ background: '#F5F3EE', color: '#15201E', fontFamily: POLICE[lang] }}>
@@ -77,6 +81,7 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
             <section key={b.h2} aria-labelledby={`b${i}`} className="pg-bloc">
               <h2 id={`b${i}`} className="pg-h2">{b.h2}</h2>
               {b.intro && <p className="pg-texte">{b.intro}</p>}
+              {b.lien && <p className="pg-texte"><a href={b.lien.href} target="_blank" rel="noopener noreferrer" className="lp-lien">{b.lien.texte}</a></p>}
               {b.puces && (
                 <ul className="pg-puces">{b.puces.map((x) => <li key={x}><Check size={16} strokeWidth={3} color="#0E5A4E" aria-hidden /><span>{x}</span></li>)}</ul>
               )}
@@ -121,6 +126,13 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
                   <em>{ui.plus}<Fleche size={15} aria-hidden /></em>
                 </Link>
               ))}
+              {guides.map((g) => (
+                <Link key={g.id} href={cheminGuide(g.id, lang)} className="pg-lien-carte">
+                  <strong>{UI_GUIDES[lang].hubNav} · {GUIDES_TEXTES[lang][g.id].nav}</strong>
+                  <span>{GUIDES_TEXTES[lang][g.id].resume}</span>
+                  <em>{UI_GUIDES[lang].lire}<Fleche size={15} aria-hidden /></em>
+                </Link>
+              ))}
             </div>
           </section>
 
@@ -148,6 +160,7 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
             <nav aria-label={ar ? 'روابط' : 'Liens'} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', maxWidth: 560 }}>
               <Link href={accueil}>{ui.accueil}</Link>
               {PAGES_FONCTIONS.map((x) => <Link key={x.id} href={cheminPage(x.id, lang)}>{PAGES[x.id][lang].nav}</Link>)}
+              <Link href={cheminHub(lang)}>{UI_GUIDES[lang].guidesLien}</Link>
               {pagesConfiancePubliees().map((x) => <Link key={x.ar} href={ar ? x.ar : x.fr}>{ar ? x.titreAr : x.titreFr}</Link>)}
               <Link href="/register">{t.pied.liens.find(([h]) => h === '/register')?.[1]}</Link>
               <Link href={cheminPage(id, autre)} hrefLang={autre}>{t.autreLangue.label}</Link>

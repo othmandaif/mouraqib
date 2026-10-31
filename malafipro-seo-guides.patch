@@ -1,0 +1,1977 @@
+diff --git a/apps/web/app/(site)/(auth)/register/page.tsx b/apps/web/app/(site)/(auth)/register/page.tsx
+index 99947e1..8e8de77 100644
+--- a/apps/web/app/(site)/(auth)/register/page.tsx
++++ b/apps/web/app/(site)/(auth)/register/page.tsx
+@@ -71,7 +71,7 @@ export default function RegisterPage() {
+   const f = force(form.password)
+ 
+   return (
+-    <AuthSplit pied="لا نشارك بياناتكم مع أي طرف" aside={<>
++    <AuthSplit aside={<>
+       <p style={{ margin: 0, fontSize: 38, fontWeight: 600, lineHeight: 1.35, color: '#FFFFFF' }}>{t(invitation ? 'دقيقتان، ثم يعمل ملفاتي من أجلكم.' : 'اطلبوا حسابكم، ونتكفل بالباقي.')}</p>
+       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 16 }}>
+         {ETAPES.map((e, i) => (
+diff --git a/apps/web/app/(site)/adilla/[id]/page.tsx b/apps/web/app/(site)/adilla/[id]/page.tsx
+new file mode 100644
+index 0000000..dfeea82
+--- /dev/null
++++ b/apps/web/app/(site)/adilla/[id]/page.tsx
+@@ -0,0 +1,22 @@
++// Guide (arabe), servi à l'adresse publique /أدلة-المحامي/<slug-arabe> (réécriture dans next.config.ts).
++// Contenu dans components/guides/contenu.ar.ts
++import { notFound } from 'next/navigation'
++import { GuideSeo } from '@/components/guides/GuideSeo'
++import { metaGuide } from '@/components/guides/seo'
++import { GUIDES } from '@/lib/guidesPublics'
++
++export const dynamicParams = false
++export const generateStaticParams = () => GUIDES.map((g) => ({ id: g.id }))
++
++const trouver = (id: string) => GUIDES.find((g) => g.id === id)
++
++export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
++  const g = trouver((await params).id)
++  return g ? metaGuide(g.id, 'ar') : {}
++}
++
++export default async function Page({ params }: { params: Promise<{ id: string }> }) {
++  const g = trouver((await params).id)
++  if (!g) notFound()
++  return <GuideSeo id={g.id} lang="ar" />
++}
+diff --git a/apps/web/app/(site)/adilla/page.tsx b/apps/web/app/(site)/adilla/page.tsx
+new file mode 100644
+index 0000000..bfee37b
+--- /dev/null
++++ b/apps/web/app/(site)/adilla/page.tsx
+@@ -0,0 +1,9 @@
++// Index des guides (arabe), servi à l'adresse publique /أدلة-المحامي (réécriture dans next.config.ts)
++import { HubGuides } from '@/components/guides/GuideSeo'
++import { metaHub } from '@/components/guides/seo'
++
++export const metadata = metaHub('ar')
++
++export default function Page() {
++  return <HubGuides lang="ar" />
++}
+diff --git a/apps/web/app/fr/guides/[slug]/page.tsx b/apps/web/app/fr/guides/[slug]/page.tsx
+new file mode 100644
+index 0000000..fc90f92
+--- /dev/null
++++ b/apps/web/app/fr/guides/[slug]/page.tsx
+@@ -0,0 +1,21 @@
++// Guide (français) : /fr/guides/<slug>. Contenu dans components/guides/contenu.fr.ts
++import { notFound } from 'next/navigation'
++import { GuideSeo } from '@/components/guides/GuideSeo'
++import { metaGuide } from '@/components/guides/seo'
++import { GUIDES } from '@/lib/guidesPublics'
++
++export const dynamicParams = false
++export const generateStaticParams = () => GUIDES.map((g) => ({ slug: g.slugFr }))
++
++const trouver = (slug: string) => GUIDES.find((g) => g.slugFr === slug)
++
++export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
++  const g = trouver((await params).slug)
++  return g ? metaGuide(g.id, 'fr') : {}
++}
++
++export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
++  const g = trouver((await params).slug)
++  if (!g) notFound()
++  return <GuideSeo id={g.id} lang="fr" />
++}
+diff --git a/apps/web/app/fr/guides/page.tsx b/apps/web/app/fr/guides/page.tsx
+new file mode 100644
+index 0000000..cedff83
+--- /dev/null
++++ b/apps/web/app/fr/guides/page.tsx
+@@ -0,0 +1,9 @@
++// Index des guides (français) : contenu dans components/guides/
++import { HubGuides } from '@/components/guides/GuideSeo'
++import { metaHub } from '@/components/guides/seo'
++
++export const metadata = metaHub('fr')
++
++export default function Page() {
++  return <HubGuides lang="fr" />
++}
+diff --git a/apps/web/app/sitemap.ts b/apps/web/app/sitemap.ts
+index ba0e7d3..193a142 100644
+--- a/apps/web/app/sitemap.ts
++++ b/apps/web/app/sitemap.ts
+@@ -1,6 +1,7 @@
+ import type { MetadataRoute } from 'next'
+ import { MAJ_LANDING, SITE, pagesConfiancePubliees } from '@/lib/pagesPubliques'
+ import { entreesSitemap } from '@/components/pages/seo'
++import { entreesSitemapGuides } from '@/components/guides/seo'
+ 
+ // Pages indexables uniquement (/register est en noindex : absente du sitemap).
+ // lastmod = date réelle de modification du contenu (lib/pagesPubliques.ts), pas la date du build.
+@@ -11,6 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
+     { url: `${SITE}/`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 1, alternates: landing },
+     { url: `${SITE}/fr`, lastModified: MAJ_LANDING, changeFrequency: 'weekly', priority: 0.9, alternates: landing },
+     ...entreesSitemap(),
++    ...entreesSitemapGuides(),
+     ...pagesConfiancePubliees().flatMap((p) => [
+       { url: `${SITE}${p.ar}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
+       { url: `${SITE}${p.fr}`, lastModified: p.maj, changeFrequency: 'yearly' as const, priority: 0.3, alternates: langues(p.ar, p.fr) },
+diff --git a/apps/web/components/guides/GuideSeo.tsx b/apps/web/components/guides/GuideSeo.tsx
+new file mode 100644
+index 0000000..ef69bc3
+--- /dev/null
++++ b/apps/web/components/guides/GuideSeo.tsx
+@@ -0,0 +1,225 @@
++// Guides pratiques : page d'un guide (GuideSeo) et index des guides (HubGuides), en arabe ou en français.
++// Composants serveur : aucun JavaScript client, FAQ en <details>. Même habillage que les pages « fonction » (classes lp-* / pg-*).
++import Link from 'next/link'
++import type { ReactNode } from 'react'
++import { AlertTriangle, ArrowLeft, ArrowRight, Check, ExternalLink, Globe, Plus, UserRound } from 'lucide-react'
++import { AR, FR, type Langue } from '@/components/landing/contenu'
++import { Logo, WA, EMAIL, TEL, lienWa } from '@/components/landing/commun'
++import { CSS } from '@/components/landing/styles'
++import { CSS_PAGE } from '@/components/pages/styles'
++import { PAGES } from '@/components/pages/contenu'
++import { PAGES_FONCTIONS, cheminPage } from '@/lib/pagesPubliques'
++import { GUIDES, cheminGuide, cheminHub, type GuideId } from '@/lib/guidesPublics'
++import { GUIDES_TEXTES, UI_GUIDES } from './contenu'
++import { jsonLdGuide, jsonLdHub } from './seo'
++
++const POLICE = {
++  ar: "'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif",
++  fr: "'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif",
++}
++
++const CSS_GUIDE = `
++.gd-etapes{margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:10px;max-width:780px}
++.gd-etapes li{font-size:16px;line-height:1.85;color:#3B4A47;padding-inline-start:4px}
++.gd-note{margin:0;max-width:780px;font-size:15px;line-height:1.8;color:#7A4E06;background:#FDF8EC;border:1px solid #F2D49C;border-radius:12px;padding:12px 16px}
++.gd-meta{font-size:14px;color:#CFE5DD;margin:0}
++.gd-sources{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px;max-width:780px}
++.gd-sources li{display:flex;flex-direction:column;gap:2px;font-size:15px;line-height:1.75;color:#3B4A47}
++.gd-sources a{font-weight:600;color:#0E5A4E;display:inline-flex;align-items:center;gap:6px;text-decoration:underline;text-underline-offset:3px}
++`
++
++/** Habillage commun : en-tête (navigation, fil d'Ariane, H1, accroche), contenu, pied de page. */
++function Coquille({ lang, json, fil, pastille, h1, lead, meta, autre, children }: {
++  lang: Langue; json: object; fil: { nom: string; href?: string }[]; pastille: string; h1: string; lead: string; meta: string
++  autre: string; children: ReactNode
++}) {
++  const ar = lang === 'ar'
++  const t = ar ? AR : FR
++  const ui = UI_GUIDES[lang]
++  const accueil = ar ? '/' : '/fr'
++  const autreLang = ar ? 'fr' : 'ar'
++  const Fleche = ar ? ArrowLeft : ArrowRight
++  const DEMO = lienWa(t.wa.demo)
++  const script = JSON.stringify(json).replace(/</g, '\\u003c')
++  return (
++    <div className="lp" lang={lang} dir={ar ? 'rtl' : 'ltr'} style={{ background: '#F5F3EE', color: '#15201E', fontFamily: POLICE[lang] }}>
++      <style>{CSS}</style>
++      <style>{CSS_PAGE}</style>
++      <style>{CSS_GUIDE}</style>
++      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: script }} />
++
++      <header className="lp-hero lp-sec pg-hero">
++        <div className="lp-grille-fond" aria-hidden />
++        <div className="lp-wrap" style={{ position: 'relative' }}>
++          <nav aria-label={ar ? 'القائمة' : 'Menu'} className="lp-barre">
++            <Link href={accueil} aria-label="MalafiPro"><Logo sombre /></Link>
++            <div className="pg-nav">
++              <Link href={cheminPage('suivi', lang)}>{PAGES.suivi[lang].nav}</Link>
++              <Link href={cheminPage('alertes', lang)}>{PAGES.alertes[lang].nav}</Link>
++              <Link href={cheminHub(lang)} style={{ color: '#FFFFFF', fontWeight: 700 }}>{ui.hubNav}</Link>
++            </div>
++            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
++              <Link href={autre} hrefLang={autreLang} lang={autreLang} className="lp-langue" aria-label={t.autreLangue.label}>
++                <Globe size={17} aria-hidden /><span className="lp-langue-long">{t.autreLangue.label}</span><span className="lp-langue-court">{t.autreLangue.court}</span>
++              </Link>
++              <Link href="/login" rel="nofollow" className="lp-connexion"><UserRound size={18} aria-hidden /><span>{t.nav.connexion}</span></Link>
++            </div>
++          </nav>
++
++          <div className="pg-corps">
++            <ol className="pg-fil" aria-label={ui.fil}>
++              {fil.map((f, i) => (
++                <li key={f.nom} style={{ display: 'contents' }}>
++                  {i > 0 && <span aria-hidden>{ar ? '‹' : '›'}</span>}
++                  {f.href ? <Link href={f.href}>{f.nom}</Link> : <span aria-current="page">{f.nom}</span>}
++                </li>
++              ))}
++            </ol>
++            <span className="lp-pastille-hero" style={{ alignSelf: 'flex-start' }}><span className="lp-point" aria-hidden />{pastille}</span>
++            <h1 className="lp-h1" style={{ fontSize: 'clamp(30px, 4.2vw, 44px)' }}>{h1}</h1>
++            <p className="lp-sous" style={{ maxWidth: 720 }}>{lead}</p>
++            <p className="gd-meta">{meta}</p>
++          </div>
++        </div>
++      </header>
++
++      <main className="lp-sec pg-main">
++        <article className="lp-wrap pg-article">
++          {children}
++          <div className="lp-fin pg-cta">
++            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
++              <h2 className="lp-h2" style={{ color: '#FFFFFF', fontSize: 26 }}>{PAGES.suivi[lang].nav} · {PAGES.alertes[lang].nav}</h2>
++              <p style={{ margin: 0, fontSize: 16, color: '#CFE5DD' }}>{t.pied.slogan}</p>
++            </div>
++            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
++              <Link href="/register" className="lp-btn action mp-action">{ui.essai}<Fleche size={18} aria-hidden /></Link>
++              <a href={DEMO} target="_blank" rel="noopener noreferrer" className="lp-btn fantome">{WA}{ui.demo}</a>
++            </div>
++          </div>
++        </article>
++      </main>
++
++      <footer className="lp-pied">
++        <div className="lp-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
++          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start' }}>
++            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 420 }}>
++              <Logo sombre />
++              <p style={{ margin: 0, lineHeight: 1.8 }}>{t.pied.slogan}</p>
++            </div>
++            <nav aria-label={ar ? 'روابط' : 'Liens'} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', maxWidth: 560 }}>
++              <Link href={accueil}>{ar ? 'ملفاتي' : 'MalafiPro'}</Link>
++              {PAGES_FONCTIONS.map((x) => <Link key={x.id} href={cheminPage(x.id, lang)}>{PAGES[x.id][lang].nav}</Link>)}
++              <Link href={cheminHub(lang)}>{ui.guidesLien}</Link>
++              <Link href={autre} hrefLang={autreLang}>{t.autreLangue.label}</Link>
++            </nav>
++            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
++              <a href={`mailto:${EMAIL}`}><span dir="ltr">{EMAIL}</span></a>
++              <a href={DEMO} target="_blank" rel="noopener noreferrer">{WA}<span className="num">{TEL}</span></a>
++            </div>
++          </div>
++          <div style={{ borderTop: '1px solid rgba(255,255,255,.12)', paddingTop: 14, color: '#9FC9BE' }}>© <span className="num">{new Date().getFullYear()}</span> MalafiPro · {t.pied.droits}</div>
++        </div>
++      </footer>
++    </div>
++  )
++}
++
++function CarteGuide({ id, lang }: { id: GuideId; lang: Langue }) {
++  const g = GUIDES_TEXTES[lang][id]
++  const Fleche = lang === 'ar' ? ArrowLeft : ArrowRight
++  return (
++    <Link href={cheminGuide(id, lang)} className="pg-lien-carte">
++      <strong>{g.nav}</strong>
++      <span>{g.resume}</span>
++      <em>{UI_GUIDES[lang].lire}<Fleche size={15} aria-hidden /></em>
++    </Link>
++  )
++}
++
++export function GuideSeo({ id, lang }: { id: GuideId; lang: Langue }) {
++  const g = GUIDES_TEXTES[lang][id]
++  const ui = UI_GUIDES[lang]
++  const ar = lang === 'ar'
++  const Fleche = ar ? ArrowLeft : ArrowRight
++  return (
++    <Coquille
++      lang={lang} json={jsonLdGuide(id, lang)} pastille={g.pastille} h1={g.h1} lead={g.lead} meta={ui.mis} autre={cheminGuide(id, ar ? 'fr' : 'ar')}
++      fil={[{ nom: ar ? 'ملفاتي' : 'MalafiPro', href: ar ? '/' : '/fr' }, { nom: ui.hubNav, href: cheminHub(lang) }, { nom: g.nav }]}
++    >
++      {g.sections.map((s, i) => (
++        <section key={s.h2} aria-labelledby={`s${i}`} className="pg-bloc">
++          <h2 id={`s${i}`} className="pg-h2">{s.h2}</h2>
++          {s.paras?.map((x) => <p key={x} className="pg-texte">{x}</p>)}
++          {s.items && <div className="pg-grille">{s.items.map((c) => <div key={c.h3} className="pg-carte"><h3>{c.h3}</h3><p>{c.texte}</p></div>)}</div>}
++          {s.etapes && <ol className="gd-etapes">{s.etapes.map((x) => <li key={x}>{x}</li>)}</ol>}
++          {s.puces && <ul className="pg-puces">{s.puces.map((x) => <li key={x}><Check size={16} strokeWidth={3} color="#0E5A4E" aria-hidden /><span>{x}</span></li>)}</ul>}
++          {s.note && <p className="gd-note">{s.note}</p>}
++        </section>
++      ))}
++
++      <section aria-labelledby="fn" className="pg-bloc">
++        <h2 id="fn" className="pg-h2">{ui.fonctionsTitre}</h2>
++        <div className="pg-voir">
++          {g.fonctions.map((f) => (
++            <Link key={f.id} href={cheminPage(f.id, lang)} className="pg-lien-carte">
++              <strong>{PAGES[f.id][lang].nav}</strong>
++              <span>{f.texte}</span>
++              <em>{ui.aller}<Fleche size={15} aria-hidden /></em>
++            </Link>
++          ))}
++        </div>
++      </section>
++
++      <section aria-labelledby="faq" className="pg-bloc">
++        <h2 id="faq" className="pg-h2">{ui.faq}</h2>
++        <div className="lp-faq">
++          {g.faq.map(({ q, r }) => (
++            <details key={q} className="lp-carte">
++              <summary><h3>{q}</h3><Plus className="lp-chev" size={20} color="#0E5A4E" aria-hidden /></summary>
++              <p>{r}</p>
++            </details>
++          ))}
++        </div>
++        <p className="lp-avert"><AlertTriangle size={16} aria-hidden />{ui.avertissement}</p>
++      </section>
++
++      <section aria-labelledby="src" className="pg-bloc">
++        <h2 id="src" className="pg-h2">{ui.sources}</h2>
++        <p className="pg-texte">{ui.sourcesTexte}</p>
++        <ul className="gd-sources">
++          {g.sources.map((s) => (
++            <li key={s.url}>
++              <a href={s.url} target="_blank" rel="noopener noreferrer">{s.nom}<ExternalLink size={14} aria-hidden /></a>
++              <span>{s.usage}</span>
++            </li>
++          ))}
++        </ul>
++      </section>
++
++      <section aria-labelledby="lies" className="pg-bloc">
++        <h2 id="lies" className="pg-h2">{ui.lies}</h2>
++        <div className="pg-voir">{g.lies.map((x) => <CarteGuide key={x} id={x} lang={lang} />)}</div>
++        <p className="pg-texte"><Link href={cheminHub(lang)} className="lp-lien">{ui.guidesLien}</Link></p>
++      </section>
++    </Coquille>
++  )
++}
++
++export function HubGuides({ lang }: { lang: Langue }) {
++  const ui = UI_GUIDES[lang]
++  const ar = lang === 'ar'
++  return (
++    <Coquille
++      lang={lang} json={jsonLdHub(lang)} pastille={ui.hubPastille} h1={ui.hubH1} lead={ui.hubLead} meta={ui.mis} autre={cheminHub(ar ? 'fr' : 'ar')}
++      fil={[{ nom: ar ? 'ملفاتي' : 'MalafiPro', href: ar ? '/' : '/fr' }, { nom: ui.hubNav }]}
++    >
++      <section aria-label={ui.hubNav} className="pg-bloc">
++        <div className="pg-hub">{GUIDES.map((x) => <CarteGuide key={x.id} id={x.id} lang={lang} />)}</div>
++      </section>
++      <section aria-labelledby="crit" className="pg-bloc pg-limites">
++        <h2 id="crit" className="pg-h2">{ar ? 'كيف نكتب هذه الأدلة' : 'Comment ces guides sont rédigés'}</h2>
++        <ul className="pg-puces">{ui.hubCriteres.map((x) => <li key={x}><AlertTriangle size={16} aria-hidden /><span>{x}</span></li>)}</ul>
++      </section>
++    </Coquille>
++  )
++}
+diff --git a/apps/web/components/guides/contenu.ar.ts b/apps/web/components/guides/contenu.ar.ts
+new file mode 100644
+index 0000000..caea917
+--- /dev/null
++++ b/apps/web/components/guides/contenu.ar.ts
+@@ -0,0 +1,481 @@
++// الأدلة العملية بالعربية (6). Rédigés en arabe (pas de traduction littérale du français). Règles : voir ./contenu.ts.
++// VALIDATION : les points à faire valider par un avocat sont listés dans claude/GUIDES_SEO_VALIDATION.md.
++import type { Guide, Source } from './contenu'
++import type { GuideId } from '@/lib/guidesPublics'
++
++const SRC: Record<string, Source> = {
++  mahakim: { nom: 'بوابة محاكم', url: 'https://www.mahakim.ma', usage: 'الخدمة الرسمية لتتبع الملفات: الخانات والتسميات المحيّنة.' },
++  justice: { nom: 'وزارة العدل', url: 'https://www.justice.gov.ma', usage: 'معلومات رسمية عن الخدمات الإلكترونية للمحاكم.' },
++  sgg: { nom: 'الأمانة العامة للحكومة (الجريدة الرسمية)', url: 'https://www.sgg.gov.ma', usage: 'النصوص الرسمية للقوانين، ومنها القانون رقم 58.25 (الجريدة الرسمية عدد 7485 بتاريخ 23 فبراير 2026).' },
++  cndp: { nom: 'اللجنة الوطنية لمراقبة حماية المعطيات ذات الطابع الشخصي', url: 'https://www.cndp.ma', usage: 'الهيئة المحدثة بموجب القانون 09.08: التصريح، الإذن المسبق، النقل إلى الخارج.' },
++  dgi: { nom: 'المديرية العامة للضرائب', url: 'https://www.tax.gov.ma', usage: 'المدونة العامة للضرائب وواجبات الفوترة.' },
++  cassation: { nom: 'كتابة الضبط بمحكمة النقض', url: 'https://greffe.courdecassation.ma', usage: 'البحث عن ملف معروض على محكمة النقض.' },
++}
++
++export const GUIDES_AR: Record<GuideId, Guide> = {
++  // ─────────────────────────── 1. تتبع ملف عبر بوابة محاكم ───────────────────────────
++  'suivi-mahakim': {
++    nav: 'تتبع ملف عبر بوابة محاكم',
++    resume: 'المعطيات الواجب جمعها، خطوات البحث، والأخطاء التي توهم بأن الملف غير موجود.',
++    titre: 'تتبع ملف قضائي عبر بوابة محاكم: دليل عملي للمحامي',
++    description: 'خطوات تتبع ملف على بوابة محاكم الرسمية: المعطيات الواجب توفرها، أخطاء شائعة في إدخال رقم الملف، وطريقة تنظيم متابعة عشرات الملفات داخل المكتب.',
++    h1: 'كيف تتبع ملفاً قضائياً عبر بوابة محاكم؟',
++    pastille: 'دليل عملي',
++    lead: 'تتيح بوابة محاكم الرسمية، وهي خدمة مجانية، الاطلاع على مآل الملف وتواريخ جلساته. يشرح هذا الدليل ما ينبغي جمعه قبل البحث، وكيف تتفادون أخطاء الإدخال، وكيف تنظمون المتابعة حين تتجاوز ملفاتكم العشرات. ملفاتي، ناشر هذا الدليل، برنامج مستقل وليس البوابة الرسمية.',
++    sections: [
++      {
++        h2: 'ما الذي تتيحه بوابة محاكم',
++        paras: [
++          'بوابة محاكم هي بوابة الخدمات الإلكترونية للمحاكم التابعة لوزارة العدل. وتصف الوزارة خدمة التتبع بأنها تمكّن من الاطلاع على الملف وتواريخ جلساته والقاضي المعيّن للبت فيه، انطلاقاً من رقم الملف.',
++          'فائدتها للمحامي واضحة: معرفة مآل الملف دون التنقل إلى كتابة الضبط. وحدودها واضحة كذلك: تعرض البوابة الوضع المعروف لحظة الاطلاع، وقد لا يظهر فيها إجراء حديث جداً بعد.',
++        ],
++      },
++      {
++        h2: 'اجمعوا المعطيات الصحيحة قبل البحث',
++        items: [
++          { h3: 'المحكمة بدقة', texte: 'المحكمة الابتدائية، المحكمة التجارية، المحكمة الإدارية، محكمة الاستئناف، محكمة النقض: تطلب البوابة اختيار المحكمة، والخطأ هنا يجعل الملف «غير موجود» مع أنه قائم.' },
++          { h3: 'نوع القضية', texte: 'مدنية، تجارية، أسرية، زجرية، إدارية: اختاروا النوع المطابق لما هو مدوّن في الاستدعاء أو في وصل الإيداع.' },
++          { h3: 'رقم الملف كاملاً', texte: 'يتكون الرقم عادة من رقم ترتيبي ورمز وسنة. انقلوه كما هو في الوثيقة الإجرائية، ولا تعيدوا تركيبه من الذاكرة.' },
++          { h3: 'الرقم الصحيح في مرحلة الاستئناف', texte: 'حين ينتقل الملف إلى الاستئناف يأخذ رقماً خاصاً بمحكمة الاستئناف. احتفظوا بالرقمين معاً في بطاقة الملف.' },
++        ],
++      },
++      {
++        h2: 'خطوات البحث',
++        etapes: [
++          'افتحوا خدمة تتبع الملفات في البوابة.',
++          'اختاروا المحكمة.',
++          'اختاروا نوع القضية إن طلبته البوابة.',
++          'أدخلوا رقم الملف (الرقم والرمز والسنة) في الخانات المخصصة.',
++          'أطلقوا البحث واقرؤوا البطاقة المعروضة: آخر إجراء، الجلسة المقبلة، الأطراف.',
++          'دوّنوا النتيجة وتاريخ الاطلاع في سجلكم الخاص.',
++        ],
++        note: 'الخانات وترتيبها وتسمياتها هي ما كانت عليه البوابة عند كتابة هذا الدليل (أكتوبر 2026) وقد تتغير: اتبعوا دائماً ما تعرضه البوابة.',
++      },
++      {
++        h2: 'ما ينبغي تدوينه من النتيجة',
++        puces: [
++          'تاريخ الجلسة المقبلة وساعتها والهيئة المعنية.',
++          'آخر إجراء مسجّل: تأخير، حجز للمداولة، حكم، تبليغ.',
++          'تاريخ هذا الإجراء، لأنه المرجع لما بعده.',
++          'وضع الملف في سجلكم: «إجراء مطلوب» أو «تحت المراقبة» أو «منتهٍ».',
++        ],
++        paras: ['لا تفترضوا أن معلومة معروضة في البوابة ترتّب آثار التبليغ: راجعوا وثائق الملف والنصوص المطبقة قبل اعتماد أي تاريخ.'],
++      },
++      {
++        h2: 'خدمات رسمية أخرى مفيدة',
++        items: [
++          { h3: 'جدول الجلسات', texte: 'تقترح وزارة العدل أيضاً خدمة للاطلاع على جدول الجلسات، تفيد في التأكد مما هو مبرمج في يوم معيّن.' },
++          { h3: 'محكمة النقض', texte: 'يُبحث عن الملف المعروض على محكمة النقض في بوابة كتابة الضبط بهذه المحكمة، باختيار المحكمة الأصلية وإدخال الرقم الاستئنافي ونوع الملف.' },
++        ],
++      },
++      {
++        h2: 'أخطاء توهم بأن الملف غير موجود',
++        puces: [
++          'اختيار محكمة خاطئة، كالمحكمة الابتدائية بدل المحكمة التجارية.',
++          'إدخال رقم المرحلة الابتدائية لملف أصبح في الاستئناف.',
++          'قلب السنة أو الرمز، أو الخطأ في نقلهما.',
++          'ملف حديث جداً لم يُسجَّل بعد.',
++          'اختيار نوع قضية غير مناسب.',
++        ],
++      },
++      {
++        h2: 'متابعة عشرات الملفات دون أن تضيع أيامكم',
++        paras: [
++          'اعتمدوا سجلاً واحداً ولو كان بسيطاً: الرقم، المحكمة، الموكل، آخر إجراء معروف، الجلسة المقبلة، تاريخ آخر اطلاع.',
++          'كيّفوا وتيرة الاطلاع حسب الرهان: أكثر للملف المحجوز للمداولة أو الذي اقتربت جلسته أو صدر فيه حكم حديث، وأقل للملف الراكد. لا توجد قاعدة عامة، فالأمر تنظيمي.',
++          'عيّنوا شخصاً مسؤولاً عن الاطلاع وآخر يراجع الملفات ذات الرهان. وحين يتجاوز السجل ما يستطيع شخص واحد مراجعته يومياً، تصبح أداة تطّلع على البوابة نيابة عنكم مفيدة.',
++        ],
++      },
++    ],
++    fonctions: [{ id: 'suivi', texte: 'تعرّفوا على كيفية تتبع ملفاتي لملفاتكم على بوابة محاكم وتنبيهكم بكل إجراء جديد.' }],
++    faq: [
++      { q: 'لماذا لا أجد ملفي في البوابة؟', r: 'أكثر الأسباب شيوعاً: محكمة خاطئة، أو الخلط بين الرقم الاستئنافي ورقم المرحلة الابتدائية، أو خطأ في السنة أو الرمز، أو ملف حديث جداً. راجعوا الوثيقة الإجرائية التي تحمل الرقم.' },
++      { q: 'هل بوابة محاكم مجانية؟', r: 'نعم، الاطلاع على الملف عبر البوابة الرسمية خدمة عمومية مجانية. أما ملفاتي فبرنامج خاص مؤدى عنه يضيف التتبع الآلي لكل ملفاتكم والتنبيهات والأجندة.' },
++      { q: 'كم مرة أطّلع على الملف؟', r: 'لا توجد قاعدة عامة. اطّلعوا أكثر على الملفات ذات الرهان (جلسة قريبة، مداولة، حكم حديث) وأقل على الملفات الراكدة.' },
++      { q: 'هل تكفي معلومة البوابة لتحديد أجل؟', r: 'لا، تعاملوا معها كمؤشر. راجعوا وثائق الملف والنصوص المطبقة قبل اعتماد أي تاريخ.' },
++      { q: 'هل يعوّض ملفاتي البوابة؟', r: 'لا. ملفاتي يقرأ المعطيات العمومية المعروضة في البوابة وينبّهكم، وتبقى البوابة هي المصدر. وفي الإجراء المستعجل تحققوا مباشرة أيضاً.' },
++    ],
++    sources: [SRC.mahakim, SRC.justice, SRC.cassation],
++    lies: ['audiences-echeances', 'alertes-whatsapp', 'clients-dossiers'],
++  },
++
++  // ─────────────────────────── 2. تنظيم الجلسات والآجال ───────────────────────────
++  'audiences-echeances': {
++    nav: 'تنظيم الجلسات والآجال',
++    resume: 'لائحتان منفصلتان، مراجعة أسبوعية، هوامش أمان، وتحقق مزدوج.',
++    titre: 'تنظيم الجلسات والآجال في مكتب المحاماة: طريقة عملية',
++    description: 'طريقة عملية لتنظيم الجلسات والآجال داخل مكتب المحاماة: لائحتان منفصلتان، مراجعة أسبوعية، تذكيرات متدرجة وتحقق مزدوج من الآجال الحرجة.',
++    h1: 'كيف تنظم الجلسات والآجال داخل مكتب المحاماة؟',
++    pastille: 'دليل عملي',
++    lead: 'نادراً ما يفوّت المكتب أجلاً لجهله بالقاعدة. يفوّته لأن المعلومة في المكان الخطأ، عند الشخص الخطأ، في الوقت الخطأ. يقترح هذا الدليل طريقة بسيطة تصلح مع أجندة مشتركة أو جدول بيانات أو برنامج.',
++    sections: [
++      {
++        h2: 'لائحتان لا لائحة واحدة',
++        paras: ['أول قاعدة: لا تخلطوا ما يُلزم موكلكم بما تراقبونه عند الخصم.'],
++        items: [
++          { h3: 'آجال «عليكم»', texte: 'الآجال التي تسري ضد موكلكم: مقال يجب إيداعه، أو طعن يجب تقديمه، أو مستندات يجب الإدلاء بها. لها الأولوية ويجب أن تقترن بتذكيرات.' },
++          { h3: 'آجال «على الخصم»', texte: 'آجال الطرف الآخر. لا تتطلب منكم إجراءً فورياً، لكن انقضاءها يغيّر وضع الملف: أبقوها ظاهرة دون خلطها بآجالكم.' },
++        ],
++      },
++      {
++        h2: 'دوّنوا تاريخ الانطلاق الصحيح',
++        paras: [
++          'يُحسب الأجل انطلاقاً من واقعة: حكم أو نشر أو تبليغ. دوّنوا لكل إجراء على الأقل طبيعته، وتاريخ الحكم، وتاريخ علمكم به، وتاريخ التبليغ حين يثبت، والوثيقة التي تثبته.',
++          'لا تنقلوا مدة أجل من الذاكرة: ارجعوا إلى النص المطبق ودوّنوا مرجعه بجانب الأجل.',
++        ],
++      },
++      {
++        h2: 'إطار قانوني تغيّر حديثاً',
++        paras: [
++          'قانون المسطرة المدنية الجديد (القانون رقم 58.25)، المنشور في الجريدة الرسمية عدد 7485 بتاريخ 23 فبراير 2026، جارٍ به العمل منذ 24 غشت 2026.',
++          'عملياً، أضيفوا إلى كل ملف تاريخ الحكم المعني، وراجعوا في النص الرسمي الأحكام الانتقالية التي تحدد القواعد المطبقة.',
++        ],
++        note: 'النظام المطبق على كل ملف يتعين تأكيده من طرف محامٍ انطلاقاً من النص المنشور في الجريدة الرسمية.',
++      },
++      {
++        h2: 'روتين أسبوعي',
++        etapes: [
++          'الاثنين: مراجعة كل آجال «عليكم» للأسبوع والأسبوعين المواليين، وإسناد كل أجل إلى شخص بعينه.',
++          'كل يوم: الاطلاع على مستجدات الملفات (البوابة، كتابة الضبط، البريد) وتحيين السجل قبل مغادرة المكتب.',
++          'الخميس أو الجمعة: تحضير مستندات جلسات الأسبوع الموالي والتأكد من الوكالات.',
++          'كل شهر: مراجعة الملفات الراكدة للتأكد من عدم نسيان أي أجل.',
++        ],
++      },
++      {
++        h2: 'هوامش أمان وتحقق مزدوج',
++        puces: [
++          'اضبطوا تذكيرات متدرجة قبل كل أجل بدل تذكير واحد عشية انقضائه. على سبيل المثال، يقترح ملفاتي افتراضياً تذكيرات قبل 7 أيام و3 أيام ويوم واحد ثم يوم الأجل نفسه، فكيّفوها حسب طبيعة الأجل.',
++          'اطلبوا من شخص ثانٍ التحقق من الآجال التي يترتب عن تفويتها ضرر لا يُتدارك للموكل.',
++          'دوّنوا تاريخ كل حساب ومن قام به، لتعرفوا كيف حُدِّد التاريخ عند الشك.',
++          'تذكّروا أن التنبيه ليس هو الأجل: إنه إشارة للتحقق.',
++        ],
++      },
++      {
++        h2: 'تحضير الجلسات ومتابعتها',
++        puces: [
++          'مستندات محيّنة وحافظة مستندات جاهزة.',
++          'الوكالة واتفاقية الأتعاب في الملف.',
++          'إخبار الموكل بتاريخ الجلسة وموضوعها.',
++          'بعد الجلسة: تدوين النتيجة (تأخير، حجز للمداولة، حكم) والتاريخ الجديد في اليوم نفسه.',
++        ],
++      },
++      {
++        h2: 'أي أداة تختارون',
++        paras: ['تكفي أجندة مشتركة لمحفظة صغيرة. ويصبح جدول البيانات هشاً حين يعدّله عدة أشخاص. أما البرنامج المتخصص فيضيف أساساً التذكيرات الآلية وسجل التغييرات. وأياً كانت الأداة، المهم أن يوجد مصدر واحد يُعتمد عليه.'],
++      },
++    ],
++    fonctions: [
++      { id: 'alertes', texte: 'تعرّفوا على كيفية فصل ملفاتي بين آجال «عليكم» و«على الخصم» وإرساله التذكيرات.' },
++      { id: 'suivi', texte: 'تعرّفوا على كيفية تغذية تتبع محاكم لأجندتكم في ملفاتي.' },
++    ],
++    faq: [
++      { q: 'هل أحتفظ بأجندة ورقية إلى جانب البرنامج؟', r: 'المهم وجود مصدر واحد يُعتمد عليه. ونسخة احتياطية، كطبع أسبوعي للآجال، تبقى ممارسة جيدة.' },
++      { q: 'ما التذكيرات التي أضبطها قبل الأجل؟', r: 'لا توجد قاعدة عامة. من الشائع ضبط عدة تذكيرات متدرجة ثم تذكير يوم الأجل، وإضافة غيرها إن كان الأجل معقداً.' },
++      { q: 'كيف أتعامل مع آجال الخصم؟', r: 'ضعوها في لائحة «على الخصم»: ظاهرة، لكن دون مستوى التنبيه الخاص بالآجال التي تُلزمكم.' },
++      { q: 'ماذا أفعل إن كان تاريخ التبليغ غير مؤكد؟', r: 'وثّقوا ما تعرفونه (تاريخ النشر، تاريخ التوصل، الوثيقة)، واعملوا بالتاريخ الأكثر احتياطاً، واطلبوا تأكيد التكييف من محامٍ انطلاقاً من النصوص المطبقة.' },
++      { q: 'هل تستطيع الكتابة تدبير الآجال؟', r: 'تستطيع إدخال السجل وتحيينه. ويبقى التحقق من الآجال الحرجة على عاتق المحامي، مع تقييد صلاحيات الحذف.' },
++    ],
++    sources: [SRC.sgg, SRC.mahakim, SRC.justice],
++    lies: ['suivi-mahakim', 'alertes-whatsapp', 'clients-dossiers'],
++  },
++
++  // ─────────────────────────── 3. إدارة الموكلين والملفات ───────────────────────────
++  'clients-dossiers': {
++    nav: 'إدارة الموكلين والملفات',
++    resume: 'بطاقة الموكل، تسلسل الملف، سجل التواصل، فحص الأسماء والصلاحيات.',
++    titre: 'إدارة الموكلين والملفات في مكتب المحاماة: طريقة عملية',
++    description: 'تنظيم بطاقات الموكلين والملفات وسجل التواصل وفحص تعارض المصالح وصلاحيات الفريق داخل مكتب المحاماة بالمغرب.',
++    h1: 'كيف تدير الموكلين والملفات في مكتب المحاماة؟',
++    pastille: 'دليل عملي',
++    lead: 'المكتب الفعّال هو أولاً مكتب تجد فيه وضع أي ملف وتاريخ أي موكل في ثوانٍ. يصف هذا الدليل تنظيماً بسيطاً للموكلين والملفات والصلاحيات.',
++    sections: [
++      {
++        h2: 'بطاقة لكل موكل، كاملة منذ أول موعد',
++        items: [
++          { h3: 'الهوية', texte: 'الاسم أو التسمية؛ البطاقة الوطنية للشخص الذاتي؛ المعرّف المشترك للمقاولة (ICE) والسجل التجاري للشركة، مع اسم ممثلها.' },
++          { h3: 'معلومات الاتصال', texte: 'الهاتف والبريد الإلكتروني والعنوان، والوسيلة التي يفضّلها الموكل للتواصل.' },
++          { h3: 'الوثائق الأساسية', texte: 'الوكالة، ونسخة من وثيقة الهوية، واتفاقية الأتعاب الموقّعة.' },
++          { h3: 'ملاحظات', texte: 'سياق القضية والخصوصيات التي يحتاجها زميل قد يتولى الملف بعدكم.' },
++        ],
++      },
++      {
++        h2: 'ملف واحد، تسلسل واحد',
++        paras: ['ينبغي أن يحكي كل ملف قصته بالترتيب: الإجراءات، والجلسات، والتبليغات، والمستندات المتبادلة، والأحكام. اربطوه بالموكل منذ إنشائه، وحدّدوا صفة موكلكم، مدعياً أو مدعى عليه: فعليها يتوقف تتبع الآجال كله.'],
++      },
++      {
++        h2: 'احفظوا سجل التواصل',
++        paras: ['دوّنوا كل تواصل مهم، مكالمة أو موعداً أو رسالة، مع تاريخه وما اتُّفق عليه. يحمي هذا السجل المكتب عند أي خلاف، ويمكّن زميلاً من تولي الملف دون البدء من الصفر.'],
++      },
++      {
++        h2: 'افحصوا احتمال تعارض المصالح قبل القبول',
++        paras: [
++          'قبل قبول قضية، تحققوا مما إذا كان الخصم أو الموكل المحتمل يظهر في ملفاتكم بصفة أخرى. البحث بالاسم بين موكليكم وخصوم ملفاتكم مصفاة أولى جيدة.',
++          'هذا الفحص لا يقول إن هناك تعارضاً: هو يرصد أسماء متقاربة. والتقدير للمحامي ولقواعد هيئته.',
++        ],
++        note: 'قواعد أخلاقيات المهنة المطبقة يتعين التحقق منها لدى هيئة المحامين التي تنتمون إليها.',
++      },
++      {
++        h2: 'من يطّلع على ماذا',
++        puces: [
++          'امنحوا كل عضو ما يحتاجه من صلاحيات، لا أكثر.',
++          'خصّصوا لشخص مسؤول الأفعال التي لا رجعة فيها: حذف ملف، أو أرشفته، أو إلغاء فاتورة.',
++          'اسحبوا صلاحيات من يغادر المكتب يوم مغادرته.',
++          'فعّلوا التحقق بخطوتين حيثما أتاحته الأداة.',
++        ],
++      },
++      {
++        h2: 'إغلاق الملف وأرشفته دون ضياع',
++        paras: [
++          'عند انتهاء الملف، دوّنوا النتيجة، وتأكدوا من الأتعاب المحصّلة، ثم أرشفوا بدل الحذف.',
++          'مدد الاحتفاظ بالملفات تخضع لقواعد المهنة: استعلموا لدى هيئتكم قبل إتلاف أي شيء.',
++        ],
++      },
++    ],
++    fonctions: [{ id: 'clients', texte: 'تعرّفوا على كيفية جمع ملفاتي لبطاقة الموكل وملفاته وسجل التواصل وفحص الأسماء المتقاربة.' }],
++    faq: [
++      { q: 'ما المعلومات التي أحتفظ بها عن الموكل؟', r: 'ما يفيد في الدفاع عن مصالحه وفي الفوترة: الهوية، ومعلومات الاتصال، والوكالة، واتفاقية الأتعاب، والسجل. اكتفوا بالضروري واحموا الولوج إليه.' },
++      { q: 'هل تخضع معطيات موكليّ لحماية المعطيات الشخصية؟', r: 'هي معطيات شخصية. وتوضح اللجنة الوطنية لمراقبة حماية المعطيات ذات الطابع الشخصي، المحدثة بموجب القانون 09.08، الإجراءات (التصريح، الإذن المسبق، النقل إلى الخارج). تحققوا مما ينطبق على مكتبكم.' },
++      { q: 'كيف أتفادى تكرار بطاقات الموكلين؟', r: 'ابحثوا بالاسم قبل إنشاء بطاقة، ووحّدوا كتابة الأسماء بالعربية وبالحروف اللاتينية، واربطوا كل ملفات الموكل نفسه ببطاقة واحدة.' },
++      { q: 'من يحق له حذف ملف؟', r: 'شخص مسؤول. وتبقى الأرشفة الخيار الافتراضي لباقي أعضاء المكتب.' },
++      { q: 'هل يمكن تصدير البيانات؟', r: 'قبل اختيار أداة، تأكدوا من إمكانية تصدير بياناتكم. يتيح ملفاتي طلب التصدير من الحساب.' },
++    ],
++    sources: [SRC.cndp],
++    lies: ['facturation-honoraires', 'audiences-echeances', 'suivi-mahakim'],
++  },
++
++  // ─────────────────────────── 4. أهمية تنبيهات واتساب ───────────────────────────
++  'alertes-whatsapp': {
++    nav: 'أهمية تنبيهات واتساب',
++    resume: 'لماذا يصلح واتساب للتنبيهات، ماذا يتضمن التنبيه الجيد، وميثاق الاستعمال.',
++    titre: 'أهمية تنبيهات واتساب للمحامين: المزايا والحدود',
++    description: 'مزايا وحدود تنبيهات واتساب لمكتب المحاماة: محتوى التنبيه الجيد، ساعات الهدوء، السرية، وميثاق استعمال بسيط للفريق.',
++    h1: 'تنبيهات واتساب للمحامين: المزايا والحدود وقواعد الاستعمال',
++    pastille: 'دليل عملي',
++    lead: 'واتساب مفتوح أصلاً على هاتف كل محامٍ، ولهذا ينجح في التنبيهات. لكن ما يمر عبر تطبيق مراسلة عام يحتاج إلى قواعد. يعرض هذا الدليل المزايا والحدود وميثاقاً بسيطاً.',
++    sections: [
++      {
++        h2: 'لماذا يصلح واتساب للتنبيهات',
++        puces: [
++          'تُقرأ الرسالة خلال دقائق، بينما قد يبقى البريد الإلكتروني ساعات دون فتح.',
++          'لا حاجة إلى فتح تطبيق إضافي.',
++          'يعمل في كل مكان، خارج المكتب وفي المحكمة.',
++          'شكله القصير يناسب الأساسي: ماذا، أين، متى.',
++        ],
++      },
++      {
++        h2: 'ما يتضمنه التنبيه الجيد وما لا يتضمنه',
++        paras: ['التنبيه المفيد يُختصر في سطر واحد: رقم الملف، والمحكمة، وطبيعة الواقعة، وتاريخها. أما التفاصيل فتُطالَع بعد ذلك في أداة العمل.'],
++        puces: [
++          'يُذكر: رقم الملف، المحكمة، طبيعة الواقعة، التاريخ.',
++          'يُتجنب: أسماء الأطراف، الوقائع، المبالغ، المرفقات.',
++        ],
++      },
++      {
++        h2: 'رتّبوا التنبيهات لتفادي إرهاقها',
++        paras: ['إذا نبّه كل شيء، لم يعد شيء ينبّه. ميّزوا ثلاثة مستويات، وخصّصوا الصوت للمستوى الأول.'],
++        items: [
++          { h3: 'ما يتطلب إجراءً', texte: 'أجل قريب يسري ضد موكلكم.' },
++          { h3: 'ما يُقرأ', texte: 'إجراء جديد أو تأخير يُضاف إلى الملف.' },
++          { h3: 'النظرة اليومية', texte: 'ملخص صباحي يُقرأ دون استعجال.' },
++        ],
++      },
++      {
++        h2: 'ساعات الهدوء والحياة الخاصة',
++        paras: ['تنبيه في الحادية عشرة ليلاً عن أجل بعد ثلاثة أسابيع يضر أكثر مما ينفع. حدّدوا فترة هدوء، ولا تتجاوزوها إلا لما هو وشيك.'],
++      },
++      {
++        h2: 'لا تعتمدوا على قناة واحدة',
++        paras: [
++          'قد تتأخر الرسالة أو تُحذف أو لا يُنتبه إليها. احفظوا نسخة من كل تنبيه في أداة العمل، ولا تعوّضوا تتبع الآجال بمحادثة.',
++          'تنبيه واتساب ليس تبليغاً قضائياً: لا يرتّب أي أثر قانوني، وإنما يخبركم فقط.',
++        ],
++      },
++      {
++        h2: 'ميثاق للمكتب في خمس نقاط',
++        etapes: [
++          'لا معلومات جوهرية عن أي موكل في مجموعات واتساب.',
++          'هاتف مقفل ونسخ احتياطية محمية.',
++          'التحقق من الرقم قبل تفعيل التنبيهات.',
++          'عند مغادرة أحد المعاونين: حذف رقمه من التنبيهات في اليوم نفسه.',
++          'مراجعة الميثاق مرة في السنة.',
++        ],
++      },
++      {
++        h2: 'المعطيات الشخصية والسر المهني',
++        paras: ['معلومات موكليكم مشمولة بالسر المهني، وهي معطيات شخصية. قلّلوا مما يمر عبر تطبيق مراسلة عام، واستعلموا لدى اللجنة الوطنية لمراقبة حماية المعطيات ذات الطابع الشخصي عن الإجراءات المطبقة: التصريح، والإذن المسبق، والنقل إلى الخارج.'],
++        note: 'تطبيق السر المهني على تطبيقات المراسلة العامة يتعين تأكيده لدى هيئة المحامين.',
++      },
++    ],
++    fonctions: [{ id: 'alertes', texte: 'تعرّفوا على كيفية إرسال ملفاتي لتنبيهات واتساب: محتوى مقتضب، ساعات هدوء، ونسخة داخل التطبيق.' }],
++    faq: [
++      { q: 'هل تنبيهات واتساب آمنة؟', r: 'لا يضمن أي تطبيق مراسلة عام السرية. والممارسة الجيدة أن يقتصر المحتوى على الأساسي (الرقم، المحكمة، الطبيعة)، دون ذكر أسماء الأطراف أبداً.' },
++      { q: 'هل أتلقى التنبيهات دون واتساب؟', r: 'يتوقف ذلك على الأداة. يحفظ ملفاتي كذلك كل تنبيه داخل التطبيق.' },
++      { q: 'كم تنبيهاً في اليوم يعتبر معقولاً؟', r: 'لا يوجد عدد مثالي. إذا صرتم تتجاهلون التنبيهات فهي كثيرة: اجمعوها في نظرة يومية.' },
++      { q: 'هل يقوم تنبيه واتساب مقام التبليغ؟', r: 'لا. هو يخبركم، لكنه لا يرتّب أي أثر قانوني. هذا الأثر للإجراءات المسطرية التي تنص عليها النصوص وحدها.' },
++      { q: 'ماذا أفعل إذا تغيّر الرقم؟', r: 'حيّنوه وتحققوا منه قبل أي إرسال. لا يرسل ملفاتي تنبيهات واتساب إلا إلى رقم تم التحقق منه.' },
++    ],
++    sources: [SRC.cndp],
++    lies: ['audiences-echeances', 'suivi-mahakim', 'intelligence-artificielle'],
++  },
++
++  // ─────────────────────────── 5. تنظيم الفواتير والأتعاب ───────────────────────────
++  'facturation-honoraires': {
++    nav: 'تنظيم الفواتير والأتعاب',
++    resume: 'اتفاقية مكتوبة، تسبيقات، فاتورة مرقمة، تتبع الأداءات والتذكير بالمستحقات.',
++    titre: 'تنظيم فواتير وأتعاب المحاماة: طريقة عملية',
++    description: 'تنظيم فوترة مكتب المحاماة: اتفاقية الأتعاب، التسبيقات، الفاتورة المرقمة، تتبع الأداءات والتذكير بالمستحقات، مع النقاط الواجب التحقق منها.',
++    h1: 'كيف تنظم فواتير وأتعاب مكتب المحاماة؟',
++    pastille: 'دليل عملي',
++    lead: 'نادراً ما تأتي الأتعاب غير المؤداة من موكل سيئ النية: تأتي من تتبع غير منتظم. يقترح هذا الدليل طريقة للاتفاق والفوترة والتحصيل دون إضاعة أمسياتكم.',
++    sections: [
++      {
++        h2: 'اتفقوا على الأتعاب كتابة',
++        paras: ['اتفاقية أتعاب مكتوبة، موقّعة في بداية المهمة، تجنّب معظم الخلافات: موضوع المهمة، وطريقة الحساب، والتسبيقات، والمصاريف، وكيفيات الأداء.'],
++        note: 'القواعد المطبقة على تحديد الأتعاب تخضع لتنظيم المهنة: تحققوا منها لدى هيئتكم.',
++      },
++      {
++        h2: 'ميّزوا بين التسبيق والأتعاب والمصاريف',
++        items: [
++          { h3: 'التسبيق', texte: 'مبلغ يؤدى قبل المهمة أو أثناءها، ويُخصم بعد ذلك من الأتعاب.' },
++          { h3: 'الأتعاب', texte: 'مقابل المهمة، حسب ما اتُّفق عليه.' },
++          { h3: 'المصاريف', texte: 'المبالغ المسبقة لفائدة الموكل: الرسوم، الخبرة، التنقل. افصلوها في وثائقكم.' },
++        ],
++      },
++      {
++        h2: 'فاتورة لكل مرحلة، وقواعد أساسية',
++        paras: ['في المجال الجبائي، تنص المدونة العامة للضرائب (المادة 145) على أن تكون الفواتير مرقمة مسبقاً ضمن سلسلة متصلة وأن تتضمن بيانات معينة، منها المعرّف المشترك للمقاولة (المادة 145، الفقرة VIII). وتتوقف التفاصيل على وضعكم الجبائي.'],
++        puces: [
++          'ترقيم متسلسل حسب التاريخ، دون فراغات.',
++          'معلومات الموكل كاملة، مع المعرّف المشترك للمقاولة إن كان شركة.',
++          'الفاتورة الصادرة لا تُعدَّل: تُلغى بفاتورة دائنة، ثم تُصدر فاتورة جديدة عند الحاجة.',
++          'تاريخ الإصدار وأجل الأداء واضحان.',
++        ],
++        note: 'يتعين التحقق من ذلك مع محاسبكم وعلى موقع المديرية العامة للضرائب.',
++      },
++      {
++        h2: 'تتبّعوا الأداءات',
++        etapes: [
++          'تسجيل كل أداء يوم التوصل به.',
++          'ربطه بالموكل وبالفاتورة المعنية.',
++          'الاحتفاظ بكل أداء لا فاتورة له بعد كتسبيق غير مخصَّص.',
++          'جرد الفواتير غير المسدّدة كل شهر.',
++          'التذكير بالمستحقات في تواريخ محددة مسبقاً.',
++        ],
++      },
++      {
++        h2: 'ذكّروا دون أن تفسدوا العلاقة',
++        puces: [
++          'حدّدوا داخلياً مواعيد التذكير، حتى لا تخضع لمزاج اللحظة.',
++          'ابدؤوا بتذكير لبق مرفق بالفاتورة.',
++          'اقترحوا جدولة للأداء حين يكون الموكل حسن النية لكنه في ضائقة.',
++          'احتفظوا بأثر مكتوب لكل تذكير.',
++        ],
++      },
++      {
++        h2: 'دور المحاسب',
++        paras: ['أداة الفوترة تتتبع فواتيركم وتحصيلاتكم، لكنها لا تعوّض المحاسبة ولا الاستشارة الجبائية. اعرضوا أولى نماذج فواتيركم على محاسبكم، ثم احتفظوا بها.'],
++      },
++    ],
++    fonctions: [
++      { id: 'facturation', texte: 'تعرّفوا على كيفية ترقيم ملفاتي للفواتير وتدبيره للفواتير الدائنة وتتبعه للأداءات.' },
++      { id: 'actes', texte: 'تعرّفوا على كيفية إعداد اتفاقية الأتعاب ووصل التسبيق انطلاقاً من الملف.' },
++    ],
++    faq: [
++      { q: 'هل أصحّح فاتورة أُرسلت؟', r: 'الفاتورة الصادرة لا تُعدَّل: تُلغى بفاتورة دائنة ثم تُصدر فاتورة جديدة. تأكدوا من هذه الممارسة مع محاسبكم.' },
++      { q: 'ما هو التسبيق غير المخصَّص؟', r: 'أداء توصلتم به ولم يُربط بعد بفاتورة. يبقى ظاهراً في التتبع إلى أن يُخصَّص.' },
++      { q: 'هل يجب ذكر المعرّف المشترك للمقاولة في الفاتورة؟', r: 'تجعل المدونة العامة للضرائب (المادة 145، الفقرة VIII) ذلك واجباً في فواتير الملزمين. تحققوا مع محاسبكم مما ينطبق على وضعكم.' },
++      { q: 'كم مرة أذكّر الموكل؟', r: 'لا توجد قاعدة عامة. ضعوا جدولاً بسيطاً والتزموا به، بدل التذكير عشوائياً.' },
++      { q: 'ما الخلاصة التي ينبغي تتبعها؟', r: 'ما فوترتموه وما حصّلتموه وما بقي للتحصيل، شهراً بشهر. وتعرض خلاصة ملفاتي هذه العناصر الثلاثة بالضبط.' },
++    ],
++    sources: [SRC.dgi],
++    lies: ['clients-dossiers', 'audiences-echeances', 'intelligence-artificielle'],
++  },
++
++  // ─────────────────────────── 6. الذكاء الاصطناعي في المكتب ───────────────────────────
++  'intelligence-artificielle': {
++    nav: 'الذكاء الاصطناعي في المكتب',
++    resume: 'أين يفيد الذكاء الاصطناعي، أين يقرر المحامي، كيف نتحقق ونحمي المعطيات.',
++    titre: 'الذكاء الاصطناعي في مكتب المحاماة: الممارسات الجيدة',
++    description: 'أين يفيد الذكاء الاصطناعي مكتب المحاماة، وأين يجب أن يقرر المحامي، وكيف تتحققون من الأجوبة وتحمون معطيات موكليكم.',
++    h1: 'كيف تستعمل الذكاء الاصطناعي في مكتب المحاماة؟',
++    pastille: 'دليل عملي',
++    lead: 'يمكن للذكاء الاصطناعي أن يوفّر وقت المكتب: يلخّص ويصنّف ويقترح مسودة أولى. ويمكنه أيضاً أن يقدّم خطأً يبدو واثقاً تماماً. يشرح هذا الدليل أين تستعملونه، وأين لا تتركونه يقرر، وكيف تتحققون.',
++    sections: [
++      {
++        h2: 'حيث يفيد فعلاً',
++        items: [
++          { h3: 'التلخيص', texte: 'ملف أو إجراء طويل، تراجعونه قبل الجلسة.' },
++          { h3: 'التصنيف', texte: 'التعرف على نوع الإجراء (حكم، تأخير، تبليغ) لفرز محفظة الملفات.' },
++          { h3: 'المسودة الأولى', texte: 'وثيقة تُعدّ من معطيات الملف ثم تصحّحونها.' },
++          { h3: 'إيجاد النصوص', texte: 'بحث يشير إلى مصادره لتفتحوها بأنفسكم.' },
++        ],
++      },
++      {
++        h2: 'حيث يقرر المحامي',
++        puces: [
++          'التكييف القانوني والاستراتيجية.',
++          'حساب الآجال والتحقق منها.',
++          'التوقيع والإيداع وتحمّل المسؤولية.',
++          'كل إجراء لا رجعة فيه بالنسبة للموكل.',
++        ],
++      },
++      {
++        h2: 'التحقق: طريقة في أربع خطوات',
++        etapes: [
++          'اطلبوا المصادر: جواب بلا مصدر لا قيمة له.',
++          'افتحوا كل فصل مذكور واقرؤوه في النص الرسمي.',
++          'تأكدوا من النسخة الجارية: قد لا يوجد نص حديث، كقانون المسطرة المدنية الجديد الجاري به العمل منذ 24 غشت 2026، ضمن مصادر الأداة بعد.',
++          'راجعوا الأرقام والتواريخ والأسماء.',
++        ],
++      },
++      {
++        h2: 'السرية: ماذا تُدخلون في أداة الذكاء الاصطناعي',
++        paras: [
++          'قبل استعمال أي أداة، أجيبوا عن ثلاثة أسئلة: ما المعطيات التي تغادر المكتب، وإلى أي مزوّدين، وبأي شروط؟ كثير من أدوات الذكاء الاصطناعي تعتمد على مزوّدين خارجيين.',
++          'عند الشك، أخفوا الهوية: احذفوا الأسماء والعناوين والأرقام قبل إدخال أي نص. واستعلموا لدى اللجنة الوطنية لمراقبة حماية المعطيات ذات الطابع الشخصي عن الإجراءات المطبقة على المعطيات الشخصية.',
++        ],
++        puces: [
++          'لا تلصقوا وثائق الموكلين في أداة عامة مجانية.',
++          'اقرؤوا سياسة الخصوصية واسألوا المزوّد أين تُعالَج المعطيات.',
++          'أعطوا تعليمات مكتوبة لكل الفريق.',
++        ],
++        note: 'تطبيق السر المهني وحماية المعطيات على الذكاء الاصطناعي يتعين تأكيده لدى هيئة المحامين.',
++      },
++      {
++        h2: 'سياسة استعمال الذكاء الاصطناعي في صفحة واحدة',
++        etapes: [
++          'من يستعمل أي أداة.',
++          'المعطيات الممنوعة.',
++          'التحقق إلزامي قبل أي استعمال خارجي.',
++          'الاحتفاظ بالنسخة المولّدة والنسخة النهائية لكل وثيقة.',
++          'تكوين الوافدين الجدد.',
++          'مراجعة السياسة مرتين في السنة.',
++        ],
++      },
++      {
++        h2: 'تقييم أداة ذكاء اصطناعي للمحامين',
++        puces: [
++          'هل تُعرض المصادر ويمكن فتحها؟',
++          'هل ذاكرة الأداة ظاهرة وقابلة للتعديل؟',
++          'هل يمكن تصدير البيانات؟',
++          'هل تشتغل الأداة جيداً بالعربية القانونية؟',
++          'هل هناك مراجعة أو حماية من الأخطاء الجسيمة؟',
++          'هل الولوج مضبوط حسب الأدوار؟',
++        ],
++      },
++    ],
++    fonctions: [
++      { id: 'assistant', texte: 'تعرّفوا على كيفية إحالة مساعد ملفاتي على مصادره واحتفاظه بذاكرة تتحكمون فيها.' },
++      { id: 'actes', texte: 'تعرّفوا على كيفية إعداد ملفاتي لمسودة أولى من معطيات الملف.' },
++    ],
++    faq: [
++      { q: 'هل يعوّض الذكاء الاصطناعي رجل القانون؟', r: 'لا. يسرّع بعض المهام، لكن التحليل والاستراتيجية والمسؤولية تبقى للمحامي.' },
++      { q: 'هل أثق به في الآجال؟', r: 'لا. يجب التحقق من حساب الأجل انطلاقاً من النصوص المطبقة. قد تساعد الأداة على تتبعها، لكنها لا تصادق عليها.' },
++      { q: 'ما المعطيات التي لا أُدخلها أبداً في أداة ذكاء اصطناعي؟', r: 'أسماء الموكلين وأرقام الملفات والوثائق والمبالغ، ما دمتم لا تعرفون أين تُعالَج. أخفوا الهوية بشكل منهجي.' },
++      { q: 'كيف أعرف أن الجواب موثوق؟', r: 'افتحوا المصادر المذكورة، وتأكدوا من النسخة الجارية للنص، وقارنوا بتحليلكم الخاص.' },
++      { q: 'هل يفهم الذكاء الاصطناعي العربية القانونية المغربية؟', r: 'تختلف الجودة حسب الأداة والموضوع. جرّبوه على حالات تعرفون جوابها قبل استعماله في العمل.' },
++    ],
++    sources: [SRC.cndp, SRC.sgg],
++    lies: ['alertes-whatsapp', 'facturation-honoraires', 'clients-dossiers'],
++  },
++}
+diff --git a/apps/web/components/guides/contenu.fr.ts b/apps/web/components/guides/contenu.fr.ts
+new file mode 100644
+index 0000000..1be0877
+--- /dev/null
++++ b/apps/web/components/guides/contenu.fr.ts
+@@ -0,0 +1,481 @@
++// Guides pratiques en français (6). Voir les règles de rédaction en tête de ./contenu.ts.
++// VALIDATION : les points à faire valider par un avocat sont listés dans claude/GUIDES_SEO_VALIDATION.md.
++import type { Guide, Source } from './contenu'
++import type { GuideId } from '@/lib/guidesPublics'
++
++const SRC: Record<string, Source> = {
++  mahakim: { nom: 'Portail mahakim', url: 'https://www.mahakim.ma', usage: 'Service officiel de suivi des dossiers : champs et intitulés à jour.' },
++  justice: { nom: 'Ministère de la Justice', url: 'https://www.justice.gov.ma', usage: 'Informations officielles sur les services en ligne des juridictions.' },
++  sgg: { nom: 'Secrétariat général du gouvernement (Bulletin officiel)', url: 'https://www.sgg.gov.ma', usage: 'Texte officiel des lois, dont la loi n° 58.25 (Bulletin officiel n° 7485 du 23 février 2026).' },
++  cndp: { nom: 'CNDP (protection des données personnelles)', url: 'https://www.cndp.ma', usage: 'Autorité créée par la loi 09-08 : déclaration, autorisation préalable, transfert à l’étranger.' },
++  dgi: { nom: 'Direction générale des impôts', url: 'https://www.tax.gov.ma', usage: 'Code général des impôts et obligations de facturation.' },
++  cassation: { nom: 'Greffe de la Cour de cassation', url: 'https://greffe.courdecassation.ma', usage: 'Recherche d’un dossier devant la Cour de cassation.' },
++}
++
++export const GUIDES_FR: Record<GuideId, Guide> = {
++  // ─────────────────────────── 1. Suivre un dossier sur mahakim ───────────────────────────
++  'suivi-mahakim': {
++    nav: 'Suivre un dossier sur mahakim',
++    resume: 'Les informations à réunir, les étapes de recherche et les erreurs qui font croire qu’un dossier n’existe pas.',
++    titre: 'Suivre un dossier judiciaire sur mahakim : guide pratique',
++    description: 'Comment suivre un dossier sur le portail mahakim : informations à réunir, étapes de recherche, erreurs courantes et organisation pour plusieurs dossiers.',
++    h1: 'Comment suivre un dossier judiciaire sur le portail mahakim',
++    pastille: 'Guide pratique',
++    lead: 'Le portail officiel mahakim, gratuit, permet de consulter l’avancement d’un dossier et ses dates d’audience. Ce guide explique ce qu’il faut réunir avant de chercher, comment éviter les erreurs de saisie et comment organiser le suivi quand on gère plusieurs dizaines de dossiers. MalafiPro, qui publie ce guide, est un logiciel indépendant : il n’est pas le portail officiel.',
++    sections: [
++      {
++        h2: 'Ce que permet le portail mahakim',
++        paras: [
++          'Mahakim.ma est le portail des services en ligne des juridictions, rattaché au ministère de la Justice. Le ministère décrit son service de suivi comme permettant de consulter un dossier, ses dates d’audience et le magistrat désigné, à partir du numéro du dossier.',
++          'Pour un avocat, l’intérêt est simple : savoir où en est un dossier sans se déplacer au greffe. La limite l’est tout autant : le portail affiche l’état connu au moment de la consultation, et un acte très récent peut ne pas y figurer encore.',
++        ],
++      },
++      {
++        h2: 'Réunir les bonnes informations avant de chercher',
++        items: [
++          { h3: 'La juridiction exacte', texte: 'Tribunal de première instance, tribunal de commerce, tribunal administratif, cour d’appel, Cour de cassation : le portail demande de choisir la juridiction. Une erreur à ce stade donne un dossier « introuvable » alors qu’il existe.' },
++          { h3: 'Le type d’affaire', texte: 'Civil, commercial, famille, pénal, administratif : retenez le type qui correspond à l’intitulé porté sur votre convocation ou votre récépissé.' },
++          { h3: 'Le numéro complet du dossier', texte: 'Le numéro se compose généralement d’un numéro d’ordre, d’un code et d’une année. Recopiez-le tel qu’il figure sur la pièce de procédure, sans le reconstituer de mémoire.' },
++          { h3: 'Le bon numéro en appel', texte: 'Quand un dossier passe en appel, il porte un numéro propre à la juridiction d’appel. Gardez les deux numéros dans votre fiche.' },
++        ],
++      },
++      {
++        h2: 'Les étapes de la recherche',
++        etapes: [
++          'Ouvrez le service de suivi des dossiers sur le portail.',
++          'Choisissez la juridiction.',
++          'Choisissez le type d’affaire, si le portail le demande.',
++          'Saisissez le numéro du dossier (ordre, code, année) dans les champs prévus.',
++          'Lancez la recherche et lisez la fiche affichée : dernier acte, prochaine audience, parties.',
++          'Notez le résultat et la date de consultation dans votre propre registre.',
++        ],
++        note: 'Les champs, leur ordre et leurs intitulés sont ceux du portail à la date de rédaction (octobre 2026) et peuvent changer : suivez toujours ce que le portail affiche.',
++      },
++      {
++        h2: 'Ce qu’il faut relever dans le résultat',
++        puces: [
++          'La date et l’heure de la prochaine audience, et la formation concernée.',
++          'Le dernier acte enregistré : renvoi, mise en délibéré, jugement, notification.',
++          'La date de cet acte, car c’est elle qui sert de repère pour la suite.',
++          'Le statut dans votre registre : « à agir », « à surveiller » ou « clos ».',
++        ],
++        paras: ['Ne présumez pas qu’une information affichée sur le portail produit les effets d’une notification : vérifiez les pièces du dossier et les textes applicables avant de retenir une date.'],
++      },
++      {
++        h2: 'Les autres services officiels utiles',
++        items: [
++          { h3: 'Le rôle des audiences', texte: 'Le ministère de la Justice propose aussi un service de consultation du rôle des audiences (جدول الجلسات), utile pour vérifier ce qui est programmé un jour donné.' },
++          { h3: 'La Cour de cassation', texte: 'Un dossier devant la Cour de cassation se recherche sur le portail du greffe de cette Cour, en choisissant la juridiction d’origine et en saisissant le numéro d’appel et le type de dossier.' },
++        ],
++      },
++      {
++        h2: 'Les erreurs qui font croire qu’un dossier n’existe pas',
++        puces: [
++          'Mauvaise juridiction : par exemple le tribunal de première instance au lieu du tribunal de commerce.',
++          'Numéro de première instance saisi pour un dossier devenu dossier d’appel.',
++          'Année ou code inversé, ou mal recopié.',
++          'Dossier trop récent pour être déjà enregistré.',
++          'Type d’affaire mal choisi.',
++        ],
++      },
++      {
++        h2: 'Suivre plusieurs dizaines de dossiers sans y passer ses journées',
++        paras: [
++          'Tenez un registre unique, même simple : numéro, juridiction, client, dernier acte connu, prochaine audience, date de la dernière consultation.',
++          'Adaptez la fréquence à l’enjeu : plus souvent pour un dossier en délibéré, avec une audience proche ou un jugement récent ; moins souvent pour un dossier dormant. Il n’existe pas de règle générale : c’est une question d’organisation.',
++          'Désignez une personne responsable de la consultation et une autre qui contrôle les dossiers à enjeu. Quand le registre dépasse ce qu’une personne peut relire chaque jour, un outil qui consulte le portail à votre place devient utile.',
++        ],
++      },
++    ],
++    fonctions: [{ id: 'suivi', texte: 'Voir comment MalafiPro relit vos dossiers sur mahakim et vous signale chaque nouvel acte.' }],
++    faq: [
++      { q: 'Pourquoi mon dossier est-il introuvable sur le portail ?', r: 'Les causes les plus fréquentes sont une mauvaise juridiction, un numéro d’appel confondu avec le numéro de première instance, une année ou un code mal saisi, ou un dossier trop récent. Recontrôlez la pièce de procédure qui porte le numéro.' },
++      { q: 'À quelle fréquence consulter un dossier ?', r: 'Il n’y a pas de règle générale. Consultez plus souvent les dossiers à enjeu (audience proche, délibéré, jugement récent) et moins souvent les dossiers dormants.' },
++      { q: 'L’information du portail suffit-elle pour fixer un délai ?', r: 'Non : traitez-la comme un indicateur. Vérifiez les pièces du dossier et les textes applicables avant de retenir une date.' },
++      { q: 'Peut-on suivre tous les types de juridictions ?', r: 'Le portail propose un choix de juridiction ; la couverture dépend des services ouverts par le ministère et peut évoluer. Consultez le portail pour la liste à jour.' },
++      { q: 'MalafiPro remplace-t-il le portail ?', r: 'Non. MalafiPro lit les informations publiques affichées sur le portail et vous alerte ; le portail reste la source. Pour un acte urgent, vérifiez aussi directement.' },
++    ],
++    sources: [SRC.mahakim, SRC.justice, SRC.cassation],
++    lies: ['audiences-echeances', 'alertes-whatsapp', 'clients-dossiers'],
++  },
++
++  // ─────────────────────────── 2. Organiser audiences et échéances ───────────────────────────
++  'audiences-echeances': {
++    nav: 'Organiser audiences et échéances',
++    resume: 'Deux listes, une routine hebdomadaire, des marges de sécurité et une double vérification.',
++    titre: 'Organiser audiences et échéances d’un cabinet d’avocat',
++    description: 'Méthode pratique pour organiser audiences et échéances en cabinet : deux listes, revue hebdomadaire, marges de sécurité et double vérification.',
++    h1: 'Comment organiser les audiences et les échéances d’un cabinet d’avocat',
++    pastille: 'Guide pratique',
++    lead: 'Un cabinet manque rarement une échéance par ignorance de la règle. Il la manque parce que l’information est au mauvais endroit, chez la mauvaise personne, au mauvais moment. Ce guide propose une méthode simple, applicable avec un agenda partagé, un tableur ou un logiciel.',
++    sections: [
++      {
++        h2: 'Deux listes plutôt qu’une',
++        paras: ['La première règle est de ne pas mélanger ce qui engage votre client et ce que vous observez chez l’adversaire.'],
++        items: [
++          { h3: 'À agir', texte: 'Les échéances qui courent contre votre client : acte à déposer, recours à former, pièces à produire. Elles sont prioritaires et doivent déclencher des rappels.' },
++          { h3: 'À surveiller', texte: 'Les échéances de la partie adverse. Elles n’appellent pas d’action immédiate, mais leur expiration change la situation du dossier : gardez-les visibles sans les confondre avec les vôtres.' },
++        ],
++      },
++      {
++        h2: 'Noter la bonne date de départ',
++        paras: [
++          'Une échéance se calcule à partir d’un événement : une décision, une publication, une notification. Pour chaque acte, consignez au minimum sa nature, la date de la décision, la date à laquelle vous en avez eu connaissance, la date de notification quand elle est établie, et la pièce qui le prouve.',
++          'Ne recopiez jamais une durée de mémoire : relisez le texte applicable et notez sa référence à côté de l’échéance.',
++        ],
++      },
++      {
++        h2: 'Un cadre légal qui vient de changer',
++        paras: [
++          'Le nouveau Code de procédure civile (loi n° 58.25), publié au Bulletin officiel n° 7485 du 23 février 2026, est applicable depuis le 24 août 2026.',
++          'En pratique, ajoutez à chaque dossier la date de la décision concernée et vérifiez, dans le texte officiel, les dispositions transitoires qui déterminent les règles applicables.',
++        ],
++        note: 'Le régime applicable à chaque dossier est à confirmer par un avocat, à partir du texte officiel publié au Bulletin officiel.',
++      },
++      {
++        h2: 'Une routine hebdomadaire',
++        etapes: [
++          'Lundi : relire toutes les échéances « à agir » de la semaine et des deux semaines suivantes, et attribuer chacune à une personne.',
++          'Chaque jour : consulter les nouveautés des dossiers (portail, greffe, courrier) et mettre le registre à jour avant de quitter le cabinet.',
++          'Jeudi ou vendredi : préparer les pièces des audiences de la semaine suivante et confirmer les procurations.',
++          'Chaque mois : passer en revue les dossiers dormants pour vérifier qu’aucune échéance n’a été oubliée.',
++        ],
++      },
++      {
++        h2: 'Marges de sécurité et double vérification',
++        puces: [
++          'Fixez des rappels échelonnés avant chaque échéance plutôt qu’un seul la veille. À titre d’exemple, MalafiPro propose par défaut des rappels à 7, 3 et 1 jours, puis le jour même ; adaptez-les à la nature de l’échéance.',
++          'Faites valider par une seconde personne les échéances dont l’oubli aurait des conséquences irréversibles pour le client.',
++          'Consignez la date et l’auteur de chaque calcul : en cas de doute, vous retrouvez comment la date a été établie.',
++          'Retenez qu’une alerte n’est pas l’échéance : c’est un signal pour vérifier.',
++        ],
++      },
++      {
++        h2: 'Préparer et suivre les audiences',
++        puces: [
++          'Pièces à jour et bordereau prêt.',
++          'Procuration et convention d’honoraires dans le dossier.',
++          'Client informé de la date et de l’objet de l’audience.',
++          'Après l’audience : noter l’issue (renvoi, mise en délibéré, jugement) et la nouvelle date le jour même.',
++        ],
++      },
++      {
++        h2: 'Quel outil choisir',
++        paras: ['Un agenda partagé suffit pour un petit portefeuille. Un tableur devient fragile quand plusieurs personnes l’éditent. Un logiciel dédié apporte surtout les rappels automatiques et l’historique. Peu importe l’outil : ce qui compte, c’est qu’une seule source fasse foi.'],
++      },
++    ],
++    fonctions: [
++      { id: 'alertes', texte: 'Voir comment MalafiPro affiche les délais « à vous » et « à l’adversaire » et envoie les rappels.' },
++      { id: 'suivi', texte: 'Voir comment MalafiPro relit vos dossiers sur mahakim pour alimenter votre agenda.' },
++    ],
++    faq: [
++      { q: 'Faut-il garder un agenda papier en plus du logiciel ?', r: 'Ce qui compte est l’existence d’une source unique qui fait foi. Une copie de secours, par exemple une impression hebdomadaire, reste une bonne pratique.' },
++      { q: 'Quels rappels programmer avant une échéance ?', r: 'Il n’y a pas de règle universelle. Un schéma courant consiste à programmer plusieurs rappels échelonnés puis un rappel le jour même, et à en ajouter si l’échéance est complexe.' },
++      { q: 'Comment traiter les échéances de la partie adverse ?', r: 'Placez-les dans la liste « à surveiller » : visibles, mais sans le niveau d’alerte des échéances qui vous engagent.' },
++      { q: 'Que faire quand la date d’une notification est incertaine ?', r: 'Documentez ce que vous savez (date de publication, date de réception, pièce), travaillez avec la date la plus prudente pour agir, et faites confirmer la qualification par un avocat à partir des textes applicables.' },
++      { q: 'Un secrétariat peut-il gérer les échéances ?', r: 'Il peut saisir et mettre à jour le registre. La validation des échéances critiques reste à l’avocat, et les droits de suppression doivent être limités.' },
++    ],
++    sources: [SRC.sgg, SRC.mahakim, SRC.justice],
++    lies: ['suivi-mahakim', 'alertes-whatsapp', 'clients-dossiers'],
++  },
++
++  // ─────────────────────────── 3. Gérer clients et dossiers ───────────────────────────
++  'clients-dossiers': {
++    nav: 'Gérer clients et dossiers',
++    resume: 'Fiche client, chronologie du dossier, historique, contrôle des noms et gestion des accès.',
++    titre: 'Gérer clients et dossiers d’un cabinet d’avocat : méthode',
++    description: 'Organiser les fiches clients, les dossiers, l’historique des échanges, le contrôle des conflits d’intérêts et les accès d’un cabinet d’avocat au Maroc.',
++    h1: 'Comment gérer les clients et les dossiers d’un cabinet d’avocat',
++    pastille: 'Guide pratique',
++    lead: 'Un cabinet performant est d’abord un cabinet où l’on retrouve en dix secondes l’état d’un dossier et l’historique d’un client. Ce guide décrit une organisation simple pour les clients, les dossiers et les accès.',
++    sections: [
++      {
++        h2: 'Une fiche par client, complète dès le premier rendez-vous',
++        items: [
++          { h3: 'Identité', texte: 'Nom ou raison sociale ; CIN pour une personne ; ICE et registre de commerce pour une société, avec le nom de son représentant.' },
++          { h3: 'Coordonnées', texte: 'Téléphone, e-mail, adresse, et le canal que le client préfère pour être joint.' },
++          { h3: 'Pièces de base', texte: 'Procuration, copie de la pièce d’identité, convention d’honoraires signée.' },
++          { h3: 'Notes', texte: 'Le contexte de l’affaire et les particularités utiles à un collègue qui reprendrait le dossier.' },
++        ],
++      },
++      {
++        h2: 'Un dossier, une chronologie',
++        paras: ['Chaque dossier doit raconter son histoire dans l’ordre : actes, audiences, notifications, pièces échangées, décisions. Rattachez-le au client dès sa création et indiquez le rôle de votre client, demandeur ou défendeur : tout le suivi des échéances en dépend.'],
++      },
++      {
++        h2: 'Garder l’historique des échanges',
++        paras: ['Notez chaque échange important, appel, rendez-vous ou message, avec sa date et ce qui a été convenu. Cet historique protège le cabinet en cas de désaccord et permet à un collègue de reprendre le dossier sans repartir de zéro.'],
++      },
++      {
++        h2: 'Contrôler un possible conflit d’intérêts avant d’accepter',
++        paras: [
++          'Avant d’accepter une affaire, vérifiez si la partie adverse ou le futur client apparaît déjà dans vos dossiers, à un autre titre. Une recherche par nom parmi vos clients et vos adversaires est un bon premier filtre.',
++          'Ce contrôle ne dit pas s’il y a un conflit : il signale des noms proches. L’appréciation relève de l’avocat et des règles de son barreau.',
++        ],
++        note: 'Les règles de déontologie applicables sont à vérifier auprès de votre barreau.',
++      },
++      {
++        h2: 'Qui accède à quoi',
++        puces: [
++          'Donnez à chaque membre l’accès dont il a besoin, pas davantage.',
++          'Réservez à un responsable les actions irréversibles : supprimer un dossier, l’archiver, annuler une facture.',
++          'Retirez les accès d’une personne qui quitte le cabinet le jour de son départ.',
++          'Activez la double authentification partout où l’outil la propose.',
++        ],
++      },
++      {
++        h2: 'Clôturer et archiver sans rien perdre',
++        paras: [
++          'Quand un dossier se termine, notez l’issue, vérifiez les honoraires encaissés, puis archivez plutôt que de supprimer.',
++          'Les durées de conservation des dossiers relèvent des règles de la profession : renseignez-vous auprès de votre barreau avant de détruire quoi que ce soit.',
++        ],
++      },
++    ],
++    fonctions: [{ id: 'clients', texte: 'Voir comment MalafiPro rassemble fiche client, dossiers, historique et contrôle des noms proches.' }],
++    faq: [
++      { q: 'Quelles informations conserver sur un client ?', r: 'Celles utiles à la défense de ses intérêts et à la facturation : identité, coordonnées, procuration, convention d’honoraires, historique. Limitez-vous à ce qui est nécessaire et protégez l’accès.' },
++      { q: 'Les données de mes clients relèvent-elles de la protection des données personnelles ?', r: 'Ce sont des données personnelles. La CNDP, autorité créée par la loi 09-08, précise les démarches (déclaration, autorisation préalable, transfert à l’étranger). Vérifiez ce qui s’applique à votre cabinet.' },
++      { q: 'Comment éviter les doublons de clients ?', r: 'Cherchez par nom avant de créer une fiche, uniformisez l’écriture des noms en arabe et en lettres latines, et reliez tous les dossiers d’un même client à une seule fiche.' },
++      { q: 'Qui doit pouvoir supprimer un dossier ?', r: 'Un responsable. Archiver doit rester l’option par défaut pour les autres membres du cabinet.' },
++      { q: 'Peut-on exporter ses données ?', r: 'Avant de choisir un outil, vérifiez que vous pouvez exporter vos données. MalafiPro permet de demander l’export depuis le compte.' },
++    ],
++    sources: [SRC.cndp],
++    lies: ['facturation-honoraires', 'audiences-echeances', 'suivi-mahakim'],
++  },
++
++  // ─────────────────────────── 4. Alertes WhatsApp ───────────────────────────
++  'alertes-whatsapp': {
++    nav: 'Alertes WhatsApp : avantages',
++    resume: 'Pourquoi WhatsApp convient aux alertes, ce qu’elles doivent contenir et la charte à adopter.',
++    titre: 'Alertes WhatsApp pour avocats : avantages et limites',
++    description: 'Avantages et limites des alertes WhatsApp pour un cabinet d’avocat : contenu d’une bonne alerte, heures calmes, confidentialité et charte d’usage.',
++    h1: 'Les alertes WhatsApp pour avocats : avantages, limites et règles d’usage',
++    pastille: 'Guide pratique',
++    lead: 'WhatsApp est déjà ouvert sur le téléphone de chaque avocat : c’est pour cela qu’il fonctionne bien pour les alertes. Mais ce qui passe par une messagerie grand public mérite des règles. Ce guide présente les avantages, les limites et une charte simple.',
++    sections: [
++      {
++        h2: 'Pourquoi WhatsApp convient aux alertes',
++        puces: [
++          'Le message est lu en quelques minutes, là où un e-mail dort parfois des heures.',
++          'Aucune application de plus à ouvrir.',
++          'Il fonctionne partout, y compris hors du cabinet et au tribunal.',
++          'Son format court se prête à l’essentiel : quoi, où, quand.',
++        ],
++      },
++      {
++        h2: 'Ce qu’une bonne alerte contient — et ne contient pas',
++        paras: ['Une alerte utile tient en une ligne : le numéro du dossier, la juridiction, la nature de l’événement et la date. Le détail se consulte ensuite dans l’outil de travail.'],
++        puces: [
++          'À mettre : numéro du dossier, juridiction, nature de l’événement, date.',
++          'À éviter : noms des parties, faits, montants, pièces jointes.',
++        ],
++      },
++      {
++        h2: 'Hiérarchiser pour éviter la fatigue d’alerte',
++        paras: ['Si tout alerte, plus rien n’alerte. Distinguez trois niveaux et réservez la sonnerie au premier.'],
++        items: [
++          { h3: 'Ce qui exige une action', texte: 'Une échéance proche qui court contre votre client.' },
++          { h3: 'Ce qui est à lire', texte: 'Un nouvel acte ou un renvoi à intégrer au dossier.' },
++          { h3: 'Le point quotidien', texte: 'Un résumé du matin, à lire sans urgence.' },
++        ],
++      },
++      {
++        h2: 'Heures calmes et vie privée',
++        paras: ['Une alerte à 23 h pour une échéance dans trois semaines fait plus de mal que de bien. Définissez une plage calme et ne passez outre que pour ce qui est imminent.'],
++      },
++      {
++        h2: 'Ne jamais dépendre d’un seul canal',
++        paras: [
++          'Un message peut être retardé, supprimé ou manqué. Gardez une copie de chaque alerte dans votre outil de travail et ne remplacez jamais le suivi des échéances par une conversation.',
++          'Une alerte WhatsApp n’est pas une notification judiciaire : elle ne produit aucun effet juridique, elle sert seulement à vous prévenir.',
++        ],
++      },
++      {
++        h2: 'Une charte de cabinet en cinq points',
++        etapes: [
++          'Aucune information de fond sur un client dans un groupe WhatsApp.',
++          'Téléphone verrouillé et sauvegardes protégées.',
++          'Numéro vérifié avant d’activer les alertes.',
++          'Départ d’un collaborateur : retirer son numéro des alertes le jour même.',
++          'Revue de la charte une fois par an.',
++        ],
++      },
++      {
++        h2: 'Données personnelles et secret professionnel',
++        paras: ['Les informations de vos clients sont couvertes par le secret professionnel et constituent des données personnelles. Limitez ce qui transite par une messagerie grand public, et renseignez-vous auprès de la CNDP sur les démarches applicables : déclaration, autorisation préalable, transfert à l’étranger.'],
++        note: 'L’application du secret professionnel aux messageries grand public est à confirmer auprès de votre barreau.',
++      },
++    ],
++    fonctions: [{ id: 'alertes', texte: 'Voir comment MalafiPro envoie les alertes WhatsApp : contenu discret, heures calmes, copie dans l’application.' }],
++    faq: [
++      { q: 'Les alertes WhatsApp sont-elles sûres ?', r: 'Aucune messagerie grand public n’offre de garantie de confidentialité. La bonne pratique consiste à limiter le contenu à l’essentiel (numéro, juridiction, nature) et à ne jamais y mettre le nom des parties.' },
++      { q: 'Peut-on recevoir des alertes sans WhatsApp ?', r: 'Cela dépend de l’outil. MalafiPro conserve aussi chaque alerte dans l’application.' },
++      { q: 'Combien d’alertes par jour est-ce raisonnable ?', r: 'Il n’y a pas de nombre idéal. Si vous finissez par ignorer les alertes, c’est qu’il y en a trop : regroupez-les dans un point quotidien.' },
++      { q: 'Une alerte WhatsApp vaut-elle notification ?', r: 'Non. Elle vous prévient, mais ne produit aucun effet juridique. Seuls les actes de procédure prévus par les textes ont cet effet.' },
++      { q: 'Que faire quand un numéro change ?', r: 'Mettez-le à jour et vérifiez-le avant tout envoi. MalafiPro n’envoie ses alertes WhatsApp qu’à un numéro vérifié.' },
++    ],
++    sources: [SRC.cndp],
++    lies: ['audiences-echeances', 'suivi-mahakim', 'intelligence-artificielle'],
++  },
++
++  // ─────────────────────────── 5. Facturation et honoraires ───────────────────────────
++  'facturation-honoraires': {
++    nav: 'Facturation et honoraires',
++    resume: 'Convention écrite, provisions, facture numérotée, suivi des règlements et relances.',
++    titre: 'Facturation et suivi des honoraires d’avocat : méthode',
++    description: 'Organiser la facturation d’un cabinet d’avocat : convention d’honoraires, provisions, facture numérotée, suivi des règlements et relances.',
++    h1: 'Comment organiser la facturation et le suivi des honoraires d’un cabinet',
++    pastille: 'Guide pratique',
++    lead: 'Les honoraires impayés viennent rarement d’un client de mauvaise foi : ils viennent d’un suivi irrégulier. Ce guide propose une méthode pour convenir, facturer et encaisser sans y passer ses soirées.',
++    sections: [
++      {
++        h2: 'Convenir des honoraires par écrit',
++        paras: ['Une convention d’honoraires écrite, signée au début de la mission, évite la plupart des désaccords : objet de la mission, mode de calcul, provisions, frais et modalités de paiement.'],
++        note: 'Les règles applicables à la fixation des honoraires relèvent de la profession : vérifiez-les auprès de votre barreau.',
++      },
++      {
++        h2: 'Distinguer provision, honoraires et frais',
++        items: [
++          { h3: 'La provision', texte: 'Une somme versée avant ou pendant la mission, qui sera ensuite imputée sur les honoraires.' },
++          { h3: 'Les honoraires', texte: 'La rémunération de la mission, selon ce qui a été convenu.' },
++          { h3: 'Les frais', texte: 'Les sommes avancées pour le client : droits, expertise, déplacements. Séparez-les dans vos documents.' },
++        ],
++      },
++      {
++        h2: 'Une facture par étape, avec des règles de base',
++        paras: ['En matière fiscale, le Code général des impôts (article 145) prévoit que les factures soient pré-numérotées dans une série continue et comportent certaines mentions, dont l’ICE (article 145-VIII). Les modalités exactes dépendent de votre situation fiscale.'],
++        puces: [
++          'Numérotation chronologique, sans trou.',
++          'Coordonnées complètes du client, avec l’ICE pour une société.',
++          'Une facture émise ne se modifie pas : on l’annule par un avoir, puis on en émet une nouvelle si nécessaire.',
++          'Date d’émission et échéance de paiement clairement indiquées.',
++        ],
++        note: 'À valider avec votre comptable et à vérifier sur le site de la Direction générale des impôts.',
++      },
++      {
++        h2: 'Suivre les règlements',
++        etapes: [
++          'Enregistrer chaque paiement le jour où il est reçu.',
++          'Le rattacher au client et à la facture concernée.',
++          'Conserver comme « provision non imputée » tout paiement qui n’a pas encore de facture.',
++          'Faire chaque mois le point des factures non soldées.',
++          'Relancer à des dates fixées d’avance.',
++        ],
++      },
++      {
++        h2: 'Relancer sans abîmer la relation',
++        puces: [
++          'Fixez en interne le calendrier des relances, pour ne pas dépendre de l’humeur du moment.',
++          'Commencez par un rappel courtois, accompagné de la facture.',
++          'Proposez un échéancier quand le client est de bonne foi mais en difficulté.',
++          'Gardez une trace écrite de chaque relance.',
++        ],
++      },
++      {
++        h2: 'Le rôle du comptable',
++        paras: ['Votre outil de facturation suit vos factures et vos encaissements ; il ne remplace pas la comptabilité ni les conseils fiscaux. Faites relire vos premiers modèles de facture par votre comptable, puis conservez-les.'],
++      },
++    ],
++    fonctions: [
++      { id: 'facturation', texte: 'Voir comment MalafiPro numérote les factures, gère les avoirs et suit les règlements.' },
++      { id: 'actes', texte: 'Voir comment préparer la convention d’honoraires et le reçu de provision depuis le dossier.' },
++    ],
++    faq: [
++      { q: 'Peut-on corriger une facture déjà envoyée ?', r: 'Une facture émise ne se modifie pas : on l’annule par un avoir, puis on en émet une nouvelle. Confirmez cette pratique avec votre comptable.' },
++      { q: 'Qu’est-ce qu’une provision non imputée ?', r: 'C’est un paiement reçu qui n’est pas encore rattaché à une facture. Il reste visible dans le suivi jusqu’à son imputation.' },
++      { q: 'L’ICE doit-il figurer sur la facture ?', r: 'Le Code général des impôts (article 145-VIII) en fait une obligation pour les factures des contribuables. Vérifiez avec votre comptable ce qui s’applique à votre situation.' },
++      { q: 'À quelle fréquence relancer un client ?', r: 'Il n’existe pas de règle générale. Fixez un calendrier simple et tenez-vous-y, plutôt que de relancer au hasard.' },
++      { q: 'Quelle vue d’ensemble faut-il suivre ?', r: 'Ce qui a été facturé, ce qui a été encaissé et ce qui reste à encaisser, mois par mois. La synthèse de MalafiPro présente exactement ces trois éléments.' },
++    ],
++    sources: [SRC.dgi],
++    lies: ['clients-dossiers', 'audiences-echeances', 'intelligence-artificielle'],
++  },
++
++  // ─────────────────────────── 6. Intelligence artificielle ───────────────────────────
++  'intelligence-artificielle': {
++    nav: 'IA dans un cabinet',
++    resume: 'Où l’IA aide, où l’avocat décide, comment vérifier et comment protéger les données.',
++    titre: 'Utiliser l’IA dans un cabinet d’avocat : bonnes pratiques',
++    description: 'Où l’intelligence artificielle aide un cabinet d’avocat, où l’avocat doit décider, comment vérifier les réponses et protéger les données de ses clients.',
++    h1: 'Comment utiliser l’intelligence artificielle dans un cabinet d’avocat',
++    pastille: 'Guide pratique',
++    lead: 'L’IA peut faire gagner du temps à un cabinet : résumer, classer, proposer un premier jet. Elle peut aussi produire une erreur d’apparence parfaitement sûre. Ce guide explique où l’utiliser, où ne pas la laisser décider, et comment vérifier.',
++    sections: [
++      {
++        h2: 'Là où l’IA aide vraiment',
++        items: [
++          { h3: 'Résumer', texte: 'Un dossier ou un acte long, à relire avant une audience.' },
++          { h3: 'Classer', texte: 'Repérer le type d’un acte (jugement, renvoi, notification) pour trier un portefeuille.' },
++          { h3: 'Proposer un premier jet', texte: 'Un acte préparé à partir des données du dossier, que vous corrigez ensuite.' },
++          { h3: 'Retrouver des textes', texte: 'Une recherche qui cite ses sources, pour que vous les ouvriez.' },
++        ],
++      },
++      {
++        h2: 'Là où l’avocat décide',
++        puces: [
++          'La qualification juridique et la stratégie.',
++          'Le calcul et la validation des délais.',
++          'La signature, le dépôt et l’engagement de responsabilité.',
++          'Tout acte irréversible pour le client.',
++        ],
++      },
++      {
++        h2: 'Vérifier : une méthode en quatre gestes',
++        etapes: [
++          'Exiger les sources : une réponse sans source ne vaut rien.',
++          'Ouvrir chaque article cité et le relire dans le texte officiel.',
++          'Vérifier la version en vigueur : un texte récent, comme le nouveau Code de procédure civile applicable depuis le 24 août 2026, peut ne pas figurer encore dans les sources d’un outil.',
++          'Relire les chiffres, les dates et les noms.',
++        ],
++      },
++      {
++        h2: 'Confidentialité : que mettre dans un outil d’IA',
++        paras: [
++          'Avant d’utiliser un outil, répondez à trois questions : quelles données quittent le cabinet, vers quels prestataires, et sous quelles conditions ? Beaucoup d’outils d’IA s’appuient sur des fournisseurs externes.',
++          'En cas de doute, anonymisez : retirez noms, adresses et numéros avant de saisir un texte. Renseignez-vous auprès de la CNDP sur les démarches applicables aux données personnelles.',
++        ],
++        puces: [
++          'Ne collez pas de pièces de clients dans un outil grand public gratuit.',
++          'Lisez la politique de confidentialité et demandez au fournisseur où sont traitées les données.',
++          'Donnez des consignes écrites à toute l’équipe.',
++        ],
++        note: 'Le secret professionnel et la protection des données appliqués à l’IA sont à confirmer auprès de votre barreau.',
++      },
++      {
++        h2: 'Une politique d’usage de l’IA, en une page',
++        etapes: [
++          'Qui peut utiliser quels outils.',
++          'Quelles données sont interdites.',
++          'La vérification est obligatoire avant tout usage externe.',
++          'Garder la version générée et la version finale de chaque acte.',
++          'Former les nouveaux arrivants.',
++          'Revoir la politique deux fois par an.',
++        ],
++      },
++      {
++        h2: 'Évaluer un outil d’IA pour avocats',
++        puces: [
++          'Les sources sont-elles affichées et ouvrables ?',
++          'La mémoire de l’outil est-elle visible et modifiable ?',
++          'Peut-on exporter ses données ?',
++          'L’outil travaille-t-il correctement en arabe juridique ?',
++          'Y a-t-il une relecture ou un garde-fou contre les erreurs graves ?',
++          'Les accès sont-ils contrôlés par rôle ?',
++        ],
++      },
++    ],
++    fonctions: [
++      { id: 'assistant', texte: 'Voir comment l’assistant de MalafiPro cite ses sources et garde une mémoire que vous contrôlez.' },
++      { id: 'actes', texte: 'Voir comment MalafiPro prépare un premier jet d’acte à partir du dossier.' },
++    ],
++    faq: [
++      { q: 'L’IA peut-elle remplacer un juriste ?', r: 'Non. Elle accélère certaines tâches, mais l’analyse, la stratégie et la responsabilité restent à l’avocat.' },
++      { q: 'Peut-on lui faire confiance pour les délais ?', r: 'Non. Le calcul d’un délai doit être vérifié sur les textes applicables. Un outil peut aider à les suivre ; il ne les valide pas.' },
++      { q: 'Quelles données ne jamais saisir dans un outil d’IA ?', r: 'Noms de clients, numéros de dossiers, pièces et montants, tant que vous ignorez où ils sont traités. Anonymisez systématiquement.' },
++      { q: 'Comment savoir si une réponse est fiable ?', r: 'Ouvrez les sources citées, vérifiez la version du texte en vigueur et comparez avec votre propre analyse.' },
++      { q: 'L’IA comprend-elle l’arabe juridique marocain ?', r: 'La qualité varie selon l’outil et le sujet. Testez-la sur des cas dont vous connaissez déjà la réponse avant de l’utiliser en pratique.' },
++    ],
++    sources: [SRC.cndp, SRC.sgg],
++    lies: ['alertes-whatsapp', 'facturation-honoraires', 'clients-dossiers'],
++  },
++}
+diff --git a/apps/web/components/guides/contenu.ts b/apps/web/components/guides/contenu.ts
+new file mode 100644
+index 0000000..eccf481
+--- /dev/null
++++ b/apps/web/components/guides/contenu.ts
+@@ -0,0 +1,76 @@
++// Guides pratiques : types, textes d'interface et assemblage des contenus (FR : ./contenu.fr.ts, AR : ./contenu.ar.ts).
++//
++// RÈGLES DE RÉDACTION (à respecter à chaque modification) :
++// - Un guide explique COMMENT BIEN FAIRE le travail ; les pages « fonction » (components/pages/) expliquent CE QUE FAIT MalafiPro.
++// - Aucun article de loi, délai chiffré ou procédure n'est affirmé sans source officielle vérifiée. Ce qui n'est pas vérifié est
++//   écrit comme une vérification à faire (« vérifiez… ») et figure dans la liste de validation : claude/GUIDES_SEO_VALIDATION.md.
++// - Les sources sont des sites officiels marocains (liste `sources` de chaque guide). Ne citer un contenu précis que si on l'a lu.
++// - Aucune fonctionnalité de MalafiPro qui n'existe pas dans le code ; aucun témoignage ni chiffre inventé.
++import type { Langue } from '@/components/landing/contenu'
++import type { PageId } from '@/lib/pagesPubliques'
++import type { GuideId } from '@/lib/guidesPublics'
++import { GUIDES_FR } from './contenu.fr'
++import { GUIDES_AR } from './contenu.ar'
++
++export type Section = {
++  h2: string
++  paras?: string[]
++  items?: { h3: string; texte: string }[]
++  etapes?: string[]
++  puces?: string[]
++  note?: string
++}
++export type Source = { nom: string; url: string; usage: string }
++export type Guide = {
++  nav: string // libellé court (fil d'Ariane, liens)
++  resume: string // une ligne (index des guides, liens internes)
++  titre: string // ≤ 60 caractères
++  description: string // ≤ 160 caractères
++  h1: string
++  pastille: string
++  lead: string
++  sections: Section[]
++  fonctions: { id: PageId; texte: string }[] // liens vers les pages MalafiPro pertinentes
++  faq: { q: string; r: string }[]
++  sources: Source[]
++  lies: GuideId[]
++}
++
++export const GUIDES_TEXTES: Record<Langue, Record<GuideId, Guide>> = { fr: GUIDES_FR, ar: GUIDES_AR }
++
++export const UI_GUIDES: Record<Langue, {
++  hubNav: string; hubTitre: string; hubDescription: string; hubH1: string; hubPastille: string; hubLead: string; hubCriteres: string[]
++  mis: string; avertissement: string; sources: string; sourcesTexte: string; lies: string; faq: string; fonctionsTitre: string
++  essai: string; demo: string; lire: string; guidesLien: string; fil: string; aller: string; tarifs: string
++}> = {
++  fr: {
++    hubNav: 'Guides',
++    hubTitre: 'Guides pratiques pour cabinets d’avocat au Maroc | MalafiPro',
++    hubDescription: 'Suivi des dossiers sur mahakim, audiences et échéances, clients, honoraires, WhatsApp, IA : des guides pratiques pour organiser un cabinet d’avocat au Maroc.',
++    hubH1: 'Guides pratiques pour organiser un cabinet d’avocat',
++    hubPastille: 'Guides',
++    hubLead: 'Des méthodes concrètes pour tenir un cabinet : suivre ses dossiers, ne pas manquer une échéance, gérer ses clients et ses honoraires, utiliser WhatsApp et l’IA avec prudence.',
++    hubCriteres: ['Chaque guide explique une méthode, pas un produit.', 'Les informations juridiques renvoient aux sources officielles et doivent être vérifiées.', 'Aucun conseil juridique : ces guides ne remplacent pas votre analyse d’avocat.'],
++    mis: 'Mis à jour le 31 octobre 2026',
++    avertissement: 'Ce guide donne une information générale d’organisation, pas un conseil juridique. Vérifiez les textes officiels cités avant toute décision.',
++    sources: 'Sources officielles à consulter',
++    sourcesTexte: 'Sites officiels de référence. Leur contenu évolue : consultez-les directement pour la version en vigueur.',
++    lies: 'Guides liés', faq: 'Questions fréquentes', fonctionsTitre: 'Pour appliquer cette méthode dans MalafiPro',
++    essai: 'Essai gratuit 20 jours', demo: 'Démo gratuite sur WhatsApp', lire: 'Lire le guide', guidesLien: 'Tous les guides', fil: 'Fil d’Ariane', aller: 'Découvrir', tarifs: 'Tarifs',
++  },
++  ar: {
++    hubNav: 'الأدلة',
++    hubTitre: 'أدلة عملية للمحامين ومكاتب المحاماة بالمغرب | ملفاتي',
++    hubDescription: 'تتبع الملفات في محاكم، تنظيم الجلسات والآجال، الموكلون والأتعاب، واتساب والذكاء الاصطناعي: أدلة عملية لتنظيم مكتب المحاماة بالمغرب.',
++    hubH1: 'أدلة عملية لتنظيم مكتب المحاماة',
++    hubPastille: 'الأدلة',
++    hubLead: 'طرق عملية لتسيير المكتب: تتبع الملفات، وعدم تفويت أي أجل، وإدارة الموكلين والأتعاب، واستعمال واتساب والذكاء الاصطناعي بحذر.',
++    hubCriteres: ['كل دليل يشرح طريقة عمل، لا منتجاً.', 'المعلومات القانونية تحيل على المصادر الرسمية ويجب التحقق منها.', 'لا يُعدّ شيء منها استشارة قانونية، ولا تغني عن تحليلكم كمحامين.'],
++    mis: 'آخر تحديث: 31 أكتوبر 2026',
++    avertissement: 'هذا الدليل معلومات عامة في التنظيم وليس استشارة قانونية. تحققوا من النصوص الرسمية المشار إليها قبل أي قرار.',
++    sources: 'مصادر رسمية للاطلاع',
++    sourcesTexte: 'مواقع رسمية مرجعية. يتغير محتواها، فاطّلعوا عليها مباشرة للحصول على النسخة الجارية.',
++    lies: 'أدلة ذات صلة', faq: 'أسئلة شائعة', fonctionsTitre: 'لتطبيق هذه الطريقة في ملفاتي',
++    essai: 'جرّبوا مجاناً 20 يوماً', demo: 'عرض مجاني على واتساب', lire: 'قراءة الدليل', guidesLien: 'كل الأدلة', fil: 'مسار التصفح', aller: 'اكتشفوا', tarifs: 'الأسعار',
++  },
++}
+diff --git a/apps/web/components/guides/seo.ts b/apps/web/components/guides/seo.ts
+new file mode 100644
+index 0000000..0b87f83
+--- /dev/null
++++ b/apps/web/components/guides/seo.ts
+@@ -0,0 +1,94 @@
++// SEO des guides : métadonnées (canonical, hreflang ar-MA / fr-MA / x-default), JSON-LD (Article, CollectionPage, fil d'Ariane,
++// FAQPage identique à la FAQ affichée) et entrées du sitemap.
++import type { Metadata } from 'next'
++import type { Langue } from '@/components/landing/contenu'
++import { SITE, encoder } from '@/lib/pagesPubliques'
++import { GUIDES, HUB_GUIDES, cheminGuide, cheminHub, type GuideId } from '@/lib/guidesPublics'
++import { GUIDES_TEXTES, UI_GUIDES } from './contenu'
++
++const LOCALE = { ar: { loc: 'ar_MA', autre: 'fr_MA' }, fr: { loc: 'fr_MA', autre: 'ar_MA' } } as const
++const INLANG = { ar: 'ar-MA', fr: 'fr-MA' } as const
++const accueil = (lang: Langue) => (lang === 'ar' ? SITE : `${SITE}/fr`)
++const nomAccueil = (lang: Langue) => (lang === 'ar' ? 'ملفاتي' : 'MalafiPro')
++
++function meta(titre: string, description: string, ar: string, fr: string, lang: Langue, type: 'website' | 'article'): Metadata {
++  const url = lang === 'ar' ? ar : fr
++  return {
++    title: { absolute: titre },
++    description,
++    alternates: { canonical: url, languages: { 'ar-MA': ar, 'fr-MA': fr, 'x-default': ar } },
++    openGraph: {
++      type, locale: LOCALE[lang].loc, alternateLocale: [LOCALE[lang].autre], url, siteName: 'MalafiPro — ملفاتي', title: titre, description,
++      images: [{ url: '/og-malafipro.jpg', width: 1200, height: 630, alt: 'MalafiPro — ملفاتي' }],
++    },
++    twitter: { card: 'summary_large_image', title: titre, description, images: ['/og-malafipro.jpg'] },
++  }
++}
++
++export const metaGuide = (id: GuideId, lang: Langue) => {
++  const g = GUIDES_TEXTES[lang][id]
++  return meta(g.titre, g.description, cheminGuide(id, 'ar'), cheminGuide(id, 'fr'), lang, 'article')
++}
++export const metaHub = (lang: Langue) => {
++  const ui = UI_GUIDES[lang]
++  return meta(ui.hubTitre, ui.hubDescription, cheminHub('ar'), cheminHub('fr'), lang, 'website')
++}
++
++/** Article + fil d'Ariane + FAQPage. Auteur = l'organisation (aucun auteur individuel tant qu'un relecteur réel n'est pas confirmé). */
++export function jsonLdGuide(id: GuideId, lang: Langue) {
++  const g = GUIDES_TEXTES[lang][id]
++  const ui = UI_GUIDES[lang]
++  const url = `${SITE}${cheminGuide(id, lang)}`
++  const maj = GUIDES.find((x) => x.id === id)!.maj
++  return {
++    '@context': 'https://schema.org',
++    '@graph': [
++      {
++        '@type': 'Article', '@id': `${url}#article`, url, headline: g.h1, name: g.titre, description: g.description, inLanguage: INLANG[lang],
++        datePublished: maj, dateModified: maj, mainEntityOfPage: url, image: `${SITE}/og-malafipro.jpg`,
++        author: { '@id': `${SITE}/#organisation` }, publisher: { '@id': `${SITE}/#organisation` }, isPartOf: { '@id': `${SITE}/#site` },
++        citation: g.sources.map((s) => s.url), breadcrumb: { '@id': `${url}#fil` },
++      },
++      {
++        '@type': 'BreadcrumbList', '@id': `${url}#fil`,
++        itemListElement: [
++          { '@type': 'ListItem', position: 1, name: nomAccueil(lang), item: accueil(lang) },
++          { '@type': 'ListItem', position: 2, name: ui.hubNav, item: `${SITE}${cheminHub(lang)}` },
++          { '@type': 'ListItem', position: 3, name: g.nav, item: url },
++        ],
++      },
++      { '@type': 'FAQPage', '@id': `${url}#faq`, inLanguage: lang, mainEntity: g.faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.r } })) },
++    ],
++  }
++}
++
++export function jsonLdHub(lang: Langue) {
++  const ui = UI_GUIDES[lang]
++  const url = `${SITE}${cheminHub(lang)}`
++  return {
++    '@context': 'https://schema.org',
++    '@graph': [
++      {
++        '@type': 'CollectionPage', '@id': `${url}#page`, url, name: ui.hubTitre, description: ui.hubDescription, inLanguage: INLANG[lang],
++        isPartOf: { '@id': `${SITE}/#site` }, publisher: { '@id': `${SITE}/#organisation` }, breadcrumb: { '@id': `${url}#fil` },
++        mainEntity: {
++          '@type': 'ItemList',
++          itemListElement: GUIDES.map((x, i) => ({ '@type': 'ListItem', position: i + 1, url: `${SITE}${cheminGuide(x.id, lang)}`, name: GUIDES_TEXTES[lang][x.id].h1 })),
++        },
++      },
++      {
++        '@type': 'BreadcrumbList', '@id': `${url}#fil`,
++        itemListElement: [
++          { '@type': 'ListItem', position: 1, name: nomAccueil(lang), item: accueil(lang) },
++          { '@type': 'ListItem', position: 2, name: ui.hubNav, item: url },
++        ],
++      },
++    ],
++  }
++}
++
++/** Sitemap : index + 6 guides, une URL par langue, alternates réciproques. */
++export const entreesSitemapGuides = () => [HUB_GUIDES, ...GUIDES].flatMap((p) => {
++  const languages = { 'ar-MA': `${SITE}${encoder(p.ar)}`, 'fr-MA': `${SITE}${encoder(p.fr)}`, 'x-default': `${SITE}${encoder(p.ar)}` }
++  return [p.ar, p.fr].map((chemin) => ({ url: `${SITE}${encoder(chemin)}`, lastModified: p.maj, changeFrequency: 'monthly' as const, priority: 0.6, alternates: { languages } }))
++})
+diff --git a/apps/web/components/landing/Landing.tsx b/apps/web/components/landing/Landing.tsx
+index 6e1da69..a173f24 100644
+--- a/apps/web/components/landing/Landing.tsx
++++ b/apps/web/components/landing/Landing.tsx
+@@ -4,7 +4,7 @@ import Link from 'next/link'
+ import {
+   Bell, Plus, Search, Clock, CalendarDays, Phone, Wallet, FolderOpen, WifiOff, PenLine, Users, Sparkles, FileText, Laptop,
+   UsersRound, ShieldCheck, Cloud, HardDrive, RefreshCw, Check, X, ArrowLeft, ArrowRight, UserRound, Mail, Globe, Eye,
+-  Lock, ScanText, Bot, FileType2, AlertTriangle, ListChecks, Landmark, Smartphone, Monitor, RefreshCcw, FileArchive, type LucideIcon,
++  ScanText, Bot, FileType2, AlertTriangle, ListChecks, Landmark, Smartphone, Monitor, RefreshCcw, FileArchive, type LucideIcon,
+ } from 'lucide-react'
+ import { ANCRES, BIENTOT, type Contenu } from './contenu'
+ import { Apparition, CarteLumiere, Flotte, MotsReveles, Tarifs } from './anime'
+@@ -83,7 +83,7 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
+                   <div className="lp-mock-acte" dir="rtl" lang="ar">{t.mock.acte}</div>
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                     <span className="lp-puce menthe"><Sparkles size={14} />{t.mock.ia}</span>
+-                    <span className="lp-puce ambre">{t.mock.delai} · <span className="num">30</span> {ar ? 'يوماً' : 'jours'}</span>
++                    <span className="lp-puce ambre">{t.mock.delai}</span>
+                   </div>
+                   <div className="lp-mock-delais">
+                     <div className="agir"><span className="lp-compte"><b className="num">2</b><small>{ar ? 'يومان' : 'jours'}</small></span><span><strong>{t.mock.agir}</strong><small>{t.mock.delai}</small></span></div>
+@@ -434,7 +434,6 @@ export function Landing({ t, restants }: { t: Contenu; restants: number | null }
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+               <a href={`mailto:${EMAIL}`}><Mail size={18} aria-hidden /><span dir="ltr">{EMAIL}</span></a>
+               <a href={DEMO} target="_blank" rel="noopener noreferrer">{WA}<span className="num">{TEL}</span></a>
+-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#9FC9BE' }}><Lock size={16} aria-hidden />{ar ? <>وفق القانون <span className="num">09.08</span></> : <>Conforme à la loi <span className="num">09-08</span></>}</span>
+             </div>
+           </div>
+           <div style={{ borderTop: '1px solid rgba(255,255,255,.12)', paddingTop: 14, color: '#9FC9BE' }}>© <span className="num">{new Date().getFullYear()}</span> MalafiPro · {t.pied.droits}</div>
+diff --git a/apps/web/components/landing/anime.tsx b/apps/web/components/landing/anime.tsx
+index d935a65..34a4331 100644
+--- a/apps/web/components/landing/anime.tsx
++++ b/apps/web/components/landing/anime.tsx
+@@ -4,7 +4,7 @@
+ // - CarteLumiere : bordure lumineuse qui suit la souris (style Animaster « hover border ») ;
+ // - Tarifs : bascule mensuel/annuel avec pastille glissante et prix animé (style Vengeance UI pricing).
+ // Tout respecte prefers-reduced-motion (MotionConfig reducedMotion="user").
+-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'framer-motion'
++import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
+ import { useRef, useState, type ReactNode, type PointerEvent } from 'react'
+ import { Check, MessageCircle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
+ import { AR, FR, PRIX, type Langue } from './contenu'
+@@ -25,9 +25,10 @@ export function Apparition({ children, delai = 0, className, style, as = 'div' }
+ 
+ /** Titre dont les mots apparaissent un par un (pas de découpage en lettres : l'arabe est cursif). */
+ export function MotsReveles({ texte, delai = 0, style }: { texte: string; delai?: number; style?: React.CSSProperties }) {
+-  const reduit = useReducedMotion()
+-  if (reduit) return <span style={style}>{texte}</span>
++  // Pas de rendu différent selon « réduire les animations » (le serveur ne connaît pas ce réglage : erreur d'hydratation #418).
++  // MotionConfig reducedMotion="user" supprime alors le déplacement, seule l'apparition en fondu reste.
+   return (
++    <MotionConfig reducedMotion="user">
+     <span style={style} aria-label={texte}>
+       {texte.split(' ').map((mot, i) => (
+         <motion.span key={i} aria-hidden style={{ display: 'inline-block', whiteSpace: 'pre' }}
+@@ -37,6 +38,7 @@ export function MotsReveles({ texte, delai = 0, style }: { texte: string; delai?
+         </motion.span>
+       ))}
+     </span>
++    </MotionConfig>
+   )
+ }
+ 
+diff --git a/apps/web/components/landing/commun.tsx b/apps/web/components/landing/commun.tsx
+index 1b39c2c..75c9966 100644
+--- a/apps/web/components/landing/commun.tsx
++++ b/apps/web/components/landing/commun.tsx
+@@ -17,4 +17,3 @@ export const Logo = ({ sombre }: { sombre?: boolean }) => (
+     <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 22, fontWeight: 600, color: sombre ? '#FFFFFF' : '#083B34' }}>Malafi<span style={{ fontWeight: 400 }}>Pro</span></span>
+   </span>
+ )
+-
+diff --git a/apps/web/components/landing/contenu.ts b/apps/web/components/landing/contenu.ts
+index c3ab54b..060f3fc 100644
+--- a/apps/web/components/landing/contenu.ts
++++ b/apps/web/components/landing/contenu.ts
+@@ -52,7 +52,7 @@ export const AR: Contenu = {
+   lang: 'ar', dir: 'rtl', autreLangue: { href: '/fr', label: 'Français', court: 'FR' },
+   nav: { probleme: 'المشاكل والحلول', fonctions: 'المزايا', donnees: 'بياناتكم', tarifs: 'الأسعار', faq: 'الأسئلة', connexion: 'الدخول' },
+   hero: {
+-    badge: 'برنامج المحامي المغربي · سحابة أو على حاسوبكم',
++    badge: 'برنامج تسيير مكتب المحاماة بالمغرب',
+     titre1: 'مكتبكم كاملاً في مكان واحد.',
+     titre2: 'ولا أجل يفوتكم بعد اليوم.',
+     sousTitre: 'ملفاتي يتابع ملفاتكم على محاكم، يحسب آجال الطعن، ينبّهكم على واتساب، ويجمع موكليكم ووثائقكم في مكان واحد. على الهاتف، على الحاسوب، وحتى بدون إنترنت.',
+@@ -62,7 +62,7 @@ export const AR: Contenu = {
+   },
+   mock: {
+     titre: 'إجراء جديد على محاكم', acte: '«صدر الحكم وتم تبليغه للطرف المدعى عليه»', ia: 'الذكاء الاصطناعي: تبليغ حكم', delai: 'أجل الاستئناف',
+-    question: 'متى ينتهي أجل الاستئناف في هذا الملف؟', reponse: 'ثلاثون يوماً من تاريخ التبليغ. آخر أجل:', source: 'قانون المسطرة المدنية',
++    question: 'متى ينتهي أجل الاستئناف في هذا الملف؟', reponse: 'آخر أجل لهذا الملف:', source: 'قانون المسطرة المدنية',
+     wa: 'واتساب · ملفاتي', waTexte: 'بقي يومان على أجل الاستئناف في الملف', agir: 'عليكم', surveiller: 'على الخصم',
+   },
+   bientot: 'قريباً',
+@@ -73,7 +73,7 @@ export const AR: Contenu = {
+       { icone: 'clock', pb: 'أجل طعن يمرّ دون انتباه', pbDetail: 'تبليغ لم يُلاحظ، فيضيع حق الموكل وتُثار مسؤوليتكم.', sol: 'الأجل محسوب وتنبيه على واتساب', solDetail: 'قبل 7 أيام، ثم قبل 48 ساعة، ثم صباح آخر يوم.' },
+       { icone: 'calendar', pb: 'الجلسات في المذكرة والهاتف والرسائل', pbDetail: 'لا مكان واحد يجمع كل الجلسات، والخطأ في التاريخ وارد.', sol: 'أجندة واحدة تمتلئ وحدها', solDetail: 'من محاكم مباشرة، مع ملخص كل صباح على واتساب.' },
+       { icone: 'phone', pb: '«فين وصل الملف ديالي؟»', pbDetail: 'الموكلون يتصلون طوال اليوم، والمعلومة متفرقة.', sol: 'ملف كل موكل في شاشة واحدة', solDetail: 'ملفاته، آخر إجراء، وملخص جاهز ترسلونه له في ثانية.', bientot: true },
+-      { icone: 'wallet', pb: 'أتعاب غير مؤدّاة لا يتابعها أحد', pbDetail: 'التسبيقات والباقي في دفتر أو في الذاكرة.', sol: 'الأتعاب والتسبيقات والباقي', solDetail: 'لكل موكل ولكل ملف، مع تذكير عند التأخر.', bientot: true },
++      { icone: 'wallet', pb: 'أتعاب غير مؤدّاة لا يتابعها أحد', pbDetail: 'التسبيقات والباقي في دفتر أو في الذاكرة.', sol: 'الأتعاب والتسبيقات والباقي', solDetail: 'لكل موكل ولكل ملف: الفواتير والأداءات والباقي في مكان واحد.', bientot: true },
+       { icone: 'folder', pb: 'وثائق في الورق وواتساب وقرص USB', pbDetail: 'البحث عن مقال أو حكم يأخذ وقتاً، والضياع وارد.', sol: 'مجلد لكل ملف على سطح المكتب', solDetail: 'مرتب تلقائياً، قابل للبحث، ومحفوظ في نسخة احتياطية.', bientot: true },
+       { icone: 'wifi', pb: 'لا إنترنت في المحكمة', pbDetail: 'تحتاجون معلومة الملف أمام القاضي، والشبكة مقطوعة.', sol: 'يعمل بدون إنترنت', solDetail: 'كل ملفاتكم على حاسوبكم، وتتزامن عند عودة الاتصال.', bientot: true },
+       { icone: 'pen', pb: 'نفس المعطيات تُكتب في كل مقال', pbDetail: 'الأطراف ورقم الملف والمحكمة… والبحث في النصوص يأخذ ساعات.', sol: 'مسودات جاهزة ومساعد قانوني', solDetail: 'مقالات من معطيات الملف، وأجوبة مع فصول القانون المغربي.' },
+@@ -90,7 +90,7 @@ export const AR: Contenu = {
+       { icone: 'file', titre: 'تحرير المقالات والإنذارات', texte: 'من معطيات الملف، ثم تحميل بصيغة Word.' },
+       { icone: 'laptop', titre: 'تطبيق الحاسوب بدون إنترنت', texte: 'وثائقكم في مجلد على سطح المكتب، ونسخة احتياطية يومية.', bientot: true, large: true },
+       { icone: 'team', titre: 'فريق المكتب', texte: 'محامون، متمرنون، كتابة: كل واحد بدوره وصلاحياته.' },
+-      { icone: 'shield', titre: 'سرّية وأمان', texte: 'اتصال مشفّر، تحقق بخطوتين، ولا نشارك بياناتكم مع أحد.' },
++      { icone: 'shield', titre: 'سرّية وأمان', texte: 'اتصال مشفّر، تحقق بخطوتين، وصلاحيات لكل مستعمل.' },
+     ],
+   },
+   crm: {
+@@ -172,17 +172,18 @@ export const AR: Contenu = {
+     titre: 'الأسئلة الشائعة', sousTitre: 'أجوبة عن أكثر ما يسأل عنه المحامون قبل البدء.',
+     items: [
+       { q: 'كم الثمن بالضبط؟', r: 'فردي 290 درهماً في الشهر، ومكتب 790 درهماً في الشهر حتى 5 مستعملين. الأعضاء المؤسسون (أول 50) يحصلون على 20 يوماً مجاناً ثم 149 أو 349 درهماً ثابتة مدى الحياة. الأداء السنوي: 10 أشهر بدل 12.' },
++      { q: 'هل ملفاتي هو بوابة محاكم؟', r: 'لا. ملفاتي برنامج خاص ومستقل موجّه للمحامين. بوابة محاكم الرسمية التابعة لوزارة العدل تبقى مجانية ومتاحة للجميع، وملفاتي يقرأ المعطيات العمومية التي تعرضها لينبّهكم.' },
+       { q: 'هل تحتاجون إلى حسابي على محاكم؟', r: 'لا. يكفي رقم الملف والمحكمة: نقرأ المعطيات العمومية كما تظهر على بوابة محاكم.' },
+       { q: 'كيف تُحسب الآجال؟', r: 'حسب قانون المسطرة المدنية، انطلاقاً من الإجراءات المنشورة (حكم، تبليغ…). نختار دائماً التاريخ الأقرب احتياطاً. التنبيه وسيلة مساعدة، ويبقى التحقق النهائي من الأجل للمحامي.' },
+       { q: 'هل يعمل بدون إنترنت؟', r: 'تطبيق الحاسوب (قريباً) يحفظ ملفاتكم ووثائقكم على جهازكم ويعمل بدون إنترنت. تحتاجون الاتصال فقط لمتابعة محاكم وإرسال التنبيهات، والتزامن يتم وحده.' },
+       { q: 'أين تُحفظ وثائقي؟', r: 'كما تختارون: في السحابة، أو في مجلد «ملفاتي» على سطح مكتب حاسوبكم (قريباً)، أو في الاثنين. ملف لكل قضية، مرتب تلقائياً.' },
+-      { q: 'هل بياناتي محمية؟', r: 'الاتصال مشفّر، كلمات المرور محفوظة بشكل آمن، والتحقق بخطوتين متاح. لا نشارك بياناتكم مع أي طرف، وتُعالَج وفق القانون 09.08. ولا ترسل تنبيهات واتساب أسماء الأطراف.' },
++      { q: 'هل بياناتي محمية؟', r: 'الاتصال مشفّر، كلمات المرور محفوظة بشكل آمن، والتحقق بخطوتين متاح. تُعالَج أسئلة المساعد الذكي لدى مزوّد خارجي للذكاء الاصطناعي، ولا ترسل تنبيهات واتساب أسماء الأطراف.' },
+       { q: 'ماذا يحدث إذا توقفت عن الاشتراك؟', r: 'تصدّرون كل بياناتكم متى شئتم. وحتى عند انتهاء الاشتراك، تبقى تنبيهات الآجال تصلكم خلال مهلة السماح.' },
+       { q: 'كيف أبدأ؟', r: 'سجّلوا في دقيقة: نتصل بكم خلال يوم عمل، نفعّل الحساب، ويضيف معكم مستشارنا ملفاتكم الأولى. التجربة مجانية 20 يوماً.' },
+     ],
+   },
+   fin: { titre: 'لا تتركوا أجلاً للصدفة.', texte: 'ملفاتكم تحت المراقبة من الليلة. التجربة مجانية 20 يوماً.' },
+-  pied: { slogan: 'برنامج المحامي المغربي: متابعة محاكم، آجال الطعن، الموكلون والوثائق.', liens: [['#المشاكل', 'المشاكل والحلول'], ['#المزايا', 'المزايا'], ['#الأسعار', 'الأسعار'], ['#الأسئلة', 'الأسئلة'], ['/register', 'التسجيل'], ['/login', 'الدخول']], droits: 'كل الحقوق محفوظة' },
++  pied: { slogan: 'ملفاتي برنامج مغربي لتسيير مكاتب المحاماة، مستقل عن وزارة العدل وعن بوابة محاكم الرسمية.', liens: [['#المشاكل', 'المشاكل والحلول'], ['#المزايا', 'المزايا'], ['#الأسعار', 'الأسعار'], ['#الأسئلة', 'الأسئلة'], ['/register', 'التسجيل'], ['/login', 'الدخول']], droits: 'كل الحقوق محفوظة' },
+   wa: { demo: 'السلام عليكم، أنا محامٍ وأريد عرضاً مجانياً لملفاتي.', fondateur: 'السلام عليكم، أريد حجز مقعد ضمن الأعضاء المؤسسين في ملفاتي.', devis: 'السلام عليكم، أريد عرض سعر لعرض مكتب+ أو التثبيت المحلي.' },
+   avertissement: 'ملفاتي أداة مساعدة: الحساب والتنبيه لا يعوّضان تحقق المحامي من الأجل.',
+ }
+@@ -191,7 +192,7 @@ export const FR: Contenu = {
+   lang: 'fr', dir: 'ltr', autreLangue: { href: '/', label: 'العربية', court: 'ع' },
+   nav: { probleme: 'Problèmes', fonctions: 'Fonctions', donnees: 'Vos données', tarifs: 'Tarifs', faq: 'FAQ', connexion: 'Connexion' },
+   hero: {
+-    badge: 'Le logiciel de l’avocat marocain · cloud ou sur votre PC',
++    badge: 'Logiciel de gestion de cabinet d’avocat au Maroc',
+     titre1: 'Tout votre cabinet au même endroit.',
+     titre2: 'Et plus aucun délai manqué.',
+     sousTitre: 'MalafiPro suit vos dossiers sur mahakim, calcule vos délais de recours, vous prévient sur WhatsApp et réunit vos clients et vos documents. Sur mobile, sur ordinateur, et même sans internet.',
+@@ -201,7 +202,7 @@ export const FR: Contenu = {
+   },
+   mock: {
+     titre: 'Nouvel acte sur mahakim', acte: '« صدر الحكم وتم تبليغه للطرف المدعى عليه »', ia: 'IA : notification de jugement', delai: 'Délai d’appel',
+-    question: 'Quand expire le délai d’appel dans ce dossier ?', reponse: 'Trente jours à compter de la notification. Date limite :', source: 'Code de procédure civile',
++    question: 'Quand expire le délai d’appel dans ce dossier ?', reponse: 'Date limite pour ce dossier :', source: 'Code de procédure civile',
+     wa: 'WhatsApp · MalafiPro', waTexte: 'Plus que 2 jours pour faire appel, dossier', agir: 'À vous', surveiller: 'À l’adversaire',
+   },
+   bientot: 'Bientôt',
+@@ -212,7 +213,7 @@ export const FR: Contenu = {
+       { icone: 'clock', pb: 'Un délai de recours qui passe inaperçu', pbDetail: 'Une notification ratée, le droit du client perdu, votre responsabilité engagée.', sol: 'Délai calculé, alerte WhatsApp', solDetail: '7 jours avant, puis 48 h avant, puis le matin du dernier jour.' },
+       { icone: 'calendar', pb: 'Audiences dans l’agenda, le téléphone, les messages', pbDetail: 'Aucun endroit unique. Une erreur de date est vite arrivée.', sol: 'Un agenda qui se remplit seul', solDetail: 'Directement depuis mahakim, avec un résumé chaque matin sur WhatsApp.' },
+       { icone: 'phone', pb: '« Où en est mon dossier ? »', pbDetail: 'Les clients appellent toute la journée, l’information est éparpillée.', sol: 'Chaque client sur un seul écran', solDetail: 'Ses dossiers, le dernier acte, et un point prêt à lui envoyer en une seconde.', bientot: true },
+-      { icone: 'wallet', pb: 'Des honoraires impayés que personne ne suit', pbDetail: 'Provisions et reliquats notés dans un cahier, ou de mémoire.', sol: 'Honoraires, provisions, reste à payer', solDetail: 'Par client et par dossier, avec rappel en cas de retard.', bientot: true },
++      { icone: 'wallet', pb: 'Des honoraires impayés que personne ne suit', pbDetail: 'Provisions et reliquats notés dans un cahier, ou de mémoire.', sol: 'Honoraires, provisions, reste à payer', solDetail: 'Par client et par dossier : factures, règlements et reste à payer au même endroit.', bientot: true },
+       { icone: 'folder', pb: 'Documents sur papier, WhatsApp et clé USB', pbDetail: 'Retrouver une requête ou un jugement prend du temps, et on perd des pièces.', sol: 'Un dossier par affaire sur votre bureau', solDetail: 'Rangé automatiquement, consultable, sauvegardé.', bientot: true },
+       { icone: 'wifi', pb: 'Pas d’internet au tribunal', pbDetail: 'Vous avez besoin du dossier devant le juge, et le réseau ne passe pas.', sol: 'Fonctionne sans internet', solDetail: 'Tous vos dossiers sur votre PC, synchronisés au retour de la connexion.', bientot: true },
+       { icone: 'pen', pb: 'Les mêmes informations retapées à chaque acte', pbDetail: 'Parties, numéro, tribunal… et des heures de recherche juridique.', sol: 'Brouillons prêts et assistant juridique', solDetail: 'Actes générés depuis le dossier, réponses citant les textes marocains.' },
+@@ -229,7 +230,7 @@ export const FR: Contenu = {
+       { icone: 'file', titre: 'Rédaction des actes', texte: 'Requêtes et mises en demeure depuis le dossier, export Word.' },
+       { icone: 'laptop', titre: 'Application PC hors ligne', texte: 'Vos documents dans un dossier sur le bureau, sauvegarde quotidienne.', bientot: true, large: true },
+       { icone: 'team', titre: 'Équipe du cabinet', texte: 'Avocats, stagiaires, secrétariat : chacun son rôle et ses droits.' },
+-      { icone: 'shield', titre: 'Confidentialité et sécurité', texte: 'Connexion chiffrée, double authentification, aucune donnée partagée.' },
++      { icone: 'shield', titre: 'Confidentialité et sécurité', texte: 'Connexion chiffrée, double authentification, droits par utilisateur.' },
+     ],
+   },
+   crm: {
+@@ -311,17 +312,18 @@ export const FR: Contenu = {
+     titre: 'Questions fréquentes', sousTitre: 'Les réponses aux questions que posent les avocats avant de commencer.',
+     items: [
+       { q: 'Combien ça coûte, exactement ?', r: 'Solo : 290 DH par mois. Cabinet : 790 DH par mois jusqu’à 5 utilisateurs. Les membres fondateurs (les 50 premiers) ont 20 jours offerts, puis 149 ou 349 DH bloqués à vie. En annuel : 10 mois payés au lieu de 12.' },
++      { q: 'MalafiPro est-il le portail mahakim ?', r: 'Non. MalafiPro est un logiciel privé et indépendant pour les avocats. Le portail officiel mahakim, du ministère de la Justice, reste gratuit et ouvert à tous ; MalafiPro lit les informations publiques qu’il affiche pour vous alerter.' },
+       { q: 'Avez-vous besoin de mon compte mahakim ?', r: 'Non. Le numéro du dossier et le tribunal suffisent : nous lisons les informations publiques affichées sur mahakim.' },
+       { q: 'Comment les délais sont-ils calculés ?', r: 'Selon le Code de procédure civile, à partir des actes publiés (jugement, notification…). Nous retenons toujours la date la plus prudente. L’alerte est une aide : la vérification finale du délai reste celle de l’avocat.' },
+       { q: 'Ça marche sans internet ?', r: 'L’application PC (bientôt) garde vos dossiers et documents sur votre ordinateur et fonctionne hors ligne. La connexion sert seulement au suivi mahakim et à l’envoi des alertes ; la synchronisation est automatique.' },
+       { q: 'Où sont stockés mes documents ?', r: 'Comme vous voulez : dans le cloud, dans un dossier « MalafiPro » sur le bureau de votre PC (bientôt), ou les deux. Un dossier par affaire, rangé automatiquement.' },
+-      { q: 'Mes données sont-elles protégées ?', r: 'Connexion chiffrée, mots de passe protégés, double authentification disponible. Aucune donnée partagée avec des tiers, traitement conforme à la loi 09-08. Les alertes WhatsApp ne contiennent jamais le nom des parties.' },
++      { q: 'Mes données sont-elles protégées ?', r: 'Connexion chiffrée, mots de passe protégés, double authentification disponible. Les questions posées à l’assistant IA sont traitées par un fournisseur d’IA externe. Les alertes WhatsApp ne contiennent jamais le nom des parties.' },
+       { q: 'Et si j’arrête mon abonnement ?', r: 'Vous exportez toutes vos données quand vous voulez. Même après la fin de l’abonnement, les alertes de délais continuent pendant la période de grâce.' },
+       { q: 'Comment commencer ?', r: 'Inscrivez-vous en une minute : nous vous appelons sous un jour ouvré, nous activons le compte et notre conseiller ajoute vos premiers dossiers avec vous. Essai gratuit de 20 jours.' },
+     ],
+   },
+   fin: { titre: 'Ne laissez plus aucun délai au hasard.', texte: 'Vos dossiers surveillés dès ce soir. Essai gratuit de 20 jours.' },
+-  pied: { slogan: 'Le logiciel de l’avocat marocain : suivi mahakim, délais de recours, clients et documents.', liens: [['#problemes', 'Problèmes'], ['#fonctions', 'Fonctions'], ['#tarifs', 'Tarifs'], ['#faq', 'FAQ'], ['/register', 'Inscription'], ['/login', 'Connexion']], droits: 'Tous droits réservés' },
++  pied: { slogan: 'MalafiPro est un logiciel marocain de gestion de cabinet d’avocat, indépendant du ministère de la Justice et du portail officiel mahakim.', liens: [['#problemes', 'Problèmes'], ['#fonctions', 'Fonctions'], ['#tarifs', 'Tarifs'], ['#faq', 'FAQ'], ['/register', 'Inscription'], ['/login', 'Connexion']], droits: 'Tous droits réservés' },
+   wa: { demo: 'Bonjour, je suis avocat et je souhaite une démo gratuite de MalafiPro.', fondateur: 'Bonjour, je souhaite réserver une place de membre fondateur MalafiPro.', devis: 'Bonjour, je souhaite un devis pour l’offre Cabinet+ ou l’installation locale.' },
+   avertissement: 'MalafiPro est un outil d’aide : le calcul et l’alerte ne remplacent pas la vérification du délai par l’avocat.',
+ }
+diff --git a/apps/web/components/landing/seo.ts b/apps/web/components/landing/seo.ts
+index b98cf92..8174e02 100644
+--- a/apps/web/components/landing/seo.ts
++++ b/apps/web/components/landing/seo.ts
+@@ -10,13 +10,13 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+ // Pas de mention du hors-ligne (encore « bientôt ») ni du prix fondateur (offre limitée) dans les extraits.
+ const META = {
+   ar: {
+-    titre: 'ملفاتي MalafiPro — برنامج المحامي بالمغرب وآجال الطعن',
+-    description: `ملفاتي يتابع ملفاتكم على بوابة محاكم، يحسب آجال الاستئناف والتعرض والنقض، وينبّهكم على واتساب قبل آخر أجل. تجربة مجانية ${PRIX.essaiJours} يوماً.`,
++    titre: 'برنامج تسيير مكتب المحاماة بالمغرب | ملفاتي MalafiPro',
++    description: `برنامج مغربي لتسيير مكتب المحاماة: تتبع ملفاتكم على بوابة محاكم، أجندة الجلسات، تنبيهات واتساب، الموكلون والأتعاب. تجربة مجانية ${PRIX.essaiJours} يوماً.`,
+     alt: 'ملفاتي MalafiPro على حاسوب محامٍ في مكتبه', locale: 'ar_MA', autre: 'fr_MA', url: '/',
+   },
+   fr: {
+-    titre: 'MalafiPro — Logiciel avocat au Maroc : mahakim et délais',
+-    description: `MalafiPro suit vos dossiers sur mahakim, calcule vos délais d’appel, d’opposition et de cassation et vous alerte sur WhatsApp. Essai gratuit ${PRIX.essaiJours} jours.`,
++    titre: 'Logiciel de gestion de cabinet d’avocat au Maroc | MalafiPro',
++    description: `Logiciel marocain pour avocats : suivi des dossiers sur mahakim, agenda des audiences, alertes WhatsApp, clients et honoraires. Essai gratuit ${PRIX.essaiJours} jours.`,
+     alt: 'MalafiPro sur l’ordinateur d’un avocat dans son cabinet', locale: 'fr_MA', autre: 'ar_MA', url: '/fr',
+   },
+ }
+@@ -50,6 +50,8 @@ export function jsonLd(t: Contenu) {
+     '@graph': [
+       {
+         '@type': 'Organization', '@id': `${SITE}/#organisation`, name: 'MalafiPro', alternateName: 'ملفاتي', url: SITE, logo: `${SITE}/icon-512.png`, email: EMAIL,
++        description: t.lang === 'ar' ? 'برنامج مغربي لتسيير مكاتب المحاماة، مستقل عن وزارة العدل وعن بوابة محاكم.' : 'Logiciel marocain de gestion de cabinet d’avocat, indépendant du ministère de la Justice et du portail mahakim.',
++        areaServed: { '@type': 'Country', name: 'Maroc' },
+         contactPoint: { '@type': 'ContactPoint', telephone: TEL, email: EMAIL, contactType: 'sales', areaServed: 'MA', availableLanguage: ['ar', 'fr'] },
+       },
+       { '@type': 'WebSite', '@id': `${SITE}/#site`, url: SITE, name: 'MalafiPro — ملفاتي', inLanguage: ['ar', 'fr'], publisher: { '@id': `${SITE}/#organisation` } },
+diff --git a/apps/web/components/pages/HubPages.tsx b/apps/web/components/pages/HubPages.tsx
+index 3fa1553..8b95dac 100644
+--- a/apps/web/components/pages/HubPages.tsx
++++ b/apps/web/components/pages/HubPages.tsx
+@@ -3,6 +3,8 @@ import Link from 'next/link'
+ import { ArrowLeft, ArrowRight } from 'lucide-react'
+ import type { Langue } from '@/components/landing/contenu'
+ import { PAGES_FONCTIONS, cheminPage } from '@/lib/pagesPubliques'
++import { cheminHub } from '@/lib/guidesPublics'
++import { UI_GUIDES } from '@/components/guides/contenu'
+ import { PAGES, UI } from './contenu'
+ import { CSS_PAGE } from './styles'
+ 
+@@ -26,6 +28,9 @@ export function HubPages({ lang }: { lang: Langue }) {
+             </Link>
+           ))}
+         </div>
++        <p className="lp-lead" style={{ margin: 0 }}>
++          <Link href={cheminHub(lang)} className="lp-lien">{UI_GUIDES[lang].guidesLien} — {UI_GUIDES[lang].hubH1}</Link>
++        </p>
+       </div>
+     </section>
+   )
+diff --git a/apps/web/components/pages/PageSeo.tsx b/apps/web/components/pages/PageSeo.tsx
+index 999b110..5fe90f0 100644
+--- a/apps/web/components/pages/PageSeo.tsx
++++ b/apps/web/components/pages/PageSeo.tsx
+@@ -6,6 +6,8 @@ import { AR, FR, type Langue } from '@/components/landing/contenu'
+ import { Logo, WA, EMAIL, TEL, lienWa } from '@/components/landing/commun'
+ import { CSS } from '@/components/landing/styles'
+ import { PAGES_FONCTIONS, cheminPage, pagesConfiancePubliees, type PageId } from '@/lib/pagesPubliques'
++import { GUIDES, cheminGuide, cheminHub } from '@/lib/guidesPublics'
++import { GUIDES_TEXTES, UI_GUIDES } from '@/components/guides/contenu'
+ import { PAGES, UI } from './contenu'
+ import { CSS_PAGE } from './styles'
+ import { jsonLdPage } from './seo'
+@@ -27,6 +29,8 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
+   const DEMO = lienWa(t.wa.demo)
+   // JSON-LD : « < » échappé pour qu'aucun texte ne puisse fermer la balise <script>
+   const json = JSON.stringify(jsonLdPage(id, lang)).replace(/</g, '\\u003c')
++  // Guides qui renvoient vers cette page (maillage interne fonction ↔ guide)
++  const guides = GUIDES.filter((g) => GUIDES_TEXTES[lang][g.id].fonctions.some((f) => f.id === id))
+ 
+   return (
+     <div className="lp" lang={lang} dir={dir} style={{ background: '#F5F3EE', color: '#15201E', fontFamily: POLICE[lang] }}>
+@@ -77,6 +81,7 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
+             <section key={b.h2} aria-labelledby={`b${i}`} className="pg-bloc">
+               <h2 id={`b${i}`} className="pg-h2">{b.h2}</h2>
+               {b.intro && <p className="pg-texte">{b.intro}</p>}
++              {b.lien && <p className="pg-texte"><a href={b.lien.href} target="_blank" rel="noopener noreferrer" className="lp-lien">{b.lien.texte}</a></p>}
+               {b.puces && (
+                 <ul className="pg-puces">{b.puces.map((x) => <li key={x}><Check size={16} strokeWidth={3} color="#0E5A4E" aria-hidden /><span>{x}</span></li>)}</ul>
+               )}
+@@ -121,6 +126,13 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
+                   <em>{ui.plus}<Fleche size={15} aria-hidden /></em>
+                 </Link>
+               ))}
++              {guides.map((g) => (
++                <Link key={g.id} href={cheminGuide(g.id, lang)} className="pg-lien-carte">
++                  <strong>{UI_GUIDES[lang].hubNav} · {GUIDES_TEXTES[lang][g.id].nav}</strong>
++                  <span>{GUIDES_TEXTES[lang][g.id].resume}</span>
++                  <em>{UI_GUIDES[lang].lire}<Fleche size={15} aria-hidden /></em>
++                </Link>
++              ))}
+             </div>
+           </section>
+ 
+@@ -148,6 +160,7 @@ export function PageSeo({ id, lang }: { id: PageId; lang: Langue }) {
+             <nav aria-label={ar ? 'روابط' : 'Liens'} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', maxWidth: 560 }}>
+               <Link href={accueil}>{ui.accueil}</Link>
+               {PAGES_FONCTIONS.map((x) => <Link key={x.id} href={cheminPage(x.id, lang)}>{PAGES[x.id][lang].nav}</Link>)}
++              <Link href={cheminHub(lang)}>{UI_GUIDES[lang].guidesLien}</Link>
+               {pagesConfiancePubliees().map((x) => <Link key={x.ar} href={ar ? x.ar : x.fr}>{ar ? x.titreAr : x.titreFr}</Link>)}
+               <Link href="/register">{t.pied.liens.find(([h]) => h === '/register')?.[1]}</Link>
+               <Link href={cheminPage(id, autre)} hrefLang={autre}>{t.autreLangue.label}</Link>
+diff --git a/apps/web/components/pages/contenu.ts b/apps/web/components/pages/contenu.ts
+index ffb11dc..aeec0c2 100644
+--- a/apps/web/components/pages/contenu.ts
++++ b/apps/web/components/pages/contenu.ts
+@@ -11,6 +11,7 @@ export type Bloc = {
+   cartes?: { h3: string; texte: string }[]
+   puces?: string[]
+   image?: { src: string; alt: string; w: number; h: number; legende: string }
++  lien?: { href: string; texte: string } // lien externe (ex. portail officiel), ouvert dans un nouvel onglet
+ }
+ export type Page = {
+   nav: string // libellé court (liens, fil d'Ariane)
+@@ -50,12 +51,17 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
+     fr: {
+       nav: 'Suivi mahakim',
+       resume: 'Vos dossiers relus sur mahakim plusieurs fois par jour, sans ouvrir le portail.',
+-      titre: 'Suivi automatique des dossiers mahakim | MalafiPro',
+-      description: 'MalafiPro consulte mahakim à votre place : numéro de dossier et tribunal suffisent. Nouvel acte, délai à vérifier, alerte WhatsApp. Essai gratuit 20 jours.',
+-      h1: 'Ne consultez plus mahakim dossier par dossier',
++      titre: 'Suivi Mahakim pour avocats : dossiers et alertes | MalafiPro',
++      description: 'Logiciel pour avocats : MalafiPro suit tous vos dossiers sur le portail mahakim, signale chaque nouvel acte et vous alerte sur WhatsApp. Essai gratuit 20 jours.',
++      h1: 'Le suivi Mahakim de tous vos dossiers, dans un seul outil',
+       pastille: 'Suivi des dossiers',
+       lead: 'MalafiPro lit à votre place les informations publiques de vos dossiers sur le portail mahakim et vous signale chaque nouvel acte. Vous saisissez le numéro du dossier et le tribunal : aucun compte mahakim à confier.',
+       blocs: [
++        {
++          h2: 'MalafiPro et le portail officiel mahakim',
++          intro: 'Le portail mahakim est le service public et gratuit du ministère de la Justice pour consulter un dossier. MalafiPro est un logiciel privé et indépendant, conçu pour les avocats : il lit pour vous les informations publiques affichées sur le portail, pour tous vos dossiers à la fois, et les relie à votre agenda, vos clients et vos alertes.',
++          lien: { href: 'https://www.mahakim.ma', texte: 'Accéder au portail officiel mahakim.ma' },
++        },
+         {
+           h2: 'Pourquoi le suivi manuel coûte du temps',
+           intro: 'Quand on plaide devant plusieurs juridictions, vérifier chaque dossier à la main revient à ouvrir le portail des dizaines de fois par semaine. Un renvoi ou une notification publiés en fin de journée peuvent passer inaperçus, alors qu’ils peuvent déplacer une audience ou faire courir un délai.',
+@@ -94,12 +100,17 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
+     ar: {
+       nav: 'متابعة محاكم',
+       resume: 'ملفاتكم تُفحص على بوابة محاكم عدة مرات في اليوم، دون أن تفتحوها.',
+-      titre: 'متابعة ملفات محاكم تلقائياً للمحامي | ملفاتي',
+-      description: 'ملفاتي يتابع ملفاتكم على بوابة محاكم بدل أن تفتحوها واحداً واحداً: يكفي رقم الملف والمحكمة، ويصلكم تنبيه عند أي إجراء جديد. تجربة مجانية 20 يوماً.',
+-      h1: 'لا تفتحوا بوابة محاكم ملفاً ملفاً: ملفاتي يتابعها عنكم',
++      titre: 'تتبع ملفات المحاكم للمحامي تلقائياً | ملفاتي',
++      description: 'برنامج للمحامين: ملفاتي يتتبع كل ملفاتكم على بوابة محاكم، ويرصد كل إجراء جديد، وينبّهكم على واتساب. تجربة مجانية 20 يوماً.',
++      h1: 'تتبع ملفات المحاكم للمحامي: كل ملفاتكم في شاشة واحدة',
+       pastille: 'متابعة الملفات',
+       lead: 'ملفاتي يقرأ عنكم المعطيات العمومية لملفاتكم في بوابة محاكم ويخبركم بكل إجراء جديد. تُدخلون رقم الملف والمحكمة فقط، دون تسليم حسابكم في محاكم لأي جهة.',
+       blocs: [
++        {
++          h2: 'ملفاتي وبوابة محاكم الرسمية',
++          intro: 'بوابة محاكم خدمة عمومية مجانية تابعة لوزارة العدل للاطلاع على الملفات. أما ملفاتي فبرنامج خاص ومستقل موجّه للمحامين: يقرأ عنكم المعطيات العمومية التي تعرضها البوابة، لكل ملفاتكم دفعة واحدة، ويربطها بأجندتكم وموكليكم وتنبيهاتكم.',
++          lien: { href: 'https://www.mahakim.ma', texte: 'الدخول إلى بوابة محاكم الرسمية mahakim.ma' },
++        },
+         {
+           h2: 'لماذا تأخذ المتابعة اليدوية كل هذا الوقت',
+           intro: 'من يترافع أمام عدة محاكم يفتح البوابة عشرات المرات في الأسبوع. وقد يُنشر تأجيل أو تبليغ في آخر النهار فيمرّ دون أن يُلاحَظ، مع أنه قد يغيّر موعد الجلسة أو يبدأ معه أجل.',
+@@ -310,7 +321,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
+         {
+           h2: 'بطاقة لكل موكل',
+           cartes: [
+-            { h3: 'الهوية ومعلومات الاتصال', texte: 'شخص ذاتي أو شركة: الاسم أو التسمية، بطاقة التعريف، رقم التعريف الموحد للمقاولة، السجل التجاري، الممثل، الهاتف، البريد والعنوان.' },
++            { h3: 'الهوية ومعلومات الاتصال', texte: 'شخص ذاتي أو شركة: الاسم أو التسمية، بطاقة التعريف، المعرّف المشترك للمقاولة (ICE)، السجل التجاري، الممثل، الهاتف، البريد والعنوان.' },
+             { h3: 'ملفات مرتبطة بالموكل', texte: 'اربطوا الملفات بموكلها، فتجدون في شاشة واحدة كل ما تتولونه من أجله.' },
+             { h3: 'سجل التواصل', texte: 'دوّنوا مراسلاتكم مع الموكل لتطّلعوا على تاريخها بنظرة واحدة قبل الاتصال به.' },
+             { h3: 'الفواتير والأداءات', texte: 'تُربط فواتير الموكل وأداءاته ببطاقته.' },
+@@ -406,7 +417,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
+         {
+           h2: 'من الفاتورة إلى الأداء',
+           cartes: [
+-            { h3: 'ترويسة باسمكم', texte: 'تُدخلون هويتكم المهنية مرة واحدة: الهيئة، العنوان، رقم التعريف الموحد للمقاولة، المعرّف الجبائي، الضريبة المهنية، الحساب البنكي وتذييل الصفحة. وتظهر في كل فاتورة.' },
++            { h3: 'ترويسة باسمكم', texte: 'تُدخلون هويتكم المهنية مرة واحدة: الهيئة، العنوان، المعرّف المشترك للمقاولة (ICE)، المعرّف الجبائي، الضريبة المهنية، الحساب البنكي وتذييل الصفحة. وتظهر في كل فاتورة.' },
+             { h3: 'مسودة ثم إصدار', texte: 'تُعدّون الفاتورة مسودةً ثم تُصدرونها: يُمنح الرقم عند الإصدار ضمن سلسلة سنوية متصلة.' },
+             { h3: 'الفاتورة الصادرة لا تُعدَّل', texte: 'لتصحيحها تُلغونها بفاتورة دائنة، فيبقى الأثر واضحاً.' },
+             { h3: 'مجاميع محسوبة', texte: 'تُحسب المبالغ دون احتساب الرسوم، والضريبة على القيمة المضافة، والمبلغ الإجمالي من بنود الفاتورة.' },
+@@ -434,7 +445,7 @@ export const PAGES: Record<PageId, Record<Langue, Page>> = {
+         { q: 'هل أصحّح فاتورة صدرت؟', r: 'لا، الفاتورة الصادرة لا تُعدَّل. تُلغى بفاتورة دائنة، ثم تُصدر فاتورة جديدة عند الحاجة.' },
+         { q: 'هل الترقيم تلقائي؟', r: 'نعم، يُمنح الرقم عند الإصدار ضمن سلسلة سنوية متصلة خاصة بمكتبكم.' },
+         { q: 'هل تستطيع الكتابة إلغاء فاتورة؟', r: 'إلغاء الفاتورة وحذف أي أداء يتطلبان صلاحية الحذف، وللمسؤول عن المكتب أن يسحبها من أي عضو.' },
+-        { q: 'هل أفوتر شركة؟', r: 'نعم، فبطاقة الموكل تتضمن رقم التعريف الموحد للمقاولة والسجل التجاري والمعرّف الجبائي للشركة.' },
++        { q: 'هل أفوتر شركة؟', r: 'نعم، فبطاقة الموكل تتضمن المعرّف المشترك للمقاولة (ICE) والسجل التجاري والمعرّف الجبائي للشركة.' },
+         { q: 'كيف أتتبع التسبيقات؟', r: 'الأداء غير المرتبط بفاتورة يُحفظ كتسبيق غير مخصَّص، ويظهر في الخلاصة.' },
+       ],
+       voir: ['clients', 'actes', 'alertes'],
+diff --git a/apps/web/lib/guidesPublics.ts b/apps/web/lib/guidesPublics.ts
+new file mode 100644
+index 0000000..4eb300a
+--- /dev/null
++++ b/apps/web/lib/guidesPublics.ts
+@@ -0,0 +1,22 @@
++// Guides pratiques : adresses publiques, en arabe (racine) et en français (/fr/guides). Contenu : components/guides/.
++// Même principe que lib/pagesPubliques.ts : `ar` = adresse publique en écriture arabe, `arRoute` = dossier interne latin
++// (Next.js ne pré-génère pas un dossier au nom arabe) ; next.config.ts réécrit `ar` → `arRoute` et redirige `arRoute` → `ar`.
++// `maj` = date réelle de dernière modification du contenu (lastmod du sitemap, dateModified du JSON-LD).
++import { encoder } from './pagesPubliques'
++
++export type GuideId = 'suivi-mahakim' | 'audiences-echeances' | 'clients-dossiers' | 'alertes-whatsapp' | 'facturation-honoraires' | 'intelligence-artificielle'
++
++export const HUB_GUIDES = { ar: '/أدلة-المحامي', arRoute: '/adilla', fr: '/fr/guides', maj: '2026-10-31' }
++
++export const GUIDES: { id: GuideId; ar: string; arRoute: string; fr: string; slugFr: string; maj: string }[] = [
++  { id: 'suivi-mahakim', ar: '/أدلة-المحامي/تتبع-ملف-قضائي-عبر-بوابة-محاكم', arRoute: '/adilla/suivi-mahakim', fr: '/fr/guides/suivre-un-dossier-sur-mahakim', slugFr: 'suivre-un-dossier-sur-mahakim', maj: '2026-10-31' },
++  { id: 'audiences-echeances', ar: '/أدلة-المحامي/تنظيم-الجلسات-والآجال-في-مكتب-المحاماة', arRoute: '/adilla/audiences-echeances', fr: '/fr/guides/organiser-audiences-et-echeances-cabinet-avocat', slugFr: 'organiser-audiences-et-echeances-cabinet-avocat', maj: '2026-10-31' },
++  { id: 'clients-dossiers', ar: '/أدلة-المحامي/إدارة-الموكلين-والملفات-في-مكتب-المحاماة', arRoute: '/adilla/clients-dossiers', fr: '/fr/guides/gerer-clients-et-dossiers-cabinet-avocat', slugFr: 'gerer-clients-et-dossiers-cabinet-avocat', maj: '2026-10-31' },
++  { id: 'alertes-whatsapp', ar: '/أدلة-المحامي/أهمية-تنبيهات-واتساب-للمحامين', arRoute: '/adilla/alertes-whatsapp', fr: '/fr/guides/alertes-whatsapp-avocats-avantages', slugFr: 'alertes-whatsapp-avocats-avantages', maj: '2026-10-31' },
++  { id: 'facturation-honoraires', ar: '/أدلة-المحامي/تنظيم-فواتير-وأتعاب-المحاماة', arRoute: '/adilla/facturation-honoraires', fr: '/fr/guides/organiser-facturation-et-honoraires-avocat', slugFr: 'organiser-facturation-et-honoraires-avocat', maj: '2026-10-31' },
++  { id: 'intelligence-artificielle', ar: '/أدلة-المحامي/الذكاء-الاصطناعي-في-مكتب-المحاماة', arRoute: '/adilla/intelligence-artificielle', fr: '/fr/guides/intelligence-artificielle-cabinet-avocat', slugFr: 'intelligence-artificielle-cabinet-avocat', maj: '2026-10-31' },
++]
++
++/** Chemin encodé (UTF-8) d'un guide : pour liens, canonical, hreflang, sitemap et JSON-LD. */
++export const cheminGuide = (id: GuideId, lang: 'ar' | 'fr') => encoder(GUIDES.find((g) => g.id === id)![lang])
++export const cheminHub = (lang: 'ar' | 'fr') => encoder(HUB_GUIDES[lang])
+diff --git a/apps/web/next.config.ts b/apps/web/next.config.ts
+index 728b025..4bf31cc 100644
+--- a/apps/web/next.config.ts
++++ b/apps/web/next.config.ts
+@@ -1,5 +1,9 @@
+ import type { NextConfig } from 'next'
+ import { PAGES_FONCTIONS } from './lib/pagesPubliques'
++import { GUIDES, HUB_GUIDES } from './lib/guidesPublics'
++
++// Pages publiques à adresse arabe servies par un dossier interne latin (pages « fonction », index et guides).
++const ROUTES_AR = [...PAGES_FONCTIONS, HUB_GUIDES, ...GUIDES]
+ 
+ // En-têtes de sécurité pour toutes les pages (pas de CSP stricte : les styles en ligne de l'UI l'interdiraient)
+ const SECURITE = [
+@@ -25,12 +29,12 @@ const nextConfig: NextConfig = {
+   // Pages « fonction » : l'adresse publique arabe (ex. /متابعة-ملفات-محاكم) est servie par le dossier interne latin (arRoute) ;
+   // l'adresse latine redirige vers l'arabe (une seule adresse par page : pas de contenu en double). Source : lib/pagesPubliques.ts
+   async redirects() {
+-    return PAGES_FONCTIONS.map((p) => ({ source: p.arRoute, destination: encodeURI(p.ar), permanent: true }))
++    return ROUTES_AR.map((p) => ({ source: p.arRoute, destination: encodeURI(p.ar), permanent: true }))
+   },
+   async rewrites() { 
+     return [
+       // source encodée (%D9%85…) : c'est la forme que Next compare au chemin demandé
+-      ...PAGES_FONCTIONS.map((p) => ({ source: encodeURI(p.ar), destination: p.arRoute })),
++      ...ROUTES_AR.map((p) => ({ source: encodeURI(p.ar), destination: p.arRoute })),
+       {
+         source: '/api/:path*',
+         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/:path*`,
+diff --git a/apps/web/public/llms.txt b/apps/web/public/llms.txt
+new file mode 100644
+index 0000000..08bc142
+--- /dev/null
++++ b/apps/web/public/llms.txt
+@@ -0,0 +1,31 @@
++# MalafiPro (ملفاتي)
++
++> MalafiPro est un logiciel marocain de gestion de cabinet d'avocat (SaaS), en arabe et en français. Il est indépendant du ministère de la Justice et du portail officiel mahakim.ma, qui reste un service public gratuit.
++
++Fichier expérimental destiné aux assistants IA. Il résume les pages publiques ; il ne remplace pas leur contenu.
++
++## Public
++Avocats et cabinets d'avocats au Maroc.
++
++## Fonctions disponibles
++- Suivi des dossiers : lecture des informations publiques affichées sur le portail mahakim, à partir du numéro de dossier et du tribunal, et signalement des nouveaux actes.
++- Délais et agenda : délais « à vous » et « à l'adversaire », agenda des audiences et des rendez-vous. Le délai affiché est une aide ; sa vérification reste celle de l'avocat.
++- Alertes WhatsApp : numéro vérifié, heures calmes, messages sans nom des parties, copie dans l'application.
++- Gestion des clients : fiche client, dossiers liés, historique des échanges, signal en cas de nom proche d'un client ou d'un adversaire.
++- Facturation : factures numérotées, avoirs, règlements, provisions, synthèse des impayés.
++- Assistant juridique IA en arabe : réponses avec les articles cités, résumé de dossier, mémoire contrôlable. Les questions sont traitées par un fournisseur d'IA externe.
++- Rédaction d'actes : 23 types d'actes en arabe préparés depuis le dossier, modification par discussion, export Word.
++
++## Pages principales
++- Accueil (arabe) : https://malafipro.ma/
++- Accueil (français) : https://malafipro.ma/fr
++- Suivi Mahakim pour avocats : https://malafipro.ma/fr/suivi-mahakim
++- Alertes WhatsApp et agenda : https://malafipro.ma/fr/alertes-whatsapp-avocat
++- Gestion des clients : https://malafipro.ma/fr/gestion-clients-avocat
++- Facturation et honoraires : https://malafipro.ma/fr/facturation-honoraires-avocat
++- Assistant juridique IA : https://malafipro.ma/fr/assistant-juridique-ia
++- Rédaction d'actes : https://malafipro.ma/fr/redaction-actes-avocat
++- Guides pratiques : https://malafipro.ma/fr/guides
++
++## Contact
++contact@malafipro.ma

@@ -71,7 +71,7 @@ export default function RegisterPage() {
   const f = force(form.password)
 
   return (
-    <AuthSplit pied="لا نشارك بياناتكم مع أي طرف" aside={<>
+    <AuthSplit aside={<>
       <p style={{ margin: 0, fontSize: 38, fontWeight: 600, lineHeight: 1.35, color: '#FFFFFF' }}>{t(invitation ? 'دقيقتان، ثم يعمل ملفاتي من أجلكم.' : 'اطلبوا حسابكم، ونتكفل بالباقي.')}</p>
       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, fontSize: 16 }}>
         {ETAPES.map((e, i) => (
